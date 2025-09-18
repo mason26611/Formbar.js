@@ -3,6 +3,7 @@ const express = require('express')
 const session = require('express-session') // For storing client login data
 const crypto = require('crypto')
 const fs = require('fs')
+const compression = require('compression')
 require('dotenv').config(); // For environment variables
 
 // Custom modules
@@ -16,6 +17,7 @@ const authentication = require('./routes/middleware/authentication.js')
 
 // Set EJS as our view engine
 app.set('view engine', 'ejs')
+app.disable('x-powered-by')
 
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
@@ -37,14 +39,17 @@ io.use((socket, next) => {
 // Allows express to parse requests
 app.use(express.urlencoded({ extended: true }))
 
-// Use a static folder for web page assets
-app.use(express.static(__dirname + '/static'))
-app.use('/js/chart.js', express.static(__dirname + '/node_modules/chart.js/dist/chart.umd.js'))
-app.use('/js/iro.js', express.static(__dirname + '/node_modules/@jaames/iro/dist/iro.min.js'))
-app.use('/js/floating-ui-core.js', express.static(__dirname + '/node_modules/@floating-ui/core/dist/floating-ui.core.umd.min.js'))
-app.use('/js/floating-ui-dom.js', express.static(__dirname + '/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.min.js'))
-app.use('/js/monaco-loader.js', express.static(__dirname + '/node_modules/monaco-editor/min/vs/loader.js'))
-app.use('/js/vs', express.static(__dirname + '/node_modules/monaco-editor/min/vs'))
+// Enable gzip compression for responses
+app.use(compression({ threshold: 1024 }))
+
+// Use a static folder for web page assets with caching
+app.use(express.static(__dirname + '/static', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/chart.js', express.static(__dirname + '/node_modules/chart.js/dist/chart.umd.js', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/iro.js', express.static(__dirname + '/node_modules/@jaames/iro/dist/iro.min.js', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/floating-ui-core.js', express.static(__dirname + '/node_modules/@floating-ui/core/dist/floating-ui.core.umd.min.js', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/floating-ui-dom.js', express.static(__dirname + '/node_modules/@floating-ui/dom/dist/floating-ui.dom.umd.min.js', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/monaco-loader.js', express.static(__dirname + '/node_modules/monaco-editor/min/vs/loader.js', { maxAge: '7d', etag: true, lastModified: true }))
+app.use('/js/vs', express.static(__dirname + '/node_modules/monaco-editor/min/vs', { maxAge: '7d', etag: true, lastModified: true }))
 
 // Check if an IP is banned
 app.use((req, res, next) => {
