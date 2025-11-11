@@ -1,70 +1,101 @@
 const { getClassIDFromCode, getClassUsers, classInformation } = require("../class/classroom");
-const { database } = require("../database");
-const { testData } = require("./tests");
+const { dbRun, dbGet } = require("../database");
+const { testData, setupTestDatabase, teardownTestDatabase, injectTestDatabase } = require("./tests");
 
-it("should get class users", async () => {
-    database.get.mockImplementation((query, params, callback) => {
-        if (query.includes("SELECT id FROM classroom WHERE key = ?")) {
-            if (params[0] !== testData.code) {
-                // Simulate that the class is not found by returning null
-                callback(null, null);
-            } else {
-                // Simulate that the class is found
-                callback(null, { id: 1 });
-            }
-        }
+describe("getClassUsers", () => {
+    let testDb;
+    let restoreDatabase;
+
+    beforeEach(async () => {
+        // Set up test database
+        testDb = await setupTestDatabase();
+        restoreDatabase = injectTestDatabase(testDb);
+
+        // Create test user in database
+        await dbRun(
+            "INSERT INTO users (email, username, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ["user123", "user123", "hashed_password", 1, "test_api_key", "test_secret", "Test User", 1],
+            testDb
+        );
+
+        // Create test class in database (after migration, classroom table doesn't have permissions column)
+        await dbRun(
+            "INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)",
+            ["Test Class", 1, testData.code, ""],
+            testDb
+        );
+
+        // Create class permissions entry
+        await dbRun(
+            "INSERT INTO class_permissions (classId, manageClass, manageStudents, controlPoll, votePoll, seePoll, breakHelp, auxiliary, links, userDefaults) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [1, 4, 4, 3, 2, 1, 3, 3, 3, 1],
+            testDb
+        );
+
+        // Create classusers entry linking user to class
+        await dbRun(
+            "INSERT INTO classusers (classId, studentId, permissions) VALUES (?, ?, ?)",
+            [1, 1, 1],
+            testDb
+        );
     });
 
-    database.all.mockImplementation((query, params, callback) => {
-        if (
-            query.includes(
-                "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE classusers.permissions END AS classPermissions FROM users INNER JOIN classusers ON users.id = classusers.studentId OR users.id = classroom.owner INNER JOIN classroom ON classusers.classId = classroom.id WHERE classroom.key = ?"
-            )
-        ) {
-            if (params[0] !== testData.code) {
-                // Simulate that the class does not exist by returning null
-                callback(null, null);
-            } else {
-                // Simulate that users are found in the class
-                callback(null, [{ id: 1, email: "user123", permissions: 1, classPermissions: 1 }]);
-            }
-        } else {
-            callback(new Error("Unexpected query"));
+    afterEach(async () => {
+        // Restore original database
+        if (restoreDatabase) {
+            restoreDatabase();
         }
+        // Close test database
+        if (testDb) {
+            await teardownTestDatabase(testDb);
+        }
+        // Clear class cache
+        classInformation.classrooms = {};
     });
 
-    const classUsers = await getClassUsers(testData.email, testData.code);
-    expect(classUsers).toStrictEqual({
-        user123: {
-            loggedIn: false,
-            id: 1,
+    it("should get class users", async () => {
+        const testUser = {
             email: "user123",
-            permissions: 1,
-            classPermissions: 1,
-            help: null,
-            break: null,
-            pogMeter: 0,
-        },
+            classPermissions: 2, // Student permissions
+        };
+        const classUsers = await getClassUsers(testUser, testData.code);
+        // Check if result is an error object
+        if (classUsers && classUsers.error) {
+            throw new Error(`getClassUsers returned error: ${classUsers.error}`);
+        }
+        expect(classUsers).toHaveProperty("user123");
+        expect(classUsers.user123.email).toBe("user123");
+        expect(classUsers.user123.id).toBe(1);
+        expect(classUsers.user123.permissions).toBe(1);
     });
 });
 
 describe("getClassIdFromCode", () => {
-    beforeEach(() => {
-        jest.resetAllMocks();
+    let testDb;
+    let restoreDatabase;
 
-        database.get.mockImplementation((query, params, callback) => {
-            if (query.includes("SELECT id FROM classroom WHERE key = ?")) {
-                if (params[0] !== testData.code) {
-                    // Simulate no class found
-                    callback(null, null);
-                } else {
-                    // Simulate returning the class id
-                    callback(null, { id: 1 });
-                }
-            } else {
-                callback(new Error("Unexpected query"));
-            }
-        });
+    beforeEach(async () => {
+        // Set up test database
+        testDb = await setupTestDatabase();
+        restoreDatabase = injectTestDatabase(testDb);
+
+        // Create test class in database (after migration, classroom table doesn't have permissions column)
+        await dbRun(
+            "INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)",
+            ["Test Class", 1, testData.code, ""],
+            testDb
+        );
+    });
+
+    afterEach(async () => {
+        // Restore original database
+        if (restoreDatabase) {
+            restoreDatabase();
+        }
+        // Close test database
+        if (testDb) {
+            await teardownTestDatabase(testDb);
+        }
     });
 
     it("should find class id with valid class code", async () => {

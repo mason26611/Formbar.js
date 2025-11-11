@@ -94,6 +94,9 @@ function createSocketUpdates(isMocked = true, socket) {
         : new SocketUpdates(socket);
 }
 
+// Export database helpers
+const { setupTestDatabase, teardownTestDatabase, injectTestDatabase } = require("./database");
+
 module.exports = {
     testData,
     createTestUser,
@@ -101,4 +104,7 @@ module.exports = {
     createExpressServer,
     createSocket,
     createSocketUpdates,
+    setupTestDatabase,
+    teardownTestDatabase,
+    injectTestDatabase,
 };

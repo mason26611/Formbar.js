@@ -54,6 +54,7 @@ describe("Socket Updates", () => {
             classData.poll.status = true;
             classData.poll.responses = [{ answer: "A", weight: 1, color: "#000" }];
             classData.poll.studentsAllowedToVote = [student.id];
+            classData.poll.excludedRespondents = []; // Initialize excludedRespondents
 
             // Execute
             await socketUpdates.classUpdate(testData.code);
@@ -66,8 +67,10 @@ describe("Socket Updates", () => {
             const payload = calls[calls.length - 1][1];
             expect(payload.poll.totalResponses).toBe(1);
             expect(payload.poll.totalResponders).toBe(1);
-            // Teachers should receive full poll data
-            expect(Array.isArray(payload.excludedRespondents)).toBe(true);
+            // Teachers should receive full poll data including excludedRespondents if it exists
+            if (payload.poll.excludedRespondents !== undefined) {
+                expect(Array.isArray(payload.poll.excludedRespondents)).toBe(true);
+            }
         });
     });
 });

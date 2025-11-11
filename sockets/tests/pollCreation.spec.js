@@ -1,11 +1,10 @@
 const { run: pollCreationRun } = require("../polls/pollCreation");
 const { classInformation } = require("../../modules/class/classroom");
 const { logger } = require("../../modules/logger");
-const { generateColors } = require("../../modules/util");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("../../modules/tests/tests");
 const { userSocketUpdates } = require("../init");
-// jest.mock("../../modules/logger");
-jest.mock("../../modules/util");
+// Note: We're using the real generateColors function instead of mocking it
+// This is a pure function with no side effects, so it should be tested directly
 
 describe("startPoll", () => {
     let socket;
@@ -28,7 +27,6 @@ describe("startPoll", () => {
 
         // Run the socket handler
         pollCreationRun(socket, socketUpdates);
-        generateColors.mockReturnValue(["#ff0000", "#00ff00", "#0000ff"]);
         startPollHandler = socket.on.mock.calls.find((call) => call[0] === "startPoll")[1];
     });
 
@@ -47,6 +45,16 @@ describe("startPoll", () => {
 
         // Check if the poll was started successfully
         expect(socket.emit).toHaveBeenCalledWith("startPoll");
+        
+        // Verify the poll was actually created with real data
+        const poll = classInformation.classrooms[testData.code].poll;
+        expect(poll.status).toBe(true);
+        expect(poll.prompt).toBe("Test Poll");
+        expect(poll.responses).toHaveLength(3);
+        // Verify colors were generated (real function output)
+        expect(poll.responses[0].color).toMatch(/^#[0-9a-f]{6}$/i); // Valid hex color
+        expect(poll.responses[1].color).toMatch(/^#[0-9a-f]{6}$/i);
+        expect(poll.responses[2].color).toMatch(/^#[0-9a-f]{6}$/i);
     });
 
     it("should not start a poll if class is not active", async () => {
@@ -70,24 +78,24 @@ describe("startPoll", () => {
         expect(classInformation.classrooms[testData.code].poll.status).toBe(false);
     });
 
-    it("should handle error during poll start", async () => {
-        generateColors.mockImplementation(() => {
-            throw new Error("Test Error");
-        });
-
-        // Attempt to start the poll then check if the error was logged
-        await startPollHandler({
+    it("should handle error during poll start gracefully", async () => {
+        // Test error handling by using a non-existent user
+        // This will cause createPoll to fail when trying to access classInformation.users
+        const invalidSocket = createSocket();
+        invalidSocket.request.session.email = "nonexistent@example.com";
+        
+        // Set up handler for invalid socket
+        pollCreationRun(invalidSocket, createSocketUpdates());
+        const invalidHandler = invalidSocket.on.mock.calls.find((call) => call[0] === "startPoll")[1];
+        
+        // This should not throw, but should log the error
+        await invalidHandler({
             prompt: "Test Poll",
             answers: [{}, {}, {}],
-            blind: false,
-            weight: 1,
-            tags: ["tag1"],
-            excludedRespondents: ["box1"],
-            indeterminate: ["indeterminate1"],
-            allowTextResponses: true,
-            allowMultipleResponses: true,
         });
-        expect(logger.log).toHaveBeenCalled();
+        
+        // Error should be logged (logger is mocked in jest.setup.js)
+        expect(logger.log).toHaveBeenCalledWith("error", expect.any(String));
     });
 
     afterAll(() => {

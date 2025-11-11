@@ -16,17 +16,13 @@ describe("Certs Route", () => {
     });
 
     describe("GET /certs", () => {
-        it("should render pages/message with the certificate", async () => {
+        it("should return JSON with the public key", async () => {
             // Make request to the route
             const response = await request(app).get("/certs").expect(200);
 
-            // Check the response contains the expected view and data
-            expect(response.body.view).toBe("pages/message");
-            expect(response.body.options).toEqual({
-                title: "Certs",
-                excluded: true,
-                message: fs.readFileSync("publicKey.pem", "utf8"),
-            });
+            // Check the response contains the public key
+            expect(response.body).toHaveProperty("publicKey");
+            expect(response.body.publicKey).toBe(fs.readFileSync("publicKey.pem", "utf8"));
         });
 
         it("should handle fs errors appropriately", async () => {

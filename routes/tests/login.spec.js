@@ -14,12 +14,12 @@ jest.mock("../../modules/database", () => {
     const dbMock = {
         get: jest.fn((query, params, callback = () => {}) => {
             // Handle the complex user query with polls
-            if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId")) {
+            if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId IS NULL")) {
                 callback(null, {
                     email: params[0], // email is used as email
                     id: 1,
                     password: "hashed_password",
-                    permissions: "student",
+                    permissions: 2,
                     API: "test_api",
                     sharedPolls: "[]",
                     ownedPolls: "[]",
@@ -47,6 +47,7 @@ jest.mock("../../modules/database", () => {
         database: dbMock,
         dbRun: jest.fn().mockResolvedValue(),
         dbGet: jest.fn().mockResolvedValue({ token: "mock_token" }),
+        dbGetAll: jest.fn().mockResolvedValue([]),
     };
 });
 
@@ -131,58 +132,97 @@ describe("Login Route", () => {
             app.use((req, res, next) => {
                 req.session = {};
                 req.body = {
-                    email: "testuser",
+                    email: "test@example.com",
                     password: "password",
                     loginType: "login",
-                    userType: "?????????????????????",
-                    displayName: "Test User",
-                    email: "test@example.com",
                 };
                 next();
             });
             loginRoute.run(app);
 
-            const response = await request(app).post("/login").send();
-            // .expect(302);
-
-            expect(response.headers.location).toBe("/");
-            expect(database.get).toHaveBeenCalledWith(
-                expect.stringContaining("SELECT users.*, CASE WHEN shared_polls.pollId"),
-                ["test@example.com"],
-                expect.any(Function)
-            );
-        });
-
-        it("should create a new user account when loginType is new", async () => {
-            // Mock database.all to return empty users array (first user will be manager)
-            database.all.mockImplementation((query, callback) => {
-                callback(null, []);
-            });
-
-            // Mock database.get to return the newly created user
+            // Mock database.get to return user data
             database.get.mockImplementation((query, params, callback = () => {}) => {
-                if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId")) {
-                    callback(null, null); // No existing user found
-                } else {
+                if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId IS NULL")) {
                     callback(null, {
-                        email: "newuser",
-                        id: 2,
-                        permissions: "manager",
-                        API: "new_api",
+                        email: "test@example.com",
+                        id: 1,
+                        password: "hashed_password",
+                        permissions: 2,
+                        API: "test_api",
+                        sharedPolls: "[]",
+                        ownedPolls: "[]",
                         tags: "",
-                        displayName: "New User",
+                        displayName: "Test User",
                         verified: 1,
-                        email: "new@example.com",
                     });
+                } else {
+                    callback(null, null);
                 }
             });
 
             const response = await request(app)
                 .post("/login")
                 .send({
-                    email: "newuser",
-                    password: "password123",
+                    email: "test@example.com",
+                    password: "password",
+                    loginType: "login",
+                })
+                .expect(302);
+
+            expect(response.headers.location).toBe("/");
+            expect(database.get).toHaveBeenCalledWith(
+                expect.stringContaining("SELECT users.*, CASE WHEN shared_polls.pollId IS NULL"),
+                ["test@example.com"],
+                expect.any(Function)
+            );
+        });
+
+        it("should create a new user account when loginType is new", async () => {
+            // Mock dbGetAll to return empty users array (first user will be manager)
+            const { dbGetAll } = require("../../modules/database");
+            dbGetAll.mockResolvedValue([]);
+
+            // Mock database.get to return the newly created user
+            database.get.mockImplementation((query, params, callback = () => {}) => {
+                if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId IS NULL")) {
+                    callback(null, null); // No existing user found
+                } else if (query.includes("SELECT * FROM users WHERE email")) {
+                    // This is called after INSERT, so return the newly created user
+                    callback(null, {
+                        email: "new@example.com",
+                        id: 2,
+                        permissions: 5, // manager
+                        API: "new_api",
+                        secret: "new_secret",
+                        tags: "",
+                        displayName: "New User",
+                        verified: 1,
+                    });
+                } else {
+                    callback(null, null);
+                }
+            });
+
+            // Mock database.run to call the callback synchronously (this triggers the redirect)
+            // The callback will then call database.get, so we need to handle that
+            database.run.mockImplementation((query, params, callback = () => {}) => {
+                if (query.includes("INSERT INTO users")) {
+                    // Call callback synchronously to simulate successful insert
+                    // This will trigger the nested database.get call
+                    // Use setImmediate to ensure the callback runs after the current execution
+                    setImmediate(() => {
+                        callback(null);
+                    });
+                } else {
+                    callback(null);
+                }
+            });
+
+            const response = await request(app)
+                .post("/login")
+                .send({
                     email: "new@example.com",
+                    password: "password123",
                     displayName: "New User",
                     loginType: "new",
                 })
@@ -191,14 +231,13 @@ describe("Login Route", () => {
             expect(database.run).toHaveBeenCalledWith(
                 expect.stringContaining("INSERT INTO users"),
                 expect.arrayContaining([
-                    "new@example.com", // This is due to email being an alias for email now
                     "new@example.com",
-                    "hashed_password",
-                    expect.any(Number),
-                    expect.any(String),
-                    expect.any(String),
+                    expect.any(String), // hashed password
+                    expect.any(Number), // permissions
+                    expect.any(String), // API
+                    expect.any(String), // secret
                     "New User",
-                    1,
+                    1, // verified
                 ]),
                 expect.any(Function)
             );
@@ -223,19 +262,18 @@ describe("Login Route", () => {
             compare.mockResolvedValueOnce(false);
 
             database.get.mockImplementation((query, params, callback) => {
-                if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId")) {
+                if (query.includes("SELECT users.*, CASE WHEN shared_polls.pollId IS NULL")) {
                     callback(null, {
-                        email: "testuser",
+                        email: "test@example.com",
                         id: 1,
                         password: "hashed_password",
-                        permissions: "student",
+                        permissions: 2,
                         API: "test_api",
                         sharedPolls: "[]",
                         ownedPolls: "[]",
                         tags: "",
                         displayName: "Test User",
                         verified: 1,
-                        email: "test@example.com",
                     });
                 } else {
                     callback(null, null);
@@ -245,31 +283,30 @@ describe("Login Route", () => {
             const response = await request(app)
                 .post("/login")
                 .send({
-                    email: "testuser",
+                    email: "test@example.com",
                     password: "wrongpassword",
                     loginType: "login",
-                    email: "test@example.com",
                 })
                 .expect(200);
 
-            expect(response.body.view).toBe("pages/message");
-            expect(response.body.options.message).toBe("Incorrect password");
+            expect(response.body.view).toBe("pages/login");
+            expect(response.body.options.errorMessage).toBe("Incorrect Password. Try again.");
         });
 
         it("should validate input when creating a new user", async () => {
             const response = await request(app)
                 .post("/login")
                 .send({
-                    email: "inv", // Too short
-                    password: "pass",
                     email: "new@example.com",
+                    password: "pass", // Too short
                     displayName: "New User",
                     loginType: "new",
                 })
                 .expect(200);
 
-            expect(response.body.view).toBe("pages/message");
-            expect(response.body.options.message).toBe("Invalid password or display name. Please try again.");
+            expect(response.body.view).toBe("pages/login");
+            expect(response.body.options).toHaveProperty("title", "Login");
+            expect(response.body.options).toHaveProperty("errorMessage", "Invalid password or display name. Please try again.");
         });
     });
 });

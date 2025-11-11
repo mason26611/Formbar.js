@@ -1,7 +1,6 @@
 const changePasswordRoute = require("../changePassword");
 const request = require("supertest");
 const { createExpressServer } = require("../../modules/tests/tests");
-const { database } = require("../../modules/database");
 const { sendMail } = require("../../modules/mail");
 
 jest.mock("../../modules/mail", () => ({
@@ -12,15 +11,45 @@ jest.mock("../../modules/crypto", () => ({
     hash: jest.fn().mockResolvedValue("hashed-password"),
 }));
 
+// Mock database for this test file
+jest.mock("../../modules/database", () => {
+    const mockDb = {
+        get: jest.fn((query, params, callback) => {
+            if (typeof params === "function") {
+                callback = params;
+            }
+            callback(null, { secret: "valid-secret" });
+        }),
+        run: jest.fn((query, params, callback) => {
+            if (typeof params === "function") {
+                callback = params;
+            }
+            callback(null);
+        }),
+    };
+    return {
+        database: mockDb,
+        dbGet: jest.fn().mockResolvedValue({ secret: "valid-secret" }),
+        dbRun: jest.fn().mockResolvedValue(),
+        dbGetAll: jest.fn().mockResolvedValue([]),
+    };
+});
+
 describe("Change Password Route", () => {
     const mockEmail = "test@example.com";
     const mockSecret = "valid-secret";
     let app;
+    const { database } = require("../../modules/database");
 
     beforeEach(() => {
+        jest.clearAllMocks();
         app = createExpressServer();
 
-        database.get.mockImplementation((query, callback) => {
+        database.get.mockImplementation((query, params, callback) => {
+            if (typeof params === "function") {
+                callback = params;
+                params = [];
+            }
             callback(null, { secret: mockSecret });
         });
 
@@ -69,10 +98,11 @@ describe("Change Password Route", () => {
         });
 
         it("should handle database errors gracefully", async () => {
-            // Mock database.get to throw an error
-            require("../../modules/database").database.get.mockImplementation((query, callback) => {
-                callback(new Error("Database error"));
-            });
+            // Mock dbGet to throw an error (changePassword uses dbGet, not database.get)
+            const { dbGet } = require("../../modules/database");
+            // Reset the mock and set it to reject
+            dbGet.mockReset();
+            dbGet.mockRejectedValueOnce(new Error("Database error"));
 
             const response = await request(app).get(`/changepassword?code=${mockSecret}&email=${mockEmail}`).expect(200);
 
