@@ -1,7 +1,7 @@
 const { logger } = require("../../modules/logger");
 const { MANAGER_PERMISSIONS } = require("../../modules/permissions");
 const { getManagerData } = require("../../modules/manager");
-const { hasPermission } = require("./middleware/permissionCheck");
+const { hasPermission } = require("./controllers/middleware/permissionCheck");
 
 module.exports = {
     run(router) {

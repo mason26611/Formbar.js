@@ -18,7 +18,6 @@ const { app, io, http, getIpAccess } = require("./modules/webServer.js");
 const { settings } = require("./modules/config.js");
 const { lastActivities, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const { logout } = require("./modules/user/userSession");
-const authentication = require("./routes/middleware/authentication.js");
 
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
@@ -42,9 +41,11 @@ io.use((socket, next) => {
     try {
         let ip = socket.handshake.address;
         if (ip && ip.startsWith("::ffff:")) ip = ip.slice(7);
-        if (authentication.checkIPBanned(ip)) {
-            return next(new Error("IP banned"));
-        }
+
+		// @TODO fix
+		// if (authentication.checkIPBanned(ip)) {
+        //     return next(new Error("IP banned"));
+        // }
         next();
     } catch (err) {
         next(err);
@@ -93,11 +94,12 @@ setInterval(() => {
     }
 }, INACTIVITY_CHECK_TIME);
 
-const REFRESH_TOKEN_CHECK_TIME = 1000 * 60 * 60; // 1 hour
-authentication.cleanRefreshTokens();
-setInterval(async () => {
-    authentication.cleanRefreshTokens();
-}, REFRESH_TOKEN_CHECK_TIME);
+// @TODO fix
+// const REFRESH_TOKEN_CHECK_TIME = 1000 * 60 * 60; // 1 hour
+// authentication.cleanRefreshTokens();
+// setInterval(async () => {
+//     authentication.cleanRefreshTokens();
+// }, REFRESH_TOKEN_CHECK_TIME);
 
 // Check if an IP is banned
 app.use((req, res, next) => {
@@ -105,9 +107,10 @@ app.use((req, res, next) => {
     if (!ip) return next();
     if (ip.startsWith("::ffff:")) ip = ip.slice(7);
 
+	// @TODO: fix
     // Check if the user is ip banned
     // If the user is not ip banned and is on the ip-banned page, redirect them to the home page
-    const isIPBanned = authentication.checkIPBanned(ip);
+    // const isIPBanned = authentication.checkIPBanned(ip);
     if (req.path === "/ip-banned" && isIPBanned) {
         return next();
     } else if (req.path === "/ip-banned" && !isIPBanned) {
@@ -115,9 +118,9 @@ app.use((req, res, next) => {
     }
 
     // Redirect to the IP banned page if they are banned
-    if (isIPBanned) {
-        return res.redirect("/ip-banned");
-    }
+    // if (isIPBanned) {
+    //     return res.redirect("/ip-banned");
+    // }
 
     next();
 });
@@ -139,19 +142,30 @@ app.use((req, res, next) => {
     next();
 });
 
-// Import HTTP routes
-// const routeFiles = fs.readdirSync("./routes/").filter((file) => file.endsWith(".js"));
-// for (const routeFile of routeFiles) {
-//     const route = require(`./routes/${routeFile}`);
-//     route.run(app);
-// }
+// Import API routes
+const apiVersionFolders = fs.readdirSync('./api');
+for (const apiVersionFolder of apiVersionFolders) {
+	const controllerFolders = fs.readdirSync(`./api/${apiVersionFolder}`).filter((file) => file === "controllers");
+	for (const controllerFolder of controllerFolders) {
+
+		// @todo fix
+		// const router = express.Router();
+		// const routeFiles = fs.readdirSync(`./api/${apiVersionFolder}/${controllerFolder}`).filter((file) => file.endsWith('.js'));
+		// for (const routeFile of routeFiles) {
+		// 	const route = require(`./api/${apiVersionFolder}/${controllerFolder}/${routeFile}`);
+		// 	router.use(`/api/${apiVersionFolder}`, route);
+		// }
+		//
+		// app.use()
+	}
+}
 
 // Initialize websocket routes
 initSocketRoutes();
 
 http.listen(settings.port, async () => {
-    Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
-    Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
+    // Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
+    // Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
     console.log(`Running on port: ${settings.port}`);
     if (!settings.emailEnabled) console.log("Email functionality is disabled.");
     if (!settings.googleOauthEnabled) console.log("Google Oauth functionality is disabled.");

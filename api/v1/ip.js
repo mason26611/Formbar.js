@@ -1,10 +1,10 @@
 const { logger } = require("../../modules/logger");
 const { dbGet, dbRun, dbGetAll } = require("../../modules/database");
 const { settings } = require("../../modules/config");
-const { hasPermission } = require("./middleware/permissionCheck");
+const { hasPermission } = require("./controllers/middleware/permissionCheck");
 const { MANAGER_PERMISSIONS } = require("../../modules/permissions");
 const { getIpAccess } = require("../../modules/webServer");
-const authentication = require("./middleware/authentication");
+const authentication = require("./controllers/middleware/authentication");
 const fs = require("fs");
 
 module.exports = {
