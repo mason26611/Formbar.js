@@ -28,9 +28,6 @@ const { lastActivities, INACTIVITY_LIMIT } = require("./sockets/middleware/inact
 const { logout } = require("./modules/user/userSession");
 const authentication = require("./routes/middleware/authentication.js");
 
-// Set EJS as our view engine
-app.set("view engine", "ejs");
-
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
     secret: crypto.randomBytes(256).toString("hex"), // Used to sign into the session via cookies
