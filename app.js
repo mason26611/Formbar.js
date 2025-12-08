@@ -12,14 +12,6 @@ if (!fs.existsSync("database/database.db")) {
 
 // Custom modules
 const { logger } = require("./modules/logger.js");
-const {
-    MANAGER_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    GUEST_PERMISSIONS,
-    STUDENT_PERMISSIONS,
-    MOD_PERMISSIONS,
-    BANNED_PERMISSIONS,
-} = require("./modules/permissions.js");
 const { classInformation } = require("./modules/class/classroom.js");
 const { initSocketRoutes } = require("./sockets/init.js");
 const { app, io, http, getIpAccess } = require("./modules/webServer.js");
@@ -132,52 +124,30 @@ app.use((req, res, next) => {
 
 // Add currentUser and permission constants to all pages
 app.use((req, res, next) => {
-    res.locals = {
-        ...res.locals,
-        MANAGER_PERMISSIONS,
-        TEACHER_PERMISSIONS,
-        MOD_PERMISSIONS,
-        STUDENT_PERMISSIONS,
-        GUEST_PERMISSIONS,
-        BANNED_PERMISSIONS,
-    };
-
     // If the user is in a class, then get the user from the class students list
     // This ensures that the user data is always up to date
     if (req.session.classId) {
         const user = classInformation.classrooms[req.session.classId].students[req.session.email];
         if (!user) {
-            res.locals.currentUser = classInformation.users[req.session.email];
             next();
             return;
         }
 
         classInformation.users[req.session.email] = user;
-        res.locals.currentUser = user;
-    } else {
-        res.locals.currentUser = classInformation.users[req.session.email];
     }
 
     next();
 });
 
 // Import HTTP routes
-const routeFiles = fs.readdirSync("./routes/").filter((file) => file.endsWith(".js"));
-for (const routeFile of routeFiles) {
-    // Skip for now as it will be handled later
-    if (routeFile == "404.js") {
-        continue;
-    }
-
-    const route = require(`./routes/${routeFile}`);
-    route.run(app);
-}
+// const routeFiles = fs.readdirSync("./routes/").filter((file) => file.endsWith(".js"));
+// for (const routeFile of routeFiles) {
+//     const route = require(`./routes/${routeFile}`);
+//     route.run(app);
+// }
 
 // Initialize websocket routes
 initSocketRoutes();
-
-// Import 404 error page
-require("./routes/404.js").run(app);
 
 http.listen(settings.port, async () => {
     Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
