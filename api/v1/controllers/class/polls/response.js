@@ -1,5 +1,5 @@
-const { pollResponse } = require("../../../../../modules/polls");
-const { logger } = require("../../../../../modules/logger");
+const { pollResponse } = require("@modules/polls");
+const { logger } = require("@modules/logger");
 const { httpPermCheck } = require("../../middleware/permissionCheck");
 const { parseJson } = require("../../middleware/parseJson");
 

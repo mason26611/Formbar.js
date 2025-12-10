@@ -1,6 +1,6 @@
 const { hasClassPermission } = require("../../middleware/permissionCheck");
-const { CLASS_PERMISSIONS } = require("../../../../../modules/permissions");
-const { deleteHelpTicket } = require("../../../../../modules/class/help");
+const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { deleteHelpTicket } = require("@modules/class/help");
 
 module.exports = (router) => {
     try {

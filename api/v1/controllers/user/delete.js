@@ -1,7 +1,7 @@
-const { logger } = require("../../../../modules/logger");
+const { logger } = require("@modules/logger");
+const { deleteUser } = require("@modules/user/userSession");
+const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("../middleware/permissionCheck");
-const { deleteUser } = require("../../../../modules/user/userSession");
-const { MANAGER_PERMISSIONS } = require("../../../../modules/permissions");
 
 module.exports = (router) => {
     try {

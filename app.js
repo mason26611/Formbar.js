@@ -1,4 +1,5 @@
 // Imported modules
+require('module-alias/register');
 const express = require("express");
 const session = require("express-session"); // For storing client login data
 const crypto = require("crypto");

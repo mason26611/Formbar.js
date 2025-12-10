@@ -1,8 +1,8 @@
-const { logger } = require("../../../../../modules/logger");
+const { logger } = require("@modules/logger");
 const { hasClassPermission } = require("../../middleware/permissionCheck");
 const { parseJson } = require("../../middleware/parseJson");
-const { CLASS_PERMISSIONS } = require("../../../../../modules/permissions");
-const { updatePoll } = require("../../../../../modules/polls");
+const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { updatePoll } = require("@modules/polls");
 
 module.exports = (router) => {
     try {

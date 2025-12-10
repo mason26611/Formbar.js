@@ -1,6 +1,6 @@
 const { httpPermCheck } = require("../../middleware/permissionCheck");
-const { classInformation } = require("../../../../../modules/class/classroom");
-const { sendHelpTicket } = require("../../../../../modules/class/help");
+const { classInformation } = require("@modules/class/classroom");
+const { sendHelpTicket } = require("@modules/class/help");
 
 module.exports = (router) => {
     try {
