@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 require("dotenv").config(); // For environment variables
 
+// If the database does not exist, then prompt the user to initialize it and exit
 if (!fs.existsSync("database/database.db")) {
     console.log('The database file does not exist. Please run "npm run init-db" to initialize the database.');
     return;

@@ -2,6 +2,28 @@ const { logger } = require("@modules/logger");
 
 module.exports = (router) => {
     try {
+        /**
+         * @swagger
+         * /api/v1/me:
+         *   get:
+         *     summary: Get current user information
+         *     tags:
+         *       - Users
+         *     description: Returns information about the currently authenticated user based on their session.
+         *     responses:
+         *       200:
+         *         description: Current user information returned successfully
+         *         content:
+         *           application/json:
+         *             schema:
+         *               $ref: '#/components/schemas/User'
+         *       500:
+         *         description: Server error
+         *         content:
+         *           application/json:
+         *             schema:
+         *               $ref: '#/components/schemas/ServerError'
+         */
         // Gets the current user's information
         router.get("/me", async (req, res) => {
             try {
