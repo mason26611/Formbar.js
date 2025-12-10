@@ -1,8 +1,8 @@
 const { classInformation } = require("../../../../modules/class/classroom");
 const { logger } = require("../../../../modules/logger");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Gets the permissions of a class
         router.get("/class/:id/permissions", async (req, res) => {
             try {
@@ -35,5 +35,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

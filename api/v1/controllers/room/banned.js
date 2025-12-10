@@ -4,8 +4,8 @@ const { hasClassPermission } = require("../middleware/permissionCheck");
 const { classInformation } = require("../../../../modules/class/classroom");
 const { TEACHER_PERMISSIONS } = require("../../../../modules/permissions");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Get banned users for a class
         router.get("/class/:id/banned", hasClassPermission(TEACHER_PERMISSIONS), async (req, res) => {
             try {
@@ -27,5 +27,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

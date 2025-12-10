@@ -2,8 +2,8 @@ const { logger } = require("../../../../modules/logger");
 const { httpPermCheck } = require("../middleware/permissionCheck");
 const { leaveClass, leaveRoom } = require("../../../../modules/class/class");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Leaves the current class session
         // The user is still attached to the classroom
         router.post("/class/:id/leave", httpPermCheck("leaveClass"), async (req, res) => {
@@ -19,5 +19,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

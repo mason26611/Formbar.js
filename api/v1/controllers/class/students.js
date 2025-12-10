@@ -4,8 +4,8 @@ const { classInformation } = require("../../../../modules/class/classroom");
 const { CLASS_PERMISSIONS, GUEST_PERMISSIONS } = require("../../../../modules/permissions");
 const { dbGetAll } = require("../../../../modules/database");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Gets the students of a class
         router.get("/class/:id/students", hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
             try {
@@ -47,5 +47,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

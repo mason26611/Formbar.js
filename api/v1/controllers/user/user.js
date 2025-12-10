@@ -3,8 +3,8 @@ const { logger } = require("../../../../modules/logger");
 const { dbGet } = require("../../../../modules/database");
 const { MANAGER_PERMISSIONS } = require("../../../../modules/permissions");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Gets a user by id
         router.get("/user/:id", async (req, res) => {
             try {
@@ -48,5 +48,7 @@ module.exports = {
                 res.status(500).send(`Error: ${err.message}`);
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

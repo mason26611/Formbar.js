@@ -2,8 +2,8 @@ const { httpPermCheck } = require("../../middleware/permissionCheck");
 const { classInformation } = require("../../../../../modules/class/classroom");
 const { sendHelpTicket } = require("../../../../../modules/class/help");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // request help in a class by class ID
         router.get("/class/:id/help/request", httpPermCheck("help"), async (req, res) => {
             try {
@@ -25,5 +25,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

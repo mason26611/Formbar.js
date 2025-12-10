@@ -1,7 +1,7 @@
-const { logger } = require("../../modules/logger");
+const { logger } = require("../../../modules/logger");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Gets the current user's information
         router.get("/me", async (req, res) => {
             try {
@@ -17,5 +17,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

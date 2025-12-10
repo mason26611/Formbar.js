@@ -1,14 +1,14 @@
-const { logger } = require("../../modules/logger");
-const { dbGet, dbRun, dbGetAll } = require("../../modules/database");
-const { settings } = require("../../modules/config");
-const { hasPermission } = require("./controllers/middleware/permissionCheck");
-const { MANAGER_PERMISSIONS } = require("../../modules/permissions");
-const { getIpAccess } = require("../../modules/webServer");
-const authentication = require("./controllers/middleware/authentication");
+const { logger } = require("../../../modules/logger");
+const { dbGet, dbRun, dbGetAll } = require("../../../modules/database");
+const { settings } = require("../../../modules/config");
+const { hasPermission } = require("./middleware/permissionCheck");
+const { MANAGER_PERMISSIONS } = require("../../../modules/permissions");
+const { getIpAccess } = require("../../../modules/webServer");
+const authentication = require("./middleware/authentication");
 const fs = require("fs");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // List IPs
         router.get("/ip/:type", hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
             try {
@@ -140,5 +140,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

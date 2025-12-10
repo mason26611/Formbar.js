@@ -3,8 +3,8 @@ const { logger } = require("../../../../../modules/logger");
 const { hasClassPermission } = require("../../middleware/permissionCheck");
 const { CLASS_PERMISSIONS } = require("../../../../../modules/permissions");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Clears the current poll for the class
         router.post("/class/:id/polls/clear", hasClassPermission(CLASS_PERMISSIONS.CONTROL_POLLS), async (req, res) => {
             try {
@@ -16,5 +16,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

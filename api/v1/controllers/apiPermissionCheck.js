@@ -1,10 +1,10 @@
-const { classInformation } = require("../../modules/class/classroom");
-const { getUser } = require("../../modules/user/user");
-const { logger } = require("../../modules/logger");
+const { classInformation } = require("../../../modules/class/classroom");
+const { getUser } = require("../../../modules/user/user");
+const { logger } = require("../../../modules/logger");
 
-module.exports = {
-    // Used for checking class permissions such as the ability to use games and auxiliary
-    run(router) {
+module.exports = (router) => {
+    try {
+        // Used for checking class permissions such as the ability to use games and auxiliary
         router.get("/apiPermissionCheck", async (req, res) => {
             try {
                 let { api, permissionType, classId } = req.query;
@@ -67,5 +67,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

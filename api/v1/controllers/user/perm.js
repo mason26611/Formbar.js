@@ -4,8 +4,8 @@ const { dbRun } = require("../../../../modules/database");
 const { MANAGER_PERMISSIONS } = require("../../../../modules/permissions");
 const { hasPermission } = require("../middleware/permissionCheck");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Change a user's global permissions
         router.post("/user/:email/perm", hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
             try {
@@ -25,5 +25,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

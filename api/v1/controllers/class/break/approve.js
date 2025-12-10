@@ -2,8 +2,8 @@ const { httpPermCheck } = require("../../middleware/permissionCheck");
 const { classInformation } = require("../../../../../modules/class/classroom");
 const { approveBreak } = require("../../../../../modules/class/break");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Approves a break in a class by class ID and user ID
         router.get("/class/:id/students/:userId/break/approve", httpPermCheck("approveBreak"), async (req, res) => {
             try {
@@ -25,5 +25,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

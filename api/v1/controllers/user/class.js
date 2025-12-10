@@ -4,8 +4,8 @@ const { dbGet } = require("../../../../modules/database");
 const { MANAGER_PERMISSIONS } = require("../../../../modules/permissions");
 const { classInformation } = require("../../../../modules/class/classroom");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Retrieves the current class the user is in
         router.get("/user/:id/class", httpPermCheck("getActiveClass"), async (req, res) => {
             try {
@@ -42,5 +42,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

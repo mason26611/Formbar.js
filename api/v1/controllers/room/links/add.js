@@ -3,8 +3,8 @@ const { TEACHER_PERMISSIONS } = require("../../../../../modules/permissions");
 const { hasClassPermission } = require("../../middleware/permissionCheck");
 const { dbRun } = require("../../../../../modules/database");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Adds a link to a room by id
         router.post("/room/:id/links/add", hasClassPermission(TEACHER_PERMISSIONS), async (req, res) => {
             try {
@@ -23,5 +23,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

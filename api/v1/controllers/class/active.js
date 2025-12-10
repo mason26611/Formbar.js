@@ -3,8 +3,8 @@ const { httpPermCheck } = require("../middleware/permissionCheck");
 const { isClassActive } = require("../../../../modules/class/class");
 const { classInformation } = require("../../../../modules/class/classroom");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Retrieves whether a class is currently active or not from the class ID provided
         router.get("/class/:id/active", httpPermCheck("isClassActive"), async (req, res) => {
             try {
@@ -22,5 +22,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

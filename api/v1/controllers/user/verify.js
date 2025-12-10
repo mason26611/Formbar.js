@@ -4,8 +4,8 @@ const jwt = require("jsonwebtoken");
 const { hasPermission } = require("../middleware/permissionCheck");
 const { MANAGER_PERMISSIONS } = require("../../../../modules/permissions");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Verify a pending user
         router.post("/user/:id/verify", hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
             try {
@@ -38,5 +38,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

@@ -1,10 +1,10 @@
-const { logger } = require("../../modules/logger");
-const { MANAGER_PERMISSIONS } = require("../../modules/permissions");
-const { getManagerData } = require("../../modules/manager");
-const { hasPermission } = require("./controllers/middleware/permissionCheck");
+const { logger } = require("../../../modules/logger");
+const { MANAGER_PERMISSIONS } = require("../../../modules/permissions");
+const { getManagerData } = require("../../../modules/manager");
+const { hasPermission } = require("./middleware/permissionCheck");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Retrieves manager data
         router.get("/manager", hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
             try {
@@ -25,5 +25,7 @@ module.exports = {
                 res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

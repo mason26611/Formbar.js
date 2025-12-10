@@ -3,8 +3,8 @@ const { GUEST_PERMISSIONS } = require("../../../../../modules/permissions");
 const { hasClassPermission } = require("../../middleware/permissionCheck");
 const { dbGetAll } = require("../../../../../modules/database");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Retrieves all links for a class from the database
         router.get("/room/:id/links", hasClassPermission(GUEST_PERMISSIONS), async (req, res) => {
             try {
@@ -19,5 +19,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

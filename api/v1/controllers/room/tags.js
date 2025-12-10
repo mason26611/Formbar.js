@@ -3,8 +3,8 @@ const { httpPermCheck } = require("../middleware/permissionCheck");
 const { classInformation } = require("../../../../modules/class/classroom");
 const { setTags } = require("../../../../modules/class/tags");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Get current class tags
         router.get("/room/tags", httpPermCheck("classUpdate"), async (req, res) => {
             try {
@@ -40,5 +40,7 @@ module.exports = {
                 return res.status(500).json({ error: "There was a server error try again." });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

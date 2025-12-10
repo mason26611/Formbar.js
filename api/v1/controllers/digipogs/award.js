@@ -3,8 +3,8 @@ const { hasClassPermission } = require("../middleware/permissionCheck");
 const { CLASS_PERMISSIONS } = require("../../../../modules/permissions");
 const { awardDigipogs } = require("../../../../modules/digipogs");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Awards digipogs to a user
         router.post("/digipogs/award", hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
             try {
@@ -19,5 +19,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

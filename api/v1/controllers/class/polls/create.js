@@ -4,8 +4,8 @@ const { hasClassPermission } = require("../../middleware/permissionCheck");
 const { parseJson } = require("../../middleware/parseJson");
 const { CLASS_PERMISSIONS } = require("../../../../../modules/permissions");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Creates a poll from the data provided
         router.post("/class/:id/polls/create", hasClassPermission(CLASS_PERMISSIONS.CONTROL_POLLS), parseJson, async (req, res) => {
             try {
@@ -41,5 +41,7 @@ module.exports = {
                 res.status(500).json({ error: `There was an internal server error. Please try again.` });
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}

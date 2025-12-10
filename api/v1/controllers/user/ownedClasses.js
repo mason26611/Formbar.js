@@ -3,8 +3,8 @@ const { dbGet } = require("../../../../modules/database");
 const { getUserOwnedClasses } = require("../../../../modules/user/user");
 const { httpPermCheck } = require("../middleware/permissionCheck");
 
-module.exports = {
-    run(router) {
+module.exports = (router) => {
+    try {
         // Gets a user's owned classes
         router.get("/user/:id/ownedClasses", httpPermCheck("getOwnedClasses"), async (req, res) => {
             try {
@@ -21,5 +21,7 @@ module.exports = {
                 res.status(500).send(`Error: ${err.message}`);
             }
         });
-    },
-};
+    } catch (err) {
+        logger.log("error", err.stack);
+    }
+}
