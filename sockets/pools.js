@@ -115,6 +115,8 @@ module.exports = {
                 const isOwner = await pools.isUserOwner(socket.request.session.userId, poolId);
                 if (!isOwner) {
                     return socket.emit("poolRemoveMemberResponse", { success: false, message: "You do not own this pool." });
+                } else if (isOwner && userId === socket.request.session.userId) {
+                    return socket.emit("poolRemoveMemberResponse", { success: false, message: "You cannot remove yourself from your own pool." });
                 }
 
                 // Check if the target user is in the pool
