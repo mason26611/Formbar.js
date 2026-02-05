@@ -4,10 +4,14 @@ const router = express.Router();
 const { logger } = require("../modules/logger");
 const { GUEST_PERMISSIONS } = require("../modules/permissions");
 const { getUser } = require("../modules/user/user");
+const { rateLimiter } = require("../modules/middleware/rateLimiter");
 
 module.exports = {
     run(app) {
         try {
+            // Apply rate limiter to all API routes
+            router.use(rateLimiter);
+
             // Checks to see if the user is authenticated
             router.use(async (req, res, next) => {
                 try {
