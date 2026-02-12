@@ -1,7 +1,9 @@
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { hasClassPermission } = require("@modules/middleware/permission-check");
 const { isAuthenticated } = require("@modules/middleware/authentication");
-const { dbGetAll } = require("@modules/database");
+const { isUserInRoom, getLinksInRoom } = require("@services/room-service");
+const { requireQueryParam } = require("@modules/error-wrapper");
+const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     /**
@@ -47,12 +49,17 @@ module.exports = (router) => {
      */
     router.get("/room/:id/links", isAuthenticated, hasClassPermission(GUEST_PERMISSIONS), async (req, res) => {
         const classId = req.params.id;
-        const links = await dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+        requireQueryParam(classId, "id");
+
+        const links = getLinksInRoom(classId);
+        if (!(await isUserInRoom(req.user.id, classId))) {
+            throw new ForbiddenError("You are not a member of this classroom.");
+        }
 
         if (links) {
             res.status(200).json({
                 success: true,
-                data: links,
+                data: { links },
             });
         }
     });
