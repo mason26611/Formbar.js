@@ -1,5 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { classInformation, getClassUsers } = require("@modules/class/classroom");
+const { getClassroom, getClassUsers } = require("@modules/class/classroom");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -51,7 +51,7 @@ module.exports = (router) => {
 
         // Get a clone of the class data
         // If the class does not exist, return an error
-        const classData = structuredClone(classInformation.classrooms[classId]);
+        const classData = structuredClone(getClassroom(classId));
         if (!classData) {
             throw new NotFoundError("Class not started");
         }

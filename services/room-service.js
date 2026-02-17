@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom, removeClassroomStudent, updateUser } = require("@modules/class/classroom");
 const { dbGet, dbRun } = require("@modules/database");
 const { advancedEmitToClass, emitToUser } = require("@modules/socket-updates");
 const { getIdFromEmail } = require("@modules/student");
@@ -37,7 +37,7 @@ async function joinRoomByCode(code, sessionUser) {
     }
 
     // Initialize classroom if not already loaded
-    if (!classInformation.classrooms[classroomDb.id]) {
+    if (!getClassroom(classroomDb.id)) {
         await getClassService().initializeClassroom(classroomDb.id);
     }
 
@@ -73,11 +73,13 @@ async function leaveRoom(userData) {
     const studentId = await getIdFromEmail(email);
 
     // Remove the user from the class
-    delete classInformation.classrooms[classId].students[email];
-    classInformation.users[email].activeClass = null;
-    classInformation.users[email].break = false;
-    classInformation.users[email].help = false;
-    classInformation.users[email].classPermissions = null;
+    removeClassroomStudent(classId, email);
+    updateUser(email, {
+        activeClass: null,
+        break: false,
+        help: false,
+        classPermissions: null,
+    });
     await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
 
     // If the owner of the classroom leaves, then delete the classroom

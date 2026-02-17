@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom } = require("@modules/class/classroom");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
@@ -64,7 +64,7 @@ module.exports = (router) => {
 
         // Get a clone of the class data
         // If the class does not exist, return an error
-        let classData = structuredClone(classInformation.classrooms[classId]);
+        let classData = structuredClone(getClassroom(classId));
         if (!classData) {
             throw new NotFoundError("Class not started");
         }

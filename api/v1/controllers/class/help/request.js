@@ -1,5 +1,5 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom } = require("@modules/class/classroom");
 const { sendHelpTicket } = require("@modules/class/help");
 const { isAuthenticated } = require("@middleware/authentication");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -9,7 +9,7 @@ module.exports = (router) => {
     const requestHelpHandler = async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.help.request.attempt", "Attempting to request class help", { classId });
-        const classroom = classInformation.classrooms[classId];
+        const classroom = getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to request help in this class.");
         }

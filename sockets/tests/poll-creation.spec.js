@@ -1,5 +1,5 @@
 const { run: pollCreationRun } = require("../polls/poll-creation");
-const { classInformation } = require("@modules/class/classroom");
+const { classInformation, updateClassroom, updateUser } = require("@modules/class/classroom");
 const { generateColors } = require("@modules/util");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("@modules/tests/tests");
 const { userSocketUpdates } = require("../init");
@@ -23,7 +23,7 @@ describe("startPoll", () => {
 
         // Simulate user.activeClass
         classData.students[testData.email].activeClass = classData.id;
-        classInformation.users[testData.email].activeClass = classData.id;
+        updateUser(testData.email, { activeClass: classData.id });
 
         // Run the socket handler
         pollCreationRun(socket, socketUpdates);
@@ -49,7 +49,7 @@ describe("startPoll", () => {
     });
 
     it("should not start a poll if class is not active", async () => {
-        classInformation.classrooms[testData.code].isActive = false;
+        updateClassroom(testData.code, { isActive: false });
 
         // Attempt to start the poll then check if it failed
         await startPollHandler({

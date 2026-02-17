@@ -2,7 +2,7 @@ const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser, updateUser } = require("@modules/class/classroom");
 const { managerUpdate } = require("@modules/socket-updates");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -17,8 +17,8 @@ module.exports = (router) => {
         }
 
         await dbRun("UPDATE users SET permissions=? WHERE id=?", [BANNED_PERMISSIONS, userId]);
-        if (classInformation.users[user.email]) {
-            classInformation.users[user.email].permissions = BANNED_PERMISSIONS;
+        if (getUser(user.email)) {
+            updateUser(user.email, { permissions: BANNED_PERMISSIONS });
         }
 
         await managerUpdate();
@@ -42,8 +42,8 @@ module.exports = (router) => {
         }
 
         await dbRun("UPDATE users SET permissions=? WHERE id=?", [STUDENT_PERMISSIONS, userId]);
-        if (classInformation.users[user.email]) {
-            classInformation.users[user.email].permissions = STUDENT_PERMISSIONS;
+        if (getUser(user.email)) {
+            updateUser(user.email, { permissions: STUDENT_PERMISSIONS });
         }
 
         await managerUpdate();

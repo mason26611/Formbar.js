@@ -1,5 +1,5 @@
 const { isVerified, permCheck, isAuthenticated } = require("@middleware/authentication");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { getUserData } = require("@services/user-service");
 const { getUserTransactions } = require("@services/digipog-service");
@@ -185,7 +185,7 @@ module.exports = (router) => {
         }
 
         // Determine if the email should be visible then render the page
-        const emailVisible = req.user.id === id || classInformation.users[req.user.email]?.permissions >= MANAGER_PERMISSIONS;
+        const emailVisible = req.user.id === id || getUser(req.user.email)?.permissions >= MANAGER_PERMISSIONS;
         const isOwnProfile = req.user.id === userId;
 
         res.status(200).json({
@@ -197,7 +197,7 @@ module.exports = (router) => {
                 id: userId,
                 API: isOwnProfile ? "Exists" : null,
                 pin: isOwnProfile ? (pin ? "Exists" : null) : "Hidden",
-                pogMeter: classInformation.users[email] ? classInformation.users[email].pogMeter : 0,
+                pogMeter: getUser(email) ? getUser(email).pogMeter : 0,
                 isOwnProfile: isOwnProfile,
             },
         });

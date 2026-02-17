@@ -1,5 +1,5 @@
 const { sendPollResponse } = require("@services/poll-service");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
 module.exports = {
@@ -7,7 +7,7 @@ module.exports = {
         socket.on("pollResp", (res, textRes) => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email].activeClass;
+                const classId = getUser(email).activeClass;
                 sendPollResponse(classId, res, textRes, socket.request.session);
             } catch (err) {
                 handleSocketError(err, socket, "pollResp");

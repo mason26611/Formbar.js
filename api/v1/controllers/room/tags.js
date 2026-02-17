@@ -1,5 +1,5 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom } = require("@modules/class/classroom");
 const { setTags } = require("@modules/class/tags");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
@@ -9,7 +9,7 @@ module.exports = (router) => {
     const setTagsHandler = async (req, res) => {
         const classId = req.user.classId || req.user.activeClass;
         req.infoEvent("room.tags.update.attempt", "Attempting to update room tags", { classId });
-        if (!classId || !classInformation.classrooms[classId]) {
+        if (!classId || !getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
         }
 
@@ -63,11 +63,11 @@ module.exports = (router) => {
     router.get("/room/tags", isAuthenticated, httpPermCheck("classUpdate"), async (req, res) => {
         const classId = req.user.classId || req.user.activeClass;
         req.infoEvent("room.tags.view.attempt", "Attempting to view room tags", { classId });
-        if (!classId || !classInformation.classrooms[classId]) {
+        if (!classId || !getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
         }
 
-        const tags = classInformation.classrooms[classId].tags || [];
+        const tags = getClassroom(classId).tags || [];
         req.infoEvent("room.tags.view.success", "Room tags returned", { classId, tagCount: tags.length });
         return res.status(200).json({
             success: true,

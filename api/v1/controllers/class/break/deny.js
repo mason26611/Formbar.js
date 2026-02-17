@@ -1,5 +1,5 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom } = require("@modules/class/classroom");
 const { approveBreak } = require("@modules/class/break");
 const { isAuthenticated } = require("@middleware/authentication");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -66,7 +66,7 @@ module.exports = (router) => {
         const classId = req.params.id;
         const targetUserId = req.params.userId;
         req.infoEvent("class.break.deny.attempt", "Attempting to deny class break", { classId, targetUserId });
-        const classroom = classInformation.classrooms[classId];
+        const classroom = getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }

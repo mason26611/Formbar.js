@@ -1,4 +1,4 @@
-const { classInformation } = require("./classroom");
+const { getClassroom, getUser } = require("./classroom");
 const { advancedEmitToClass, userUpdateSocket } = require("../socket-updates");
 const { getEmailFromId } = require("../student");
 const { io } = require("../web-server");
@@ -9,12 +9,12 @@ function requestBreak(reason, userData) {
         // Check if the class is inactive before continuing
         const classId = userData.classId;
         const email = userData.email;
-        if (!classInformation.classrooms[classId].isActive) {
+        if (!getClassroom(classId)?.isActive) {
             return "This class is not currently active.";
         }
 
         // Get the student, play the break sound, and set the break reason
-        const classroom = classInformation.classrooms[classId];
+        const classroom = getClassroom(classId);
         const student = classroom.students[email];
         advancedEmitToClass("breakSound", classId, {});
         student.break = reason;
@@ -29,7 +29,7 @@ async function approveBreak(breakApproval, userId, userData) {
         const email = await getEmailFromId(userId);
 
         const classId = userData.classId;
-        const classroom = classInformation.classrooms[classId];
+        const classroom = getClassroom(classId);
         const student = classroom.students[email];
         student.break = breakApproval;
 
@@ -44,8 +44,8 @@ async function approveBreak(breakApproval, userId, userData) {
 
 function endBreak(userData) {
     try {
-        const classroom = classInformation.classrooms[userData.classId];
-        const student = classInformation.users[userData.email];
+        const classroom = getClassroom(userData.classId);
+        const student = getUser(userData.email);
         student.break = false;
         userUpdateSocket(userData.email, "classUpdate", userData.classId);
         return true;

@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getUser, updateUser } = require("@modules/class/classroom");
 const { dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
@@ -16,8 +16,8 @@ module.exports = (router) => {
         }
 
         await dbRun("UPDATE users SET permissions=? WHERE email=?", [perm, email]);
-        if (classInformation.users[email]) {
-            classInformation.users[email].permissions = perm;
+        if (getUser(email)) {
+            updateUser(email, { permissions: perm });
         }
 
         req.infoEvent("user.permissions.update.success", "User permissions updated", { targetEmail: email, permissionLevel: perm });

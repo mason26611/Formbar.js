@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { createPoll } = require("@services/poll-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
@@ -8,7 +8,7 @@ module.exports = {
         socket.on("startPoll", async (...args) => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email].activeClass;
+                const classId = getUser(email).activeClass;
 
                 // Support both passing a single object or multiple arguments for backward compatibility
                 let pollData;

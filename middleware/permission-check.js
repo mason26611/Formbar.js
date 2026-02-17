@@ -1,5 +1,5 @@
 const { CLASS_SOCKET_PERMISSION_MAPPER, GLOBAL_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSIONS } = require("@modules/permissions");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser, getClassroom } = require("@modules/class/classroom");
 const { dbGet } = require("@modules/database");
 const { PASSIVE_SOCKETS } = require("@modules/socket-updates");
 const { camelCaseToNormal } = require("@modules/util");
@@ -22,7 +22,7 @@ function hasPermission(permission) {
             throw new AuthError("User is not authenticated");
         }
 
-        const user = classInformation.users[req.user.email];
+        const user = getUser(req.user.email);
         if (!user) {
             req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${req.user.email}`, { email: req.user.email });
             throw new AuthError("User not found", { event: "permission.check.failed", reason: "user_not_found" });
@@ -52,7 +52,7 @@ function hasPermission(permission) {
 function hasClassPermission(classPermission) {
     return async function (req, res, next) {
         const classId = req.params.id;
-        const classroom = classInformation.classrooms[classId];
+        const classroom = getClassroom(classId);
 
         const email = req.user.email;
         if (!email) {
@@ -109,14 +109,14 @@ function httpPermCheck(event) {
         }
 
         // Get classId from req.user (set by isAuthenticated middleware) or from classInformation
-        const classId = req.user?.classId ?? req.user?.activeClass ?? classInformation.users[email]?.classId ?? null;
+        const classId = req.user?.classId ?? req.user?.activeClass ?? getUser(email)?.classId ?? null;
 
-        if (!classInformation.classrooms[classId] && classId != null) {
+        if (!getClassroom(classId) && classId != null) {
             req.warnEvent("auth.http_perm_check.class_not_exist", `HTTP permission check failed: Class ${classId} does not exist`, { classId });
             throw new AuthError("Class does not exist", { event: "permission.check.failed", reason: "class_not_exist" });
         }
 
-        if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classInformation.classrooms[classId]) {
+        if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !getClassroom(classId)) {
             req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`, {
                 classId,
                 event,
@@ -124,7 +124,7 @@ function httpPermCheck(event) {
             throw new AuthError("Class is not loaded", { event: "permission.check.failed", reason: "class_not_loaded" });
         }
 
-        if (CLASS_SOCKET_PERMISSIONS[event] && !classInformation.classrooms[classId]) {
+        if (CLASS_SOCKET_PERMISSIONS[event] && !getClassroom(classId)) {
             req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (direct match)`, {
                 classId,
                 event,
@@ -132,7 +132,7 @@ function httpPermCheck(event) {
             throw new AuthError("Class is not loaded");
         }
 
-        let userData = classInformation.users[email];
+        let userData = getUser(email);
         if (!userData) {
             // Get the user data from the database
             userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
@@ -149,8 +149,8 @@ function httpPermCheck(event) {
             return next();
         } else if (
             CLASS_SOCKET_PERMISSION_MAPPER[event] &&
-            classInformation.classrooms[classId]?.permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]] &&
-            userData.classPermissions >= classInformation.classrooms[classId].permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]]
+            getClassroom(classId)?.permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]] &&
+            userData.classPermissions >= getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]]
         ) {
             return next();
         } else if (!PASSIVE_SOCKETS.includes(event)) {

@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { updateClassroomStudent } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
 const { userSockets } = require("@modules/socket-updates");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -32,9 +32,12 @@ module.exports = {
                                 try {
                                     if (err) throw err;
 
-                                    classInformation.classrooms[socket.request.session.classId].students[
-                                        socket.request.session.email
-                                    ].ownedPolls.push(nextPollId);
+                                    updateClassroomStudent(socket.request.session.classId, socket.request.session.email, (student) => {
+                                        if (!Array.isArray(student.ownedPolls)) {
+                                            student.ownedPolls = [];
+                                        }
+                                        student.ownedPolls.push(nextPollId);
+                                    });
                                     socket.emit("message", "Poll saved successfully!");
                                     socketUpdates.customPollUpdate(socket.request.session.email);
                                     socket.emit("classPollSave", nextPollId);
@@ -119,9 +122,12 @@ module.exports = {
                                     try {
                                         if (err) throw err;
 
-                                        classInformation.classrooms[socket.request.session.classId].students[
-                                            socket.request.session.email
-                                        ].ownedPolls.push(nextPollId);
+                                        updateClassroomStudent(socket.request.session.classId, socket.request.session.email, (student) => {
+                                            if (!Array.isArray(student.ownedPolls)) {
+                                                student.ownedPolls = [];
+                                            }
+                                            student.ownedPolls.push(nextPollId);
+                                        });
                                         socket.emit("message", "Poll saved successfully!");
                                         socketUpdates.customPollUpdate(socket.request.session.email);
                                     } catch (err) {

@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { updatePoll } = require("@services/poll-service");
 
 module.exports = {
@@ -16,7 +16,7 @@ module.exports = {
         socket.on("updatePoll", async (options) => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email]?.activeClass;
+                const classId = getUser(email)?.activeClass;
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
                     return;

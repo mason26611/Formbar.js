@@ -1,7 +1,7 @@
 const { httpPermCheck } = require("@middleware/permission-check");
 const { dbGet } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { isAuthenticated } = require("@middleware/authentication");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -65,7 +65,7 @@ module.exports = (router) => {
             throw new ForbiddenError("You do not have permission to view this user's active class.");
         }
 
-        const userInformation = classInformation.users[user.email];
+        const userInformation = getUser(user.email);
         if (userInformation && userInformation.activeClass) {
             const classId = userInformation.activeClass;
             const classInfo = await dbGet("SELECT * FROM classroom WHERE id = ?", [classId]);

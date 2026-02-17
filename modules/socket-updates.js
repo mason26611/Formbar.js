@@ -1,4 +1,4 @@
-const { classInformation } = require("./class/classroom");
+const { getClassroom, getUser } = require("./class/classroom");
 const { database, dbGetAll } = require("./database");
 const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("./permissions");
 const { getManagerData } = require("@services/manager-service");
@@ -83,7 +83,8 @@ async function userUpdateSocket(email, methodName, ...args) {
  * @param  {...any} data - Additional data to emit with the event
  */
 async function advancedEmitToClass(event, classId, options, ...data) {
-    const classData = classInformation.classrooms[classId];
+    const classData = getClassroom(classId);
+    if (!classData) return;
     const sockets = await io.in(`class-${classId}`).fetchSockets();
 
     for (const socket of sockets) {
@@ -184,7 +185,7 @@ async function managerUpdate() {
 
         // Emit only to connected manager sockets
         for (const [email, sockets] of Object.entries(userSockets)) {
-            if (classInformation.users[email].permissions >= MANAGER_PERMISSIONS) {
+            if (getUser(email)?.permissions >= MANAGER_PERMISSIONS) {
                 for (const socket of Object.values(sockets)) {
                     socket.emit("managerUpdate", users, classrooms);
                 }
@@ -367,7 +368,7 @@ class SocketUpdates {
 
     classUpdate(classId = this.socket.request.session.classId, options = { global: true, restrictToControlPanel: false }) {
         try {
-            const classData = structuredClone(classInformation.classrooms[classId]);
+            const classData = structuredClone(getClassroom(classId));
             if (!classData) {
                 return; // If the class is not loaded, then we cannot send a class update
             }
@@ -445,13 +446,13 @@ class SocketUpdates {
         try {
             // Ignore any requests which do not have an associated socket with the email
             if (!email && socket.request.session) email = socket.request.session.email;
-            if (!classInformation.users[email]) return;
+            if (!getUser(email)) return;
 
-            const user = classInformation.users[email];
+            const user = getUser(email);
             const classId = user.activeClass;
-            if (!classInformation.classrooms[classId]) return;
+            if (!getClassroom(classId)) return;
 
-            const student = classInformation.classrooms[classId].students[email];
+            const student = getClassroom(classId).students[email];
             if (!student) return; // If the student is not in the class, then do not update the custom polls
 
             const userSharedPolls = student.sharedPolls;
@@ -527,7 +528,7 @@ class SocketUpdates {
                         advancedEmitToClass(
                             "classBannedUsersUpdate",
                             classId,
-                            { classPermissions: classInformation.classrooms[classId].permissions.manageStudents },
+                            { classPermissions: getClassroom(classId).permissions.manageStudents },
                             bannedStudents
                         );
                     } catch (err) {
@@ -543,12 +544,12 @@ class SocketUpdates {
     async getOwnedClasses(email) {
         try {
             // Check if the user exists before accessing .id
-            if (!classInformation.users[email] || !classInformation.users[email].id) {
+            if (!getUser(email) || !getUser(email).id) {
                 return;
             }
 
             // Get the user's owned classes from the database
-            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [classInformation.users[email].id]);
+            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [getUser(email).id]);
 
             // Send the owned classes to the user's sockets
             io.to(`user-${email}`).emit("getOwnedClasses", ownedClasses);
@@ -595,7 +596,7 @@ class SocketUpdates {
 
     timer(sound, active) {
         try {
-            let classData = classInformation.classrooms[this.socket.request.session.classId];
+            let classData = getClassroom(this.socket.request.session.classId);
             if (classData.timer.timeLeft <= 0) {
                 clearInterval(runningTimers[this.socket.request.session.classId]);
                 runningTimers[this.socket.request.session.classId] = null;

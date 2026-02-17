@@ -1,4 +1,4 @@
-const { classInformation } = require("./classroom");
+const { getUser, setUser, getClassroom, getClassroomStudent, removeClassroomStudent } = require("./classroom");
 const { getEmailFromId } = require("../student");
 const { setClassOfApiSockets, userSockets, userUpdateSocket } = require("../socket-updates");
 const { dbRun, dbGet } = require("../database");
@@ -12,9 +12,9 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
         const email = await getEmailFromId(userId);
 
         // Check if user exists in classInformation.users before trying to modify
-        if (classInformation.users[email]) {
+        if (getUser(email)) {
             // Remove user from class session
-            const user = classInformation.users[email];
+            const user = getUser(email);
             user.activeClass = null;
             user.break = false;
             user.help = false;
@@ -23,32 +23,32 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
             if (options.ban) {
                 user.classPermissions = BANNED_PERMISSIONS;
             }
-            setClassOfApiSockets(classInformation.users[email].API, null);
+            setClassOfApiSockets(getUser(email).API, null);
         }
 
         // Mark the user as offline in the class and remove them from the active classes if the classroom is loaded into memory
-        if (classInformation.classrooms[classId] && classInformation.classrooms[classId].students[email]) {
-            const student = classInformation.classrooms[classId].students[email];
+        if (getClassroom(classId) && getClassroomStudent(classId, email)) {
+            const student = getClassroomStudent(classId, email);
             student.activeClass = null;
             student.break = false;
             student.help = false;
             student.tags = ["Offline"];
-            if (classInformation.users[email]) {
-                classInformation.users[email] = student;
+            if (getUser(email)) {
+                setUser(email, student);
             }
 
             // If the student is a guest, then remove them from the classroom entirely
             if (student.isGuest) {
-                delete classInformation.classrooms[classId].students[email];
+                removeClassroomStudent(classId, email);
             }
         }
 
         // If exitClass is true, then remove the user from the classroom entirely
         // If the user is a guest, then do not try to remove them from the database
-        if (options.exitRoom && classInformation.classrooms[classId]) {
-            if (classInformation.users[email] && !classInformation.users[email].isGuest && !options.ban) {
-                await dbRun("DELETE FROM classusers WHERE studentId=? AND classId=?", [classInformation.users[email].id, classId]);
-                delete classInformation.classrooms[classId].students[email];
+        if (options.exitRoom && getClassroom(classId)) {
+            if (getUser(email) && !getUser(email).isGuest && !options.ban) {
+                await dbRun("DELETE FROM classusers WHERE studentId=? AND classId=?", [getUser(email).id, classId]);
+                removeClassroomStudent(classId, email);
             }
         }
 
@@ -75,7 +75,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
 function classKickStudents(classId) {
     try {
-        for (const student of Object.values(classInformation.classrooms[classId].students)) {
+        for (const student of Object.values(getClassroom(classId).students)) {
             if (student.classPermissions < TEACHER_PERMISSIONS) {
                 classKickStudent(student.id, classId);
             }

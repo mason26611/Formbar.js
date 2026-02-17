@@ -1,5 +1,5 @@
 const { getLogger } = require("@modules/logger");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const { settings } = require("@modules/config");
 const { PAGE_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll, dbRun } = require("@modules/database");
@@ -66,7 +66,7 @@ function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
-    const user = classInformation.users[email];
+    const user = getUser(email);
     if (!user) {
         req.warnEvent("auth.user_not_found", `User not found in classInformation: ${email}`, { email });
         throw new AuthError("User is not authenticated");
@@ -104,7 +104,7 @@ function isVerified(req, res, next) {
         throw new AuthError("User is not authenticated.");
     }
 
-    const user = classInformation.users[email];
+    const user = getUser(email);
     // If the user is verified or email functionality is disabled...
     if ((user && user.verified) || !settings.emailEnabled || (user && user.permissions == GUEST_PERMISSIONS)) {
         next();
@@ -148,7 +148,7 @@ async function permCheck(req, res, next) {
             throw new NotFoundError(`${urlPath} is not in the page permissions`);
         }
 
-        const user = classInformation.users[email];
+        const user = getUser(email);
         if (!user) {
             req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
             throw new AuthError("User not found");

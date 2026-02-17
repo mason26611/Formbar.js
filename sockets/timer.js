@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom } = require("@modules/class/classroom");
 const { CLASS_SOCKET_PERMISSIONS } = require("@modules/permissions");
 const { advancedEmitToClass, runningTimers } = require("@modules/socket-updates");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -7,7 +7,7 @@ module.exports = {
     run(socket, socketUpdates) {
         socket.on("vbTimer", () => {
             try {
-                let classData = classInformation.classrooms[socket.request.session.classId];
+                let classData = getClassroom(socket.request.session.classId);
                 let email = socket.request.session.email;
 
                 advancedEmitToClass(
@@ -27,7 +27,7 @@ module.exports = {
         // This handles the server side timer
         socket.on("timer", (startTime, active, sound) => {
             try {
-                let classData = classInformation.classrooms[socket.request.session.classId];
+                let classData = getClassroom(socket.request.session.classId);
                 startTime = Math.round(startTime);
 
                 classData.timer.startTime = startTime;
@@ -56,7 +56,7 @@ module.exports = {
 
         socket.on("timerOn", () => {
             try {
-                socket.emit("timerOn", classInformation.classrooms[socket.request.session.classId].timer.active);
+                socket.emit("timerOn", getClassroom(socket.request.session.classId).timer.active);
             } catch (err) {
                 handleSocketError(err, socket, "timerOn");
             }

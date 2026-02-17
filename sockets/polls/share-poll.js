@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom, updateClassroomStudent } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
 const { getUserClass } = require("@modules/user/user");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -49,7 +49,12 @@ module.exports = {
                                                 const classId = getUserClass(email);
                                                 if (!classId) return;
 
-                                                classInformation.classrooms[classId].students[user.email].sharedPolls.push(pollId);
+                                                updateClassroomStudent(classId, user.email, (student) => {
+                                                    if (!Array.isArray(student.sharedPolls)) {
+                                                        student.sharedPolls = [];
+                                                    }
+                                                    student.sharedPolls.push(pollId);
+                                                });
                                                 socketUpdates.customPollUpdate(email);
                                             } catch (err) {
                                                 handleSocketError(err, socket, "sharePollToUser:dbRun");
@@ -103,8 +108,13 @@ module.exports = {
                                         if (classId instanceof Error) throw classId;
                                         if (!classId) return;
 
-                                        let sharedPolls = classInformation.classrooms[classId].students[user.email].sharedPolls;
-                                        sharedPolls.splice(sharedPolls.indexOf(pollId), 1);
+                                        updateClassroomStudent(classId, user.email, (student) => {
+                                            if (!Array.isArray(student.sharedPolls)) return;
+                                            const pollIndex = student.sharedPolls.indexOf(pollId);
+                                            if (pollIndex >= 0) {
+                                                student.sharedPolls.splice(pollIndex, 1);
+                                            }
+                                        });
                                         socketUpdates.customPollUpdate(user.email);
                                     } catch (err) {
                                         handleSocketError(err, socket, "removeUserPollShare:dbGet:users");
@@ -150,7 +160,7 @@ module.exports = {
                                             return;
                                         }
 
-                                        for (let email of Object.keys(classInformation.classrooms[classId].students)) {
+                                        for (let email of Object.keys(getClassroom(classId).students)) {
                                             socketUpdates.customPollUpdate(email);
                                         }
                                     } catch (err) {
@@ -220,7 +230,7 @@ module.exports = {
                                                     socket.emit("message", `Shared ${name} with the class`);
                                                     socketUpdates.getPollShareIds(pollId);
 
-                                                    for (let email of Object.keys(classInformation.classrooms[classroom.id].students)) {
+                                                    for (let email of Object.keys(getClassroom(classroom.id).students)) {
                                                         socketUpdates.customPollUpdate(email);
                                                     }
                                                 } catch (err) {

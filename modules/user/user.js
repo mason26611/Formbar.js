@@ -1,4 +1,4 @@
-const { classInformation } = require("../class/classroom");
+const { getAllClassrooms, getClassroom } = require("../class/classroom");
 const { database, dbGetAll, dbGet } = require("../database");
 const { compare } = require("../crypto");
 
@@ -87,8 +87,9 @@ async function getUser(userIdentifier) {
         };
 
         // If the user is in a class and is logged in
-        if (classInformation.classrooms[classId] && classInformation.classrooms[classId].students[dbUser.email]) {
-            let cdUser = classInformation.classrooms[classId].students[dbUser.email];
+        const classroom = getClassroom(classId);
+        if (classroom && classroom.students[dbUser.email]) {
+            let cdUser = classroom.students[dbUser.email];
             if (cdUser) {
                 // Update the user's data with the data from the class
                 userData.loggedIn = true;
@@ -124,9 +125,10 @@ async function getUserOwnedClasses(email, userSession) {
  */
 function getUserClass(email) {
     try {
+        const allClassrooms = getAllClassrooms();
         // Iterate over the classrooms to find which class the user is in
-        for (const classroomId in classInformation.classrooms) {
-            const classroom = classInformation.classrooms[classroomId];
+        for (const classroomId in allClassrooms) {
+            const classroom = allClassrooms[classroomId];
             if (classroom.students[email]) {
                 // Return the class code
                 return classroom.id;

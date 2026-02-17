@@ -1,7 +1,9 @@
 const { database } = require("../database");
 const { MOD_PERMISSIONS, STUDENT_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS } = require("../permissions");
+const { InMemoryClassStateStore } = require("./in-memory-class-state-store");
 
-const classInformation = createClassInformation();
+const classStateStore = new InMemoryClassStateStore();
+const classInformation = classStateStore.getRawState();
 const DEFAULT_CLASS_SETTINGS = {
     mute: false,
     filter: "",
@@ -64,11 +66,61 @@ class Classroom {
     }
 }
 
-function createClassInformation() {
-    return {
-        users: {},
-        classrooms: {},
-    };
+// Getters and setters for classInformation
+function getUser(email) {
+    return classStateStore.getUser(email);
+}
+
+function setUser(email, user) {
+    return classStateStore.setUser(email, user);
+}
+
+function removeUser(email) {
+    return classStateStore.removeUser(email);
+}
+
+function getAllUsers() {
+    return classStateStore.getAllUsers();
+}
+
+function updateUser(email, mutation) {
+    return classStateStore.updateUser(email, mutation);
+}
+
+function getClassroom(classId) {
+    return classStateStore.getClassroom(classId);
+}
+
+function setClassroom(classId, classroom) {
+    return classStateStore.setClassroom(classId, classroom);
+}
+
+function removeClassroom(classId) {
+    return classStateStore.removeClassroom(classId);
+}
+
+function getAllClassrooms() {
+    return classStateStore.getAllClassrooms();
+}
+
+function updateClassroom(classId, mutation) {
+    return classStateStore.updateClassroom(classId, mutation);
+}
+
+function getClassroomStudent(classId, email) {
+    return classStateStore.getClassroomStudent(classId, email);
+}
+
+function setClassroomStudent(classId, email, student) {
+    return classStateStore.setClassroomStudent(classId, email, student);
+}
+
+function removeClassroomStudent(classId, email) {
+    return classStateStore.removeClassroomStudent(classId, email);
+}
+
+function updateClassroomStudent(classId, email, mutation) {
+    return classStateStore.updateClassroomStudent(classId, email, mutation);
 }
 
 /**
@@ -115,8 +167,8 @@ async function getClassUsers(user, key) {
         let classUsers = {};
         let cDClassUsers = {};
         let classId = await getClassIDFromCode(key);
-        if (classInformation.classrooms[classId]) {
-            cDClassUsers = classInformation.classrooms[classId].students;
+        if (getClassroom(classId)) {
+            cDClassUsers = getClassroom(classId).students;
         }
 
         // For each user in the class
@@ -197,9 +249,26 @@ function getClassIDFromCode(code) {
 
 module.exports = {
     Classroom,
+    classStateStore,
     getClassUsers,
     getClassIDFromCode,
 
     // classInformation stores all of the information on classes and students
     classInformation,
+
+    // Getters and setters for classInformation
+    getUser,
+    setUser,
+    removeUser,
+    getAllUsers,
+    updateUser,
+    getClassroom,
+    setClassroom,
+    removeClassroom,
+    getAllClassrooms,
+    updateClassroom,
+    getClassroomStudent,
+    setClassroomStudent,
+    removeClassroomStudent,
+    updateClassroomStudent,
 };

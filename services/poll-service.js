@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getClassroom: getStoredClassroom, getUser } = require("@modules/class/classroom");
 
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@modules/socket-updates");
@@ -23,7 +23,7 @@ const pogMeterTracker = {
  * @throws {NotFoundError} If classroom is not found.
  */
 function getClassroom(classId) {
-    const classroom = classInformation.classrooms[classId];
+    const classroom = getStoredClassroom(classId);
     if (!classroom) {
         throw new NotFoundError("Classroom not found");
     }
@@ -319,7 +319,7 @@ async function getPreviousPolls(classId, index = 0, limit = 20) {
  * @param {number} classId - The ID of the class whose poll should be saved.
  */
 async function savePollToHistory(classId) {
-    const classroom = classInformation.classrooms[classId];
+    const classroom = getStoredClassroom(classId);
     if (!classroom) return;
 
     const createdAt = Date.now();
@@ -344,7 +344,7 @@ async function savePollToHistory(classId) {
  * @param {boolean} [updateClass=true] - Whether to update the class state after clearing the poll.
  */
 async function clearPoll(classId, userSession, updateClass = true) {
-    const classroom = classInformation.classrooms[classId];
+    const classroom = getStoredClassroom(classId);
     if (classroom.poll.status) {
         await updatePoll(classId, { status: false }, userSession);
     }
@@ -413,8 +413,8 @@ function sendPollResponse(classId, res, textRes, userSession) {
     const resLength = textRes != null ? textRes.length : 0;
 
     const email = userSession.email;
-    const user = classInformation.users[email];
-    const classroom = classInformation.classrooms[classId];
+    const user = getUser(email);
+    const classroom = getStoredClassroom(classId);
 
     // If the classroom does not exist, return
     if (!classroom) {
@@ -537,7 +537,7 @@ async function getCurrentPoll(classId, userData) {
     requireInternalParam(classId, "classId");
     requireInternalParam(userData, "userData");
 
-    const classroom = classInformation.classrooms[classId];
+    const classroom = getStoredClassroom(classId);
 
     if (!classroom) {
         const classroomRow = await dbGet("SELECT id FROM classroom WHERE id = ?", [classId]);

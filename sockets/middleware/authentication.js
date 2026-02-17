@@ -1,6 +1,6 @@
 const { database } = require("@modules/database");
 const { compare } = require("@modules/crypto");
-const { classInformation } = require("@modules/class/classroom");
+const { getUser } = require("@modules/class/classroom");
 const authService = require("@services/auth-service");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -30,7 +30,7 @@ module.exports = {
                         return;
                     }
 
-                    const user = classInformation.users[email];
+                    const user = getUser(email);
                     if (!user) {
                         next(new Error("User not found"));
                         return;

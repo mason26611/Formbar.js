@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { getAllClassrooms } = require("@modules/class/classroom");
 const { dbRun, dbGet } = require("@modules/database");
 const { getLogger, logEvent } = require("@modules/logger");
 
@@ -36,7 +36,7 @@ module.exports = {
                 socketUpdates.invalidateClassPollCache();
 
                 // Update classrooms
-                for (const classroom of Object.values(classInformation.classrooms)) {
+                for (const classroom of Object.values(getAllClassrooms())) {
                     let updatePolls = false;
 
                     for (const user of Object.values(classroom.students)) {
