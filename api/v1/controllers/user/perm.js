@@ -1,4 +1,4 @@
-const { getUser, updateUser } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
@@ -15,9 +15,9 @@ module.exports = (router) => {
             throw new ValidationError("Invalid permission value");
         }
 
-        await dbRun("UPDATE users SET permissions=? WHERE email=?", [perm, email]);
-        if (getUser(email)) {
-            updateUser(email, { permissions: perm });
+        await dbRun("UPDATE users SET permissions=? WHERE email= ?", [perm, email]);
+        if (classStateStore.getUser(email)) {
+            classStateStore.updateUser(email, { permissions: perm });
         }
 
         req.infoEvent("user.permissions.update.success", "User permissions updated", { targetEmail: email, permissionLevel: perm });

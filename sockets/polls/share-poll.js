@@ -1,4 +1,4 @@
-const { getClassroom, updateClassroomStudent } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
 const { getUserClass } = require("@modules/user/user");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -49,7 +49,7 @@ module.exports = {
                                                 const classId = getUserClass(email);
                                                 if (!classId) return;
 
-                                                updateClassroomStudent(classId, user.email, (student) => {
+                                                classStateStore.updateClassroomStudent(classId, user.email, (student) => {
                                                     if (!Array.isArray(student.sharedPolls)) {
                                                         student.sharedPolls = [];
                                                     }
@@ -108,7 +108,7 @@ module.exports = {
                                         if (classId instanceof Error) throw classId;
                                         if (!classId) return;
 
-                                        updateClassroomStudent(classId, user.email, (student) => {
+                                        classStateStore.updateClassroomStudent(classId, user.email, (student) => {
                                             if (!Array.isArray(student.sharedPolls)) return;
                                             const pollIndex = student.sharedPolls.indexOf(pollId);
                                             if (pollIndex >= 0) {
@@ -160,7 +160,7 @@ module.exports = {
                                             return;
                                         }
 
-                                        for (let email of Object.keys(getClassroom(classId).students)) {
+                                        for (let email of Object.keys(classStateStore.getClassroom(classId).students)) {
                                             socketUpdates.customPollUpdate(email);
                                         }
                                     } catch (err) {
@@ -230,7 +230,7 @@ module.exports = {
                                                     socket.emit("message", `Shared ${name} with the class`);
                                                     socketUpdates.getPollShareIds(pollId);
 
-                                                    for (let email of Object.keys(getClassroom(classroom.id).students)) {
+                                                    for (let email of Object.keys(classStateStore.getClassroom(classroom.id).students)) {
                                                         socketUpdates.customPollUpdate(email);
                                                     }
                                                 } catch (err) {

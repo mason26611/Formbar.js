@@ -1,5 +1,5 @@
 const { userSockets, managerUpdate, userUpdateSocket } = require("../socket-updates");
-const { getUser, removeUser, getClassroom, getClassroomStudent, removeClassroomStudent } = require("../class/classroom");
+const { classStateStore } = require("../class/classroom");
 const { database, dbGet, dbRun } = require("../database");
 const { deleteRooms, endClass } = require("@services/class-service");
 const { lastActivities } = require("../../sockets/middleware/inactivity");
@@ -41,7 +41,7 @@ function logout(socket) {
 
             // Only clear global user/class state if this was the last active session
             if (isLastSession) {
-                const user = getUser(email);
+                const user = classStateStore.getUser(email);
                 if (user) {
                     user.activeClass = null;
                     user.break = false;
@@ -51,14 +51,14 @@ function logout(socket) {
 
                 // If the user is a guest, then remove them from the global user list
                 if (user && user.permissions === GUEST_PERMISSIONS) {
-                    removeUser(email);
+                    classStateStore.removeUser(email);
                 }
 
                 // If the user was not in a class, then return
                 if (!classId) return;
 
                 // If the class is loaded, then mark the user as offline
-                const classroom = getClassroom(classId);
+                const classroom = classStateStore.getClassroom(classId);
                 if (classroom) {
                     const student = classroom.students[email];
                     if (student) {
@@ -139,11 +139,11 @@ async function deleteUser(userId, userSession) {
                 await deleteRooms(userId); // Delete any rooms owned by the user
 
                 // If the student is online, remove them from any class they're in and update the control panel
-                const student = getUser(user.email);
+                const student = classStateStore.getUser(user.email);
                 if (student) {
-                    const activeClass = getUser(user.email).activeClass;
-                    const classroom = getClassroom(activeClass);
-                    removeUser(user.email);
+                    const activeClass = classStateStore.getUser(user.email).activeClass;
+                    const classroom = classStateStore.getClassroom(activeClass);
+                    classStateStore.removeUser(user.email);
                     if (classroom) {
                         delete classroom.students[user.email];
                         userUpdateSocket(user.email, "classUpdate");

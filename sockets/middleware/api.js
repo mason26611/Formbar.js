@@ -1,4 +1,4 @@
-const { getUser, setUser } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
 const { userSockets } = require("@modules/socket-updates");
 const { Student } = require("@modules/student");
@@ -11,20 +11,12 @@ const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
 /**
- * Ensures a Student instance exists in classInformation for the given user.
+ * Ensures a Student instance exists in classStateStore for the given user.
  * Creates a new Student object if one doesn't already exist for the user's email.
- *
- * @param {Object} userData - The user data object from the database
- * @param {string} userData.email - User's email address
- * @param {number} userData.id - User's unique identifier
- * @param {number} userData.permissions - User's permission level
- * @param {string} userData.API - User's API key (hashed)
- * @param {string} [userData.tags] - Comma-separated list of user tags
- * @param {string} userData.displayName - User's display name
  */
 function ensureStudentExists(userData) {
-    if (!getUser(userData.email)) {
-        setUser(
+    if (!classStateStore.getUser(userData.email)) {
+        classStateStore.setUser(
             userData.email,
             new Student(
                 userData.email,
@@ -43,14 +35,6 @@ function ensureStudentExists(userData) {
 
 /**
  * Sets up socket session data for an authenticated user.
- * Populates the socket's session with user information and retrieves the user's active class.
- *
- * @param {Object} socket - The socket.io socket instance
- * @param {Object} userData - The user data object from the database
- * @param {string} userData.email - User's email address
- * @param {number} userData.id - User's unique identifier
- * @param {string} [userData.API] - User's API key (included if API authentication)
- * @param {boolean} [includeApi=false] - Whether to include API key in session (for API key auth)
  */
 function setupSocketSession(socket, userData, includeApi = false) {
     if (includeApi) {
@@ -63,13 +47,6 @@ function setupSocketSession(socket, userData, includeApi = false) {
 
 /**
  * Joins socket to appropriate rooms based on authentication type.
- * API-authenticated sockets join api-{key} and class-{id} rooms.
- * JWT/session-authenticated sockets join user-{email} and class-{id} rooms.
- *
- * @param {Object} socket - The socket.io socket instance
- * @param {string} email - User's email address
- * @param {number|null} classId - The class ID to join, or null if not in a class
- * @param {boolean} [isApiAuth=false] - Whether this is API key authentication
  */
 function joinSocketRooms(socket, email, classId, isApiAuth = false) {
     if (classId) {
@@ -84,11 +61,6 @@ function joinSocketRooms(socket, email, classId, isApiAuth = false) {
 
 /**
  * Tracks user socket connections in the global userSockets object.
- * Maintains a mapping of email -> socketId -> socket for managing multiple connections per user.
- *
- * @param {string} email - User's email address
- * @param {string} socketId - The socket's unique identifier
- * @param {Object} socket - The socket.io socket instance
  */
 function trackUserSocket(email, socketId, socket) {
     if (!userSockets[email]) {
@@ -99,13 +71,6 @@ function trackUserSocket(email, socketId, socket) {
 
 /**
  * Sets up disconnect handler for socket with proper cleanup logic.
- * Handles cleanup of socket updates and user tracking, and kicks user from class
- * when their last socket disconnects.
- *
- * @param {Object} socket - The socket.io socket instance
- * @param {string} email - User's email address
- * @param {number|null} classId - The class ID the user is in, or null
- * @param {boolean} [isApiAuth=false] - Whether this is API key authentication
  */
 function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
     socket.on("disconnect", () => {
@@ -129,19 +94,6 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
 
 /**
  * Completes socket authentication setup by orchestrating all authentication steps.
- * This function ensures the user exists, sets up their session, joins appropriate rooms,
- * tracks their socket connection, and sets up disconnect handling.
- *
- * @param {Object} socket - The socket.io socket instance
- * @param {Object} userData - The user data object from the database
- * @param {string} userData.email - User's email address
- * @param {number} userData.id - User's unique identifier
- * @param {number} userData.permissions - User's permission level
- * @param {string} userData.API - User's API key (hashed)
- * @param {string} [userData.tags] - Comma-separated list of user tags
- * @param {string} userData.displayName - User's display name
- * @param {Object} socketUpdates - The SocketUpdates instance for this connection
- * @param {boolean} [isApiAuth=false] - Whether this is API key authentication
  */
 function finalizeAuthentication(socket, userData, socketUpdates, isApiAuth = false) {
     ensureStudentExists(userData);
@@ -243,7 +195,7 @@ module.exports = {
             else if (socket.request.session.email) {
                 // Retrieve class id from the user's activeClass if session.classId is not set
                 const email = socket.request.session.email;
-                const user = getUser(email);
+                const user = classStateStore.getUser(email);
                 const classId = user && user.activeClass != null ? user.activeClass : socket.request.session.classId;
                 if (classId) {
                     socket.request.session.classId = classId;

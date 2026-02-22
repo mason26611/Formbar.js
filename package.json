@@ -19,7 +19,7 @@
         "@controllers": "api/v1/controllers",
         "@errors": "errors",
         "@sockets": "sockets",
-        "@stores": "sockets"
+        "@stores": "stores"
     },
     "repository": {
         "type": "git",

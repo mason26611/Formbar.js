@@ -1,5 +1,5 @@
 const { getLogger } = require("@modules/logger");
-const { getUser } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { settings } = require("@modules/config");
 const { PAGE_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll, dbRun } = require("@modules/database");
@@ -66,7 +66,7 @@ function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
-    const user = getUser(email);
+    const user = classStateStore.getUser(email);
     if (!user) {
         req.warnEvent("auth.user_not_found", `User not found in classInformation: ${email}`, { email });
         throw new AuthError("User is not authenticated");
@@ -104,7 +104,7 @@ function isVerified(req, res, next) {
         throw new AuthError("User is not authenticated.");
     }
 
-    const user = getUser(email);
+    const user = classStateStore.getUser(email);
     // If the user is verified or email functionality is disabled...
     if ((user && user.verified) || !settings.emailEnabled || (user && user.permissions == GUEST_PERMISSIONS)) {
         next();
@@ -148,7 +148,7 @@ async function permCheck(req, res, next) {
             throw new NotFoundError(`${urlPath} is not in the page permissions`);
         }
 
-        const user = getUser(email);
+        const user = classStateStore.getUser(email);
         if (!user) {
             req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
             throw new AuthError("User not found");
@@ -160,35 +160,16 @@ async function permCheck(req, res, next) {
         } else if (!PAGE_PERMISSIONS[urlPath].classPage && user.permissions >= PAGE_PERMISSIONS[urlPath].permissions) {
             next();
         } else {
-            req.warnEvent("auth.perm_check.forbidden", `User ${email} does not have permissions to access ${urlPath}`, {
+            req.warnEvent("auth.perm_check.forbidden", `User ${email} does not have permissions to access this resource`, {
                 email,
-                urlPath,
                 userPermissions: user.permissions,
-                userClassPermissions: user.classPermissions,
                 requiredPermissions: PAGE_PERMISSIONS[urlPath].permissions,
             });
-            throw new ForbiddenError("You do not have permissions to access this page.");
+            throw new ForbiddenError("You do not have permission to access this resource.");
         }
+    } else {
+        next();
     }
-}
-
-function checkIPBanned(ip) {
-    if (!ip) return false;
-    if (settings.whitelistActive && Object.keys(whitelistedIps).length > 0) {
-        const isWhitelisted = Object.values(whitelistedIps).some((value) => ip.startsWith(value.ip));
-        if (!isWhitelisted) {
-            return true;
-        }
-    }
-
-    if (settings.blacklistActive && Object.keys(blacklistedIps).length > 0) {
-        const isBlacklisted = Object.values(blacklistedIps).some((value) => ip.startsWith(value.ip));
-        if (isBlacklisted) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 module.exports = {
@@ -202,5 +183,4 @@ module.exports = {
     isAuthenticated,
     isVerified,
     permCheck,
-    checkIPBanned,
 };

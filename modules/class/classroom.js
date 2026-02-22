@@ -1,9 +1,8 @@
 const { database } = require("../database");
 const { MOD_PERMISSIONS, STUDENT_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS } = require("../permissions");
-const { InMemoryClassStateStore } = require("./in-memory-class-state-store");
+const { ClassStateStore } = require("@stores/class-state-store");
 
-const classStateStore = new InMemoryClassStateStore();
-const classInformation = classStateStore.getRawState();
+const classStateStore = new ClassStateStore();
 const DEFAULT_CLASS_SETTINGS = {
     mute: false,
     filter: "",
@@ -66,63 +65,6 @@ class Classroom {
     }
 }
 
-// Getters and setters for classInformation
-function getUser(email) {
-    return classStateStore.getUser(email);
-}
-
-function setUser(email, user) {
-    return classStateStore.setUser(email, user);
-}
-
-function removeUser(email) {
-    return classStateStore.removeUser(email);
-}
-
-function getAllUsers() {
-    return classStateStore.getAllUsers();
-}
-
-function updateUser(email, mutation) {
-    return classStateStore.updateUser(email, mutation);
-}
-
-function getClassroom(classId) {
-    return classStateStore.getClassroom(classId);
-}
-
-function setClassroom(classId, classroom) {
-    return classStateStore.setClassroom(classId, classroom);
-}
-
-function removeClassroom(classId) {
-    return classStateStore.removeClassroom(classId);
-}
-
-function getAllClassrooms() {
-    return classStateStore.getAllClassrooms();
-}
-
-function updateClassroom(classId, mutation) {
-    return classStateStore.updateClassroom(classId, mutation);
-}
-
-function getClassroomStudent(classId, email) {
-    return classStateStore.getClassroomStudent(classId, email);
-}
-
-function setClassroomStudent(classId, email, student) {
-    return classStateStore.setClassroomStudent(classId, email, student);
-}
-
-function removeClassroomStudent(classId, email) {
-    return classStateStore.removeClassroomStudent(classId, email);
-}
-
-function updateClassroomStudent(classId, email, mutation) {
-    return classStateStore.updateClassroomStudent(classId, email, mutation);
-}
-
 /**
  * Asynchronous function to get the users of a class.
  * @param {Object} user - The user object.
@@ -141,77 +83,75 @@ async function getClassUsers(user, key) {
                 [key],
                 (err, dbClassUsers) => {
                     try {
-                        // If an error occurs, throw the error
                         if (err) throw err;
 
-                        // If no users are found, resolve the promise with an error object
                         if (!dbClassUsers) {
                             resolve({ error: "class does not exist" });
                             return;
                         }
 
-                        // If users are found, resolve the promise with the users
                         resolve(dbClassUsers);
                     } catch (err) {
-                        // If an error occurs, reject the promise with the error
                         reject(err);
                     }
                 }
             );
         });
 
-        // If an error occurs, return the error
         if (dbClassUsers.error) return dbClassUsers;
 
         // Create an object to store the class users
         let classUsers = {};
         let cDClassUsers = {};
         let classId = await getClassIDFromCode(key);
-        if (getClassroom(classId)) {
-            cDClassUsers = getClassroom(classId).students;
+
+        // Use classStateStore directly instead of proxy helper functions
+        const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
+        if (cdClassroom) {
+            cDClassUsers = cdClassroom.students || {};
         }
 
         // For each user in the class
-        for (let user of dbClassUsers) {
+        for (let userRow of dbClassUsers) {
             // Add the user to the class users object
-            classUsers[user.email] = {
+            classUsers[userRow.email] = {
                 loggedIn: false,
-                ...user,
+                ...userRow,
                 help: null,
                 break: null,
                 pogMeter: 0,
             };
 
             // If the user is logged in
-            let cdUser = cDClassUsers[user.email];
+            let cdUser = cDClassUsers[userRow.email];
             if (cdUser) {
                 // Update the user's data with the data from the class
-                classUsers[user.email].loggedIn = true;
-                classUsers[user.email].help = cdUser.help;
-                classUsers[user.email].break = cdUser.break;
-                classUsers[user.email].pogMeter = cdUser.pogMeter;
+                classUsers[userRow.email].loggedIn = true;
+                classUsers[userRow.email].help = cdUser.help;
+                classUsers[userRow.email].break = cdUser.break;
+                classUsers[userRow.email].pogMeter = cdUser.pogMeter;
             }
 
             // If the user has mod permissions or lower
             if (classPermissions <= MOD_PERMISSIONS) {
                 // Update the user's help and break data
-                if (classUsers[user.email].help) {
-                    classUsers[user.email].help = true;
+                if (classUsers[userRow.email].help) {
+                    classUsers[userRow.email].help = true;
                 }
 
-                if (typeof classUsers[user.email].break == "string") {
-                    classUsers[user.email].break = false;
+                if (typeof classUsers[userRow.email].break == "string") {
+                    classUsers[userRow.email].break = false;
                 }
             }
 
             // If the user has student permissions or lower
             if (classPermissions <= STUDENT_PERMISSIONS) {
                 // Remove the user's permissions, class permissions, help, break, quiz score, and pog meter data
-                delete classUsers[user.email].permissions;
-                delete classUsers[user.email].classPermissions;
-                delete classUsers[user.email].help;
-                delete classUsers[user.email].break;
-                delete classUsers[user.email].pogMeter;
+                delete classUsers[userRow.email].permissions;
+                delete classUsers[userRow.email].classPermissions;
+                delete classUsers[userRow.email].help;
+                delete classUsers[userRow.email].break;
+                delete classUsers[userRow.email].pogMeter;
             }
         }
 
@@ -252,23 +192,4 @@ module.exports = {
     classStateStore,
     getClassUsers,
     getClassIDFromCode,
-
-    // classInformation stores all of the information on classes and students
-    classInformation,
-
-    // Getters and setters for classInformation
-    getUser,
-    setUser,
-    removeUser,
-    getAllUsers,
-    updateUser,
-    getClassroom,
-    setClassroom,
-    removeClassroom,
-    getAllClassrooms,
-    updateClassroom,
-    getClassroomStudent,
-    setClassroomStudent,
-    removeClassroomStudent,
-    updateClassroomStudent,
 };

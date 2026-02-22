@@ -1,5 +1,5 @@
-const { getUser, setUser } = require("@modules/class/classroom");
 const { Student } = require("@modules/student");
+const { classStateStore } = require("@modules/class/classroom");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 
@@ -78,8 +78,8 @@ module.exports = (router) => {
 
         // If not already logged in, create a new Student instance in classInformation
         const { tokens, user: userData } = result;
-        if (!getUser(email)) {
-            setUser(
+        if (!classStateStore.getUser(email)) {
+            classStateStore.setUser(
                 email,
                 new Student(
                     userData.email,

@@ -1,4 +1,4 @@
-const { getClassroom, getUser, updateClassroom, updateClassroomStudent } = require("./classroom");
+const { classStateStore } = require("./classroom");
 const { dbRun } = require("../database");
 const { getEmailFromId } = require("../student");
 
@@ -22,9 +22,9 @@ async function setTags(tags, userSession) {
 
         // If the class is loaded, update the class tags
         const classId = userSession.classId;
-        const classroom = getClassroom(classId);
+        const classroom = classStateStore.getClassroom(classId);
         if (!classId || !classroom) return;
-        updateClassroom(classId, { tags });
+        classStateStore.updateClassroom(classId, { tags });
 
         for (const student of Object.values(classroom.students)) {
             if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
@@ -52,11 +52,11 @@ async function saveTags(studentId, tags, userSession) {
 
         // Remove blank/Offline for active students
         // ensure Offline for inactive students
-        const isActiveInClass = getUser(email) && getUser(email).activeClass === userSession.classId;
+        const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
         let normalized = tags
             .filter((tag) => typeof tag === "string")
             .map((tag) => tag.trim())
-            .map((tag) => tag.replace(/[\r\n\t]/g, "")) // Remove new lines, carriage returns, and tabs
+            .map((tag) => tag.replace(/[\n\t]/g, "")) // Remove new lines, carriage returns, and tabs
             .filter((tag) => tag !== "");
 
         if (isActiveInClass) {
@@ -71,12 +71,12 @@ async function saveTags(studentId, tags, userSession) {
         normalized = normalized.filter((tag) => tag !== "Offline");
 
         // Get student's current tags
-        const student = getClassroom(userSession.classId)?.students[email];
+        const student = classStateStore.getClassroom(userSession.classId)?.students[email];
         if (!student) return;
         const oldTags = student.tags || [];
 
         // Update tags
-        updateClassroomStudent(userSession.classId, email, { tags: normalized });
+        classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
 
         // If the "Excluded" tag was added, clear their poll response
         const wasExcluded = oldTags.includes("Excluded");
