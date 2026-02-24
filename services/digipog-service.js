@@ -1,6 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { getClassIDFromCode } = require("@modules/classroom");
+const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 

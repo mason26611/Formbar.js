@@ -7,7 +7,7 @@ const { hash } = require("bcrypt");
 const crypto = require("crypto");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { compare } = require("@modules/crypto");
@@ -201,7 +201,7 @@ async function getUserOwnedClasses(email) {
  * Logs a user out from a specific socket, cleaning up session state.
  */
 function logout(socket) {
-    const { managerUpdate, userUpdateSocket } = require("@modules/socket-updates");
+    const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
     const { endClass } = require("@services/class-service");
     const { deleteCustomPolls } = require("@services/poll-service");
 
@@ -273,7 +273,7 @@ function logout(socket) {
  * Deletes a user account and all associated data.
  */
 async function deleteUser(userId, userSession) {
-    const { managerUpdate, userUpdateSocket } = require("@modules/socket-updates");
+    const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
     const { deleteRooms } = require("@services/class-service");
     const { deleteCustomPolls } = require("@services/poll-service");
 

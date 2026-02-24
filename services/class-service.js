@@ -7,8 +7,8 @@ const {
     setClassOfUserSockets,
     userUpdateSocket,
     invalidateClassPollCache,
-} = require("@modules/socket-updates");
-const { Classroom, classStateStore } = require("@modules/classroom");
+} = require("@services/socket-updates-service");
+const { Classroom, classStateStore } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
@@ -20,7 +20,7 @@ const {
     MOD_PERMISSIONS,
     STUDENT_PERMISSIONS,
 } = require("@modules/permissions");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@modules/student");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -826,7 +826,7 @@ async function saveTags(studentId, tags, userSession) {
  */
 async function getClassUsers(user, key) {
     const { database } = require("@modules/database");
-    const { getClassIDFromCode } = require("@modules/classroom");
+    const { getClassIDFromCode } = require("@services/classroom-service");
     try {
         let classPermissions = user.classPermissions;
 

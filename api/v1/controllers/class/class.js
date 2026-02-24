@@ -1,5 +1,5 @@
 const { isAuthenticated } = require("@middleware/authentication");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { getClassUsers } = require("@services/class-service");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
 const NotFoundError = require("@errors/not-found-error");

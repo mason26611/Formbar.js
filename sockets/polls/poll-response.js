@@ -1,5 +1,5 @@
 const { sendPollResponse } = require("@services/poll-service");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
 module.exports = {

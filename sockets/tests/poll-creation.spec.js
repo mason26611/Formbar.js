@@ -1,5 +1,5 @@
 const { run: pollCreationRun } = require("../polls/poll-creation");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { generateColors } = require("@modules/util");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("@modules/tests/tests");
 const { userSocketUpdates } = require("../init");
@@ -12,7 +12,7 @@ describe("startPoll", () => {
     let startPollHandler;
 
     beforeEach(() => {
-        jest.mock("@modules/socket-updates");
+        jest.mock("@services/socket-updates-service");
         socket = createSocket();
         socketUpdates = createSocketUpdates();
         userSocketUpdates[socket.request.session.email] = socketUpdates;
@@ -92,6 +92,6 @@ describe("startPoll", () => {
     });
 
     afterAll(() => {
-        jest.unmock("@modules/socket-updates");
+        jest.unmock("@services/socket-updates-service");
     });
 });

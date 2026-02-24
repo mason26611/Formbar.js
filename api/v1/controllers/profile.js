@@ -1,5 +1,5 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { getUserData } = require("@services/user-service");
 const { getUserTransactions } = require("@services/digipog-service");

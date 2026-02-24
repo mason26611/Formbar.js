@@ -1,7 +1,7 @@
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { dbGet, dbRun } = require("@modules/database");
-const { advancedEmitToClass, emitToUser } = require("@modules/socket-updates");
-const { getIdFromEmail } = require("@modules/student");
+const { advancedEmitToClass, emitToUser } = require("@services/socket-updates-service");
+const { getIdFromEmail } = require("@services/student-service");
 const { userSocketUpdates } = require("../sockets/init");
 const NotFoundError = require("@errors/not-found-error");
 

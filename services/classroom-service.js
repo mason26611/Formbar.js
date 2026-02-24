@@ -1,5 +1,5 @@
-const { database } = require("./database");
-const { DEFAULT_CLASS_PERMISSIONS } = require("./permissions");
+const { database } = require("@modules/database");
+const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 

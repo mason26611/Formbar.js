@@ -1,7 +1,7 @@
 const { CLASS_SOCKET_PERMISSION_MAPPER, GLOBAL_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSIONS } = require("@modules/permissions");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const { PASSIVE_SOCKETS } = require("@modules/socket-updates");
+const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { camelCaseToNormal } = require("@modules/util");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");

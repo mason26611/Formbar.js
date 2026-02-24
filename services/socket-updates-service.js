@@ -1,8 +1,8 @@
-const { classStateStore } = require("./classroom");
-const { database, dbGetAll } = require("./database");
-const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("./permissions");
+const { classStateStore } = require("@services/classroom-service");
+const { database, dbGetAll } = require("@modules/database");
+const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
 const { getManagerData } = require("@services/manager-service");
-const { io } = require("./web-server");
+const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
 
 const runningTimers = socketStateStore.getRunningTimers();

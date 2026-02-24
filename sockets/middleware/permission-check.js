@@ -1,7 +1,7 @@
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
 const { GLOBAL_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSION_MAPPER } = require("@modules/permissions");
-const { PASSIVE_SOCKETS } = require("@modules/socket-updates");
+const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
 

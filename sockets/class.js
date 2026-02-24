@@ -1,11 +1,11 @@
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { database, dbRun } = require("@modules/database");
-const { advancedEmitToClass, setClassOfApiSockets } = require("@modules/socket-updates");
+const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-updates-service");
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
 const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
 const { joinRoom, leaveRoom } = require("@services/room-service");
-const { getEmailFromId, getIdFromEmail } = require("@modules/student");
+const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");

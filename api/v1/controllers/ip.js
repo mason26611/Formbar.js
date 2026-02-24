@@ -1,7 +1,7 @@
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { settings } = require("@modules/config");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { getIpAccess } = require("@modules/web-server");
+const { getIpAccess } = require("@services/ip-service");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const authentication = require("@middleware/authentication");

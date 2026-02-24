@@ -1,5 +1,5 @@
 const { getLogger } = require("@modules/logger");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll, dbRun } = require("@modules/database");
@@ -121,5 +121,5 @@ module.exports = {
 
     // Authentication functions
     isAuthenticated,
-    isVerified
+    isVerified,
 };

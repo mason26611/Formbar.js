@@ -1,6 +1,6 @@
 const { hasClassPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { classStateStore } = require("@modules/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { CLASS_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
