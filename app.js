@@ -37,12 +37,15 @@ const sessionMiddleware = session({
 const errorHandlerMiddleware = require("@middleware/error-handler");
 const requestLoggerMiddleware = require("@middleware/request-logger");
 
+// Apply logger middleware
+// This should always be applied first so that we can log when anything goes wrong
+app.use(requestLoggerMiddleware);
+
 // Connect rate limiter middleware
 app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
-app.use(requestLoggerMiddleware);
 // Initialize passport for Google OAuth
 app.use(passport.initialize());
 app.use(passport.session());

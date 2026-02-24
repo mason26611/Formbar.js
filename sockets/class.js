@@ -275,10 +275,11 @@ module.exports = {
          * Kicks a user from the classroom
          * @param {string} email - The email of the user to kick.
          */
-        socket.on("classKickStudent", (email) => {
+        socket.on("classKickStudent", async (email) => {
             try {
                 const classId = socket.request.session.classId;
-                classKickStudent(email, classId);
+                const userId = await getIdFromEmail(email);
+                classKickStudent(userId, classId);
                 advancedEmitToClass("leaveSound", classId, {});
             } catch (err) {
                 handleSocketError(err, socket, "classKickStudent");

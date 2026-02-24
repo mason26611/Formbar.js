@@ -18,20 +18,20 @@ const endpointWhitelistMap = ["getOwnedClasses", "getActiveClass"];
 function hasPermission(permission) {
     return function (req, res, next) {
         if (!req.user || !req.user.email) {
-            req.warnEvent("auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
+            req.warnEvent(req, "auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
         }
 
         const user = classStateStore.getUser(req.user.email);
         if (!user) {
-            req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${req.user.email}`, { email: req.user.email });
+            req.warnEvent(req, "auth.perm_check.user_not_found", `User not found for permission check: ${req.user.email}`, { email: req.user.email });
             throw new AuthError("User not found", { event: "permission.check.failed", reason: "user_not_found" });
         }
 
         if (user.permissions >= permission) {
             next();
         } else {
-            req.warnEvent("auth.perm_check.forbidden", `User ${req.user.email} does not have permissions to access this resource`, {
+            req.warnEvent(req, "auth.perm_check.forbidden", `User ${req.user.email} does not have permissions to access this resource`, {
                 email: req.user.email,
                 userPermissions: user.permissions,
                 requiredPermissions: permission,
@@ -56,7 +56,7 @@ function hasClassPermission(classPermission) {
 
         const email = req.user.email;
         if (!email) {
-            req.warnEvent("auth.class_perm_check.not_authenticated", "Class permission check failed: User is not authenticated");
+            req.warnEvent(req, "auth.class_perm_check.not_authenticated", "Class permission check failed: User is not authenticated");
             throw new AuthError("User not authenticated");
         }
 
@@ -64,7 +64,7 @@ function hasClassPermission(classPermission) {
         if (classroom) {
             const user = classroom.students[email];
             if (!user) {
-                req.warnEvent("auth.class_perm_check.user_not_in_class", `User ${email} not found in class ${classId}`, { email, classId });
+                req.warnEvent(req, "auth.class_perm_check.user_not_in_class", `User ${email} not found in class ${classId}`, { email, classId });
                 throw new AuthError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
             }
 
@@ -74,16 +74,23 @@ function hasClassPermission(classPermission) {
             if (user.classPermissions >= requiredPermissionLevel) {
                 next();
             } else {
-                req.warnEvent("auth.class_perm_check.forbidden", `User ${email} does not have permissions to access class resource in ${classId}`, {
-                    email,
-                    classId,
-                    userClassPermissions: user.classPermissions,
-                    requiredPermissions: requiredPermissionLevel,
-                });
+                req.warnEvent(
+                    req,
+                    "auth.class_perm_check.forbidden",
+                    `User ${email} does not have permissions to access class resource in ${classId}`,
+                    {
+                        email,
+                        classId,
+                        userClassPermissions: user.classPermissions,
+                        requiredPermissions: requiredPermissionLevel,
+                    }
+                );
                 throw new ForbiddenError("Unauthorized", { event: "permission.check.failed", reason: "insufficient_class_permissions" });
             }
         } else {
-            req.warnEvent("auth.class_perm_check.class_not_active", `Class permission check failed: Class ${classId} is not active`, { classId });
+            req.warnEvent(req, "auth.class_perm_check.class_not_active", `Class permission check failed: Class ${classId} is not active`, {
+                classId,
+            });
             throw new ForbiddenError("This class is not currently active.", { event: "permission.check.failed", reason: "class_not_active" });
         }
     };
@@ -104,7 +111,7 @@ function httpPermCheck(event) {
 
         const email = req.user.email;
         if (!email) {
-            req.warnEvent("auth.http_perm_check.not_authenticated", "HTTP permission check failed: User is not authenticated");
+            req.warnEvent(req, "auth.http_perm_check.not_authenticated", "HTTP permission check failed: User is not authenticated");
             throw new AuthError("User not authenticated");
         }
 
@@ -112,23 +119,33 @@ function httpPermCheck(event) {
         const classId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(email)?.classId ?? null;
 
         if (!classStateStore.getClassroom(classId) && classId != null) {
-            req.warnEvent("auth.http_perm_check.class_not_exist", `HTTP permission check failed: Class ${classId} does not exist`, { classId });
+            req.warnEvent(req, "auth.http_perm_check.class_not_exist", `HTTP permission check failed: Class ${classId} does not exist`, { classId });
             throw new AuthError("Class does not exist", { event: "permission.check.failed", reason: "class_not_exist" });
         }
 
         if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`, {
-                classId,
-                event,
-            });
+            req.warnEvent(
+                req,
+                "auth.http_perm_check.class_not_loaded",
+                `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`,
+                {
+                    classId,
+                    event,
+                }
+            );
             throw new AuthError("Class is not loaded", { event: "permission.check.failed", reason: "class_not_loaded" });
         }
 
         if (CLASS_SOCKET_PERMISSIONS[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (direct match)`, {
-                classId,
-                event,
-            });
+            req.warnEvent(
+                req,
+                "auth.http_perm_check.class_not_loaded",
+                `HTTP permission check failed: Class ${classId} is not loaded (direct match)`,
+                {
+                    classId,
+                    event,
+                }
+            );
             throw new AuthError("Class is not loaded");
         }
 
@@ -137,7 +154,7 @@ function httpPermCheck(event) {
             // Get the user data from the database
             userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
             if (!userData) {
-                req.warnEvent("auth.http_perm_check.user_not_found", `User not found for HTTP permission check: ${email}`, { email });
+                req.warnEvent(req, "auth.http_perm_check.user_not_found", `User not found for HTTP permission check: ${email}`, { email });
                 throw new AuthError("User not found");
             }
             userData.classPermissions = await dbGet("SELECT permissions FROM classUsers WHERE studentId=? AND classId=?", [userData.id, classId]);
@@ -162,7 +179,7 @@ function httpPermCheck(event) {
                 }
             }
 
-            req.warnEvent("auth.http_perm_check.forbidden", `User ${email} does not have permissions for event ${event}`, {
+            req.warnEvent(req, "auth.http_perm_check.forbidden", `User ${email} does not have permissions for event ${event}`, {
                 email,
                 event,
                 userPermissions: userData.permissions,

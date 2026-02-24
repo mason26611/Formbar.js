@@ -50,25 +50,25 @@ async function cleanRefreshTokens() {
 function isAuthenticated(req, res, next) {
     const accessToken = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : null;
     if (!accessToken) {
-        req.warnEvent("auth.missing_token", "User is not authenticated: No access token provided");
+        req.warnEvent(req, "auth.missing_token", "User is not authenticated: No access token provided");
         throw new AuthError("User is not authenticated");
     }
 
     const decodedToken = verifyToken(accessToken);
     if (decodedToken.error) {
-        req.warnEvent("auth.invalid_token", "Invalid access token provided", { error: decodedToken.error });
+        req.warnEvent(req, "auth.invalid_token", "Invalid access token provided", { error: decodedToken.error });
         throw new AuthError("Invalid access token provided.");
     }
 
     const email = decodedToken.email;
     if (!email) {
-        req.warnEvent("auth.missing_email", "Invalid access token provided: Missing 'email'");
+        req.warnEvent(req, "auth.missing_email", "Invalid access token provided: Missing 'email'");
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
     const user = classStateStore.getUser(email);
     if (!user) {
-        req.warnEvent("auth.user_not_found", `User not found in classInformation: ${email}`, { email });
+        req.warnEvent(req, "auth.user_not_found", `User not found in ClassStateStore: ${email}`, { email });
         throw new AuthError("User is not authenticated");
     }
 
@@ -89,7 +89,7 @@ function isVerified(req, res, next) {
     if (!email) {
         const accessToken = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : null;
         if (!accessToken) {
-            req.warnEvent("auth.not_authenticated", "User is not authenticated: No token found");
+            req.warnEvent(req, "auth.not_authenticated", "User is not authenticated: No token found");
             throw new AuthError("User is not authenticated.");
         }
 
@@ -100,7 +100,7 @@ function isVerified(req, res, next) {
     }
 
     if (!email) {
-        req.warnEvent("auth.not_authenticated", "User is not authenticated: Could not determine email");
+        req.warnEvent(req, "auth.not_authenticated", "User is not authenticated: Could not determine email");
         throw new AuthError("User is not authenticated.");
     }
 
@@ -109,7 +109,7 @@ function isVerified(req, res, next) {
     if ((user && user.verified) || !settings.emailEnabled || (user && user.permissions == GUEST_PERMISSIONS)) {
         next();
     } else {
-        req.warnEvent("auth.not_verified", `User email is not verified: ${email}`, { email });
+        req.warnEvent(req, "auth.not_verified", `User email is not verified: ${email}`, { email });
         throw new AuthError("User email is not verified.");
     }
 }
@@ -118,7 +118,7 @@ function isVerified(req, res, next) {
 async function permCheck(req, res, next) {
     const email = req.user?.email;
     if (!email) {
-        req.warnEvent("auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
+        req.warnEvent(req, "auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
         throw new AuthError("User is not authenticated");
     }
 
@@ -144,13 +144,13 @@ async function permCheck(req, res, next) {
         // Ensure the url path is all lowercase
         urlPath = urlPath.toLowerCase();
         if (!PAGE_PERMISSIONS[urlPath]) {
-            req.warnEvent("auth.perm_check.not_found", `Page permissions not found for path: ${urlPath}`, { urlPath });
+            req.warnEvent(req, "auth.perm_check.not_found", `Page permissions not found for path: ${urlPath}`, { urlPath });
             throw new NotFoundError(`${urlPath} is not in the page permissions`);
         }
 
         const user = classStateStore.getUser(email);
         if (!user) {
-            req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
+            req.warnEvent(req, "auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
             throw new AuthError("User not found");
         }
 
@@ -160,7 +160,7 @@ async function permCheck(req, res, next) {
         } else if (!PAGE_PERMISSIONS[urlPath].classPage && user.permissions >= PAGE_PERMISSIONS[urlPath].permissions) {
             next();
         } else {
-            req.warnEvent("auth.perm_check.forbidden", `User ${email} does not have permissions to access this resource`, {
+            req.warnEvent(req, "auth.perm_check.forbidden", `User ${email} does not have permissions to access this resource`, {
                 email,
                 userPermissions: user.permissions,
                 requiredPermissions: PAGE_PERMISSIONS[urlPath].permissions,

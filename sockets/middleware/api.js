@@ -1,6 +1,6 @@
 const { classStateStore } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
-const { Student } = require("@modules/student");
+const { Student, getIdFromEmail } = require("@modules/student");
 const { getUserClass } = require("@modules/user/user");
 const { classKickStudent } = require("@modules/class/kick");
 const { compare } = require("@modules/crypto");
@@ -70,16 +70,17 @@ function trackUserSocket(email, socketId, socket) {
  * Sets up disconnect handler for socket with proper cleanup logic.
  */
 function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
         removeUserSocketUpdate(email, socket.id);
 
+        const userId = await getIdFromEmail(email);
         if (isApiAuth) {
             if (!socketStateStore.hasUserSockets(email)) {
-                classKickStudent(email, classId, false);
+                classKickStudent(userId, classId, false);
             }
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
-            if (emptyAfterRemoval) classKickStudent(email, classId, false);
+            if (emptyAfterRemoval) classKickStudent(userId, classId, false);
         }
     });
 }
