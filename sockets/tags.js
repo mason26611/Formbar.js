@@ -1,4 +1,4 @@
-const { setTags, saveTags } = require("@modules/class/tags");
+const { setTags, saveTags } = require("@services/class-service");
 
 module.exports = {
     run(socket, socketUpdates) {

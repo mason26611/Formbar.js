@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 

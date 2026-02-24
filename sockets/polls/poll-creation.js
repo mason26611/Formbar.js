@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { createPoll } = require("@services/poll-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 

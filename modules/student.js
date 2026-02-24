@@ -1,4 +1,4 @@
-const { classStateStore } = require("./class/classroom");
+const { classStateStore } = require("./classroom");
 const { database, dbGet } = require("./database");
 const { STUDENT_PERMISSIONS } = require("./permissions");
 

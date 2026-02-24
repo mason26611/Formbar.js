@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@modules/socket-updates");

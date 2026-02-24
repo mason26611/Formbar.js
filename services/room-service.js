@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { dbGet, dbRun } = require("@modules/database");
 const { advancedEmitToClass, emitToUser } = require("@modules/socket-updates");
 const { getIdFromEmail } = require("@modules/student");

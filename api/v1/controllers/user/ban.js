@@ -2,7 +2,7 @@ const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { managerUpdate } = require("@modules/socket-updates");
 const NotFoundError = require("@errors/not-found-error");
 

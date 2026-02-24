@@ -23,7 +23,7 @@ const { settings } = require("@modules/config.js");
 const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
 
-const { logout } = require("@modules/user/user-session");
+const { logout } = require("@services/user-service");
 const { passport } = require("@modules/google-oauth.js");
 const { rateLimiter } = require("@middleware/rate-limiter");
 

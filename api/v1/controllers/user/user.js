@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { dbGet } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const NotFoundError = require("@errors/not-found-error");

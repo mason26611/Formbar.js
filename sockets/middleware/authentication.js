@@ -1,6 +1,6 @@
 const { database } = require("@modules/database");
 const { compare } = require("@modules/crypto");
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const authService = require("@services/auth-service");
 
 const { handleSocketError } = require("@modules/socket-error-handler");

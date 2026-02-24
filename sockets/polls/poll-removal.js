@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { dbRun, dbGet } = require("@modules/database");
 const { getLogger, logEvent } = require("@modules/logger");
 

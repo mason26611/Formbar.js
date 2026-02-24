@@ -1,4 +1,4 @@
-const { classStateStore } = require("./class/classroom");
+const { classStateStore } = require("./classroom");
 const { database, dbGetAll } = require("./database");
 const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("./permissions");
 const { getManagerData } = require("@services/manager-service");

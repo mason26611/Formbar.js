@@ -1,5 +1,5 @@
 const { dbGet } = require("@modules/database");
-const { getUserOwnedClasses } = require("@modules/user/user");
+const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
 const { httpPermCheck } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");

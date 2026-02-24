@@ -1,5 +1,5 @@
-const { isVerified, permCheck, isAuthenticated } = require("@middleware/authentication");
-const { classStateStore } = require("@modules/class/classroom");
+const { isVerified, isAuthenticated } = require("@middleware/authentication");
+const { classStateStore } = require("@modules/classroom");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { getUserData } = require("@services/user-service");
 const { getUserTransactions } = require("@services/digipog-service");
@@ -62,7 +62,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.get("/profile/transactions/:userId?", isAuthenticated, isVerified, permCheck, async (req, res) => {
+    router.get("/profile/transactions/:userId?", isAuthenticated, isVerified, async (req, res) => {
         // Log the request information
         req.infoEvent("profile.transactions.view", "Viewing transactions", { targetUserId: req.params.userId });
 
@@ -164,7 +164,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.get("/profile/:userId?", isAuthenticated, isVerified, permCheck, async (req, res) => {
+    router.get("/profile/:userId?", isAuthenticated, isVerified, async (req, res) => {
         // Log the request information
         req.infoEvent("profile.view", "Viewing profile", { targetUserId: req.params.userId });
 

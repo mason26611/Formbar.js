@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { Student } = require("@modules/student");
 const { settings } = require("@modules/config");
 const { passport } = require("@modules/google-oauth");

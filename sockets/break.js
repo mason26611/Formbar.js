@@ -1,4 +1,4 @@
-const { requestBreak, approveBreak, endBreak } = require("@modules/class/break");
+const { requestBreak, approveBreak, endBreak } = require("@services/class-service");
 
 module.exports = {
     run(socket, socketUpdates) {

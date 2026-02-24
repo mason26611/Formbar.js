@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { updatePoll } = require("@services/poll-service");
 
 module.exports = {

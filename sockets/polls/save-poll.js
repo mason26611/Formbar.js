@@ -1,4 +1,4 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { database } = require("@modules/database");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { socketStateStore } = require("@stores/socket-state-store");

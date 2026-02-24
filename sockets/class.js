@@ -1,13 +1,12 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { database, dbRun } = require("@modules/database");
 const { advancedEmitToClass, setClassOfApiSockets } = require("@modules/socket-updates");
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
-const { startClass, endClass, leaveClass, isClassActive, joinClass } = require("@services/class-service");
+const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
 const { joinRoom, leaveRoom } = require("@services/room-service");
 const { getEmailFromId, getIdFromEmail } = require("@modules/student");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
-const { classKickStudents, classKickStudent } = require("@modules/class/kick");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 

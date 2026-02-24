@@ -1,5 +1,5 @@
 const { run: pollCreationRun } = require("../polls/poll-creation");
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/classroom");
 const { generateColors } = require("@modules/util");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("@modules/tests/tests");
 const { userSocketUpdates } = require("../init");

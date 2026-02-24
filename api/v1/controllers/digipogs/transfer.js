@@ -1,5 +1,5 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { transferDigipogs } = require("@modules/digipogs");
+const { transferDigipogs } = require("@services/digipog-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 

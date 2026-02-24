@@ -1,4 +1,4 @@
-const { deleteUser } = require("@modules/user/user-session");
+const { deleteUser } = require("@services/user-service");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");

@@ -1,4 +1,4 @@
-const { logout } = require("@modules/user/user-session");
+const { logout } = require("@services/user-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
 module.exports = {

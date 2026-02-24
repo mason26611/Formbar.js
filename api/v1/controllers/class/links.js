@@ -1,5 +1,5 @@
 const { getClassLinks, isUserInClass } = require("@services/class-service");
-const { isAuthenticated, isVerified, permCheck } = require("@middleware/authentication");
+const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
@@ -42,7 +42,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.get("/class/:id/links", isAuthenticated, permCheck, isVerified, async (req, res) => {
+    router.get("/class/:id/links", isAuthenticated, isVerified, async (req, res) => {
         req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId: req.params.id });
         if (!req.params.id) {
             throw new ValidationError("Missing id parameter");
