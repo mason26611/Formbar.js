@@ -6,6 +6,7 @@ module.exports = {
         "^@controllers/(.*)$": "<rootDir>/api/v1/controllers/$1",
         "^@errors/(.*)$": "<rootDir>/errors/$1",
         "^@sockets/(.*)$": "<rootDir>/sockets/$1",
+        "^@stores/(.*)$": "<rootDir>/stores/$1",
     },
     testEnvironment: "node",
 };

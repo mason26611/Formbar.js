@@ -1,4 +1,4 @@
-const { classInformation } = require("./class/classroom");
+const { classStateStore } = require("./class/classroom");
 const { database, dbGet } = require("./database");
 const { STUDENT_PERMISSIONS } = require("./permissions");
 
@@ -100,8 +100,9 @@ async function getStudentsInClass(classId) {
 function getIdFromEmail(email) {
     try {
         // If the user is already loaded, return the id
-        if (classInformation.users[email]) {
-            return classInformation.users[email].id;
+        const user = classStateStore.getUser(email);
+        if (user) {
+            return user.id;
         }
 
         // If the user isn't loaded, get the id from the database
@@ -118,7 +119,7 @@ function getIdFromEmail(email) {
 
 async function getEmailFromId(userId) {
     let email = null;
-    for (const user of Object.values(classInformation.users)) {
+    for (const user of Object.values(classStateStore.getAllUsers())) {
         if (user.id === userId) {
             email = user.email;
             break;
