@@ -1,13 +1,15 @@
-const { classInformation } = require("./class/classroom");
+const { classStateStore } = require("./class/classroom");
 const { database, dbGetAll } = require("./database");
-const { logger } = require("./logger");
 const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("./permissions");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("./web-server");
+const { socketStateStore } = require("@stores/socket-state-store");
 
-const runningTimers = {};
-const rateLimits = {};
-const userSockets = {};
+const runningTimers = socketStateStore.getRunningTimers();
+const rateLimits = socketStateStore.getRateLimits();
+const userSockets = socketStateStore.getUserSockets();
+const classPollIdCache = new Map();
+const CLASS_POLL_CACHE_TTL_MS = 5000;
 
 // These events will not display a permission error if the user does not have permission to use them
 const PASSIVE_SOCKETS = [
@@ -20,8 +22,36 @@ const PASSIVE_SOCKETS = [
     "setClassSetting",
 ];
 
+async function getClassPollIds(classId) {
+    const cacheKey = String(classId);
+    const cached = classPollIdCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+        return cached.pollIds;
+    }
+
+    const classroomPollRows = await dbGetAll("SELECT pollId FROM class_polls WHERE classId = ?", [classId]);
+    const pollIds = classroomPollRows.map((row) => row.pollId);
+    classPollIdCache.set(cacheKey, {
+        pollIds,
+        expiresAt: now + CLASS_POLL_CACHE_TTL_MS,
+    });
+    return pollIds;
+}
+
+function invalidateClassPollCache(classId) {
+    if (classId == null) {
+        classPollIdCache.clear();
+        return;
+    }
+    classPollIdCache.delete(String(classId));
+}
+
 async function emitToUser(email, event, ...data) {
-    for (const socket of Object.values(userSockets[email])) {
+    const sockets = socketStateStore.getUserSocketsByEmail(email);
+    if (!sockets) return;
+
+    for (const socket of Object.values(sockets)) {
         socket.emit(event, ...data);
     }
 }
@@ -57,7 +87,8 @@ async function userUpdateSocket(email, methodName, ...args) {
  * @param  {...any} data - Additional data to emit with the event
  */
 async function advancedEmitToClass(event, classId, options, ...data) {
-    const classData = classInformation.classrooms[classId];
+    const classData = classStateStore.getClassroom(classId);
+    if (!classData) return;
     const sockets = await io.in(`class-${classId}`).fetchSockets();
 
     for (const socket of sockets) {
@@ -93,8 +124,6 @@ async function advancedEmitToClass(event, classId, options, ...data) {
  */
 async function setClassOfApiSockets(api, classId) {
     try {
-        logger.log("verbose", `[setClassOfApiSockets] api=(${api}) classId=(${classId})`);
-
         const sockets = await io.in(`api-${api}`).fetchSockets();
         for (let socket of sockets) {
             // Ensure the socket has a session before continuing
@@ -109,7 +138,7 @@ async function setClassOfApiSockets(api, classId) {
             socket.emit("setClass", classId);
         }
     } catch (err) {
-        logger.log("error", err.stack);
+        // Error handled
     }
 }
 
@@ -123,16 +152,13 @@ async function setClassOfApiSockets(api, classId) {
  */
 async function setClassOfUserSockets(email, classId) {
     try {
-        logger.log("verbose", `[setClassOfUserSockets] email=(${email}) classId=(${classId})`);
-
         // Check if user has any sockets
-        if (!userSockets[email]) {
-            logger.log("verbose", `[setClassOfUserSockets] No sockets found for user ${email}`);
+        if (!socketStateStore.hasUserSockets(email)) {
             return;
         }
 
         // Update all sockets for this user
-        for (let socket of Object.values(userSockets[email])) {
+        for (let socket of Object.values(socketStateStore.getUserSocketsByEmail(email))) {
             // Ensure the socket has a session before continuing
             if (!socket.request.session) continue;
 
@@ -154,11 +180,7 @@ async function setClassOfUserSockets(email, classId) {
             // Emit the setClass event to the socket
             socket.emit("setClass", classId);
         }
-
-        logger.log("verbose", `[setClassOfUserSockets] Updated ${Object.keys(userSockets[email]).length} socket(s) for user ${email}`);
-    } catch (err) {
-        logger.log("error", err.stack);
-    }
+    } catch (err) {}
 }
 
 async function managerUpdate() {
@@ -166,15 +188,15 @@ async function managerUpdate() {
         const { users, classrooms } = await getManagerData();
 
         // Emit only to connected manager sockets
-        for (const [email, sockets] of Object.entries(userSockets)) {
-            if (classInformation.users[email].permissions >= MANAGER_PERMISSIONS) {
+        for (const [email, sockets] of Object.entries(socketStateStore.getUserSockets())) {
+            if (classStateStore.getUser(email)?.permissions >= MANAGER_PERMISSIONS) {
                 for (const socket of Object.values(sockets)) {
                     socket.emit("managerUpdate", users, classrooms);
                 }
             }
         }
     } catch (err) {
-        logger.log("error", err.stack);
+        // Error handled
     }
 }
 
@@ -350,7 +372,7 @@ class SocketUpdates {
 
     classUpdate(classId = this.socket.request.session.classId, options = { global: true, restrictToControlPanel: false }) {
         try {
-            const classData = structuredClone(classInformation.classrooms[classId]);
+            const classData = structuredClone(classStateStore.getClassroom(classId));
             if (!classData) {
                 return; // If the class is not loaded, then we cannot send a class update
             }
@@ -420,35 +442,29 @@ class SocketUpdates {
                 this.customPollUpdate();
             }
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
     }
 
-    customPollUpdate(email, socket = this.socket) {
+    async customPollUpdate(email, socket = this.socket) {
         try {
             // Ignore any requests which do not have an associated socket with the email
             if (!email && socket.request.session) email = socket.request.session.email;
-            if (!classInformation.users[email]) return;
+            if (!classStateStore.getUser(email)) return;
 
-            const user = classInformation.users[email];
+            const user = classStateStore.getUser(email);
             const classId = user.activeClass;
-            if (!classInformation.classrooms[classId]) return;
+            if (!classStateStore.getClassroom(classId)) return;
 
-            const student = classInformation.classrooms[classId].students[email];
+            const student = classStateStore.getClassroom(classId).students[email];
             if (!student) return; // If the student is not in the class, then do not update the custom polls
 
-            logger.log("info", `[customPollUpdate] email=(${email})`);
             const userSharedPolls = student.sharedPolls;
             const userOwnedPolls = student.ownedPolls;
             const userCustomPolls = Array.from(new Set(userSharedPolls.concat(userOwnedPolls)));
-            const classroomPolls = structuredClone(classInformation.classrooms[classId].sharedPolls);
+            const classroomPolls = await getClassPollIds(classId);
             const publicPolls = [];
             const customPollIds = userCustomPolls.concat(classroomPolls);
-
-            logger.log(
-                "verbose",
-                `[customPollUpdate] userSharedPolls=(${userSharedPolls}) userOwnedPolls=(${userOwnedPolls}) userCustomPolls=(${userCustomPolls}) classroomPolls=(${classroomPolls}) publicPolls=(${publicPolls}) customPollIds=(${customPollIds})`
-            );
 
             database.all(
                 `SELECT * FROM custom_polls WHERE id IN(${customPollIds.map(() => "?").join(", ")}) OR public = 1 OR owner=?`,
@@ -459,6 +475,12 @@ class SocketUpdates {
 
                         for (let customPoll of customPollsData) {
                             customPoll.answers = JSON.parse(customPoll.answers);
+                            // Convert SQLite integer booleans to actual booleans
+                            customPoll.textRes = !!customPoll.textRes;
+                            customPoll.blind = !!customPoll.blind;
+                            customPoll.allowVoteChanges = !!customPoll.allowVoteChanges;
+                            customPoll.allowMultipleResponses = !!customPoll.allowMultipleResponses;
+                            customPoll.public = !!customPoll.public;
                         }
 
                         customPollsData = customPollsData.reduce((newObject, customPoll) => {
@@ -466,7 +488,7 @@ class SocketUpdates {
                                 newObject[customPoll.id] = customPoll;
                                 return newObject;
                             } catch (err) {
-                                logger.log("error", err.stack);
+                                // Error handled
                             }
                         }, {});
 
@@ -476,33 +498,27 @@ class SocketUpdates {
                             }
                         }
 
-                        logger.log(
-                            "verbose",
-                            `[customPollUpdate] publicPolls=(${publicPolls}) classroomPolls=(${classroomPolls}) userCustomPolls=(${userCustomPolls}) customPollsData=(${JSON.stringify(customPollsData)})`
-                        );
-
                         io.to(`user-${email}`).emit("customPollUpdate", publicPolls, classroomPolls, userCustomPolls, customPollsData);
                         const apiId = this.socket && this.socket.request && this.socket.request.session && this.socket.request.session.api;
                         if (apiId) {
                             io.to(`api-${apiId}`).emit("customPollUpdate", publicPolls, classroomPolls, userCustomPolls, customPollsData);
                         }
                     } catch (err) {
-                        logger.log("error", err.stack);
+                        // Error handled
                     }
                 }
             );
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
+    }
+
+    invalidateClassPollCache(classId) {
+        invalidateClassPollCache(classId);
     }
 
     classBannedUsersUpdate(classId = this.socket.request.session.classId) {
         try {
-            logger.log(
-                "info",
-                `[classBannedUsersUpdate] ip=(${this.socket.handshake.address}) session=(${JSON.stringify(this.socket.request.session)})`
-            );
-            logger.log("info", `[classBannedUsersUpdate] classId=(${classId})`);
             if (!classId) return;
 
             database.all(
@@ -516,32 +532,29 @@ class SocketUpdates {
                         advancedEmitToClass(
                             "classBannedUsersUpdate",
                             classId,
-                            { classPermissions: classInformation.classrooms[classId].permissions.manageStudents },
+                            { classPermissions: classStateStore.getClassroom(classId).permissions.manageStudents },
                             bannedStudents
                         );
                     } catch (err) {
-                        logger.log("error", err.stack);
+                        // Error handled
                     }
                 }
             );
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
     }
 
     async getOwnedClasses(email) {
         try {
-            logger.log("info", `[getOwnedClasses] email=(${email})`);
-
             // Check if the user exists before accessing .id
-            if (!classInformation.users[email] || !classInformation.users[email].id) {
-                logger.log("error", `[getOwnedClasses] User not found for email=(${email})`);
+            const user = classStateStore.getUser(email);
+            if (!user || !user.id) {
                 return;
             }
 
             // Get the user's owned classes from the database
-            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [classInformation.users[email].id]);
-            logger.log("info", `[getOwnedClasses] ownedClasses=(${JSON.stringify(ownedClasses)})`);
+            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [user.id]);
 
             // Send the owned classes to the user's sockets
             io.to(`user-${email}`).emit("getOwnedClasses", ownedClasses);
@@ -552,14 +565,12 @@ class SocketUpdates {
                 io.to(`api-${session.api}`).emit("getOwnedClasses", ownedClasses);
             }
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
     }
 
     getPollShareIds(pollId) {
         try {
-            logger.log("info", `[getPollShareIds] pollId=(${pollId})`);
-
             database.all(
                 "SELECT pollId, userId FROM shared_polls LEFT JOIN users ON users.id = shared_polls.userId WHERE pollId=?",
                 pollId,
@@ -574,14 +585,9 @@ class SocketUpdates {
                                 try {
                                     if (err) throw err;
 
-                                    logger.log(
-                                        "info",
-                                        `[getPollShareIds] userPollShares=(${JSON.stringify(userPollShares)}) classPollShares=(${JSON.stringify(classPollShares)})`
-                                    );
-
                                     this.socket.emit("getPollShareIds", userPollShares, classPollShares);
                                 } catch (err) {
-                                    logger.log("error", err.stack);
+                                    // Error handled
                                 }
                             }
                         );
@@ -589,43 +595,45 @@ class SocketUpdates {
                 }
             );
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
     }
 
     timer(sound, active) {
         try {
-            let classData = classInformation.classrooms[this.socket.request.session.classId];
+            const classId = this.socket.request.session.classId;
+            let classData = classStateStore.getClassroom(classId);
             if (classData.timer.timeLeft <= 0) {
-                clearInterval(runningTimers[this.socket.request.session.classId]);
-                runningTimers[this.socket.request.session.classId] = null;
+                socketStateStore.clearRunningTimer(classId);
             }
 
             if (classData.timer.timeLeft > 0 && active) classData.timer.timeLeft--;
             if (classData.timer.timeLeft <= 0 && active && sound) {
-                advancedEmitToClass("timerSound", this.socket.request.session.classId, {});
+                advancedEmitToClass("timerSound", classId, {});
             }
 
             advancedEmitToClass(
                 "vbTimer",
-                this.socket.request.session.classId,
+                classId,
                 {
                     classPermissions: CLASS_SOCKET_PERMISSIONS.vbTimer,
                 },
                 classData.timer
             );
         } catch (err) {
-            logger.log("error", err.stack);
+            // Error handled
         }
     }
 }
 
 module.exports = {
     // Socket information
+    socketStateStore,
     runningTimers,
     rateLimits,
     userSockets,
     PASSIVE_SOCKETS,
+    invalidateClassPollCache,
 
     // Socket functions
     emitToUser,

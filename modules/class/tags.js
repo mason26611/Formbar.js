@@ -1,6 +1,5 @@
-const { classInformation } = require("./classroom");
+const { classStateStore } = require("./classroom");
 const { dbRun } = require("../database");
-const { logger } = require("../logger");
 const { getEmailFromId } = require("../student");
 
 /**
@@ -23,10 +22,11 @@ async function setTags(tags, userSession) {
 
         // If the class is loaded, update the class tags
         const classId = userSession.classId;
-        if (!classId || !classInformation.classrooms[classId]) return;
-        classInformation.classrooms[classId].tags = tags;
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classId || !classroom) return;
+        classStateStore.updateClassroom(classId, { tags });
 
-        for (const student of Object.values(classInformation.classrooms[classId].students)) {
+        for (const student of Object.values(classroom.students)) {
             if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
             if (!student.tags) student.tags = [];
 
@@ -37,28 +37,22 @@ async function setTags(tags, userSession) {
 
             try {
                 await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [studentTags.join(","), student.id, classId]);
-            } catch (err) {
-                logger.log("error", err.stack);
-            }
+            } catch (err) {}
         }
 
         // Persist classroom tags by id
         await dbRun("UPDATE classroom SET tags = ? WHERE id = ?", [tags.toString(), classId]);
-    } catch (err) {
-        logger.log("error", err.stack);
-    }
+    } catch (err) {}
 }
 
 async function saveTags(studentId, tags, userSession) {
     try {
         const email = await getEmailFromId(studentId);
-        logger.log("info", `[saveTags] session=(${JSON.stringify(userSession)})`);
-        logger.log("info", `[saveTags] studentId=(${studentId}) tags=(${JSON.stringify(tags)})`);
         if (!Array.isArray(tags)) return;
 
         // Remove blank/Offline for active students
         // ensure Offline for inactive students
-        const isActiveInClass = classInformation.users[email] && classInformation.users[email].activeClass === userSession.classId;
+        const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
         let normalized = tags
             .filter((tag) => typeof tag === "string")
             .map((tag) => tag.trim())
@@ -77,11 +71,12 @@ async function saveTags(studentId, tags, userSession) {
         normalized = normalized.filter((tag) => tag !== "Offline");
 
         // Get student's current tags
-        const student = classInformation.classrooms[userSession.classId].students[email];
+        const student = classStateStore.getClassroom(userSession.classId)?.students[email];
+        if (!student) return;
         const oldTags = student.tags || [];
 
         // Update tags
-        classInformation.classrooms[userSession.classId].students[email].tags = normalized;
+        classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
 
         // If the "Excluded" tag was added, clear their poll response
         const wasExcluded = oldTags.includes("Excluded");
@@ -94,9 +89,7 @@ async function saveTags(studentId, tags, userSession) {
         }
 
         await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
-    } catch (err) {
-        logger.log("error", err.stack);
-    }
+    } catch (err) {}
 }
 
 module.exports = {

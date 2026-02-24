@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { dbGet } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const NotFoundError = require("@errors/not-found-error");
@@ -46,10 +46,11 @@ module.exports = (router) => {
      */
     router.get("/user/:id", async (req, res) => {
         const userId = req.params.id;
+        req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 
         // Check if the user is already logged in, and if they're not
         // then load them from the database.
-        let user = Object.values(classInformation.users).find((user) => user.id == userId);
+        let user = Object.values(classStateStore.getAllUsers()).find((user) => user.id == userId);
         if (!user) {
             user = await dbGet("SELECT * FROM users WHERE id=?", userId);
         } else {
@@ -63,12 +64,13 @@ module.exports = (router) => {
         const requesterEmail = req.user?.email;
         let userEmail = undefined;
         // Safer check for manager permissions
-        const isManager = requesterEmail && classInformation.users[requesterEmail]?.permissions === MANAGER_PERMISSIONS;
+        const isManager = requesterEmail && classStateStore.getUser(requesterEmail)?.permissions === MANAGER_PERMISSIONS;
         if (user && (requesterEmail === user.email || isManager)) {
             userEmail = user.email;
         }
 
         if (user) {
+            req.infoEvent("user.view.success", "User data returned", { targetUserId: userId });
             res.status(200).json({
                 success: true,
                 data: {
@@ -81,7 +83,7 @@ module.exports = (router) => {
                 },
             });
         } else {
-            throw new NotFoundError("User not found.");
+            throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
         }
     });
 };

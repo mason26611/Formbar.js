@@ -1,7 +1,15 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { logger } = require("@modules/logger");
-const { advancedEmitToClass, userSockets, setClassOfApiSockets, setClassOfUserSockets, userUpdateSocket } = require("@modules/socket-updates");
-const { classInformation, Classroom } = require("@modules/class/classroom");
+
+const {
+    advancedEmitToClass,
+    setClassOfApiSockets,
+    setClassOfUserSockets,
+    userUpdateSocket,
+    invalidateClassPollCache,
+} = require("@modules/socket-updates");
+const { Classroom, classStateStore } = require("@modules/class/classroom");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { socketStateStore } = require("@stores/socket-state-store");
 const {
     MANAGER_PERMISSIONS,
     DEFAULT_CLASS_PERMISSIONS,
@@ -96,27 +104,11 @@ function parseClassPermissions(permissionsRow) {
  * @returns {Object} The normalized classroom object (mutates in place)
  */
 function normalizeClassroomData(classroom) {
-    // Parse JSON fields
-    classroom.sharedPolls = JSON.parse(classroom.sharedPolls);
-    classroom.pollHistory = JSON.parse(classroom.pollHistory);
-
     // Normalize tags to array
     if (classroom.tags) {
         classroom.tags = classroom.tags.split(",");
     } else {
         classroom.tags = [];
-    }
-
-    if (Array.isArray(classroom.pollHistory)) {
-        // Parse poll data within poll history
-        for (let poll of classroom.pollHistory) {
-            poll.data = JSON.parse(poll.data);
-        }
-
-        // Handle empty poll history
-        if (classroom.pollHistory[0] && classroom.pollHistory[0].id == null) {
-            classroom.pollHistory = null;
-        }
     }
 
     return classroom;
@@ -143,8 +135,6 @@ async function createClass(className, ownerId, ownerEmail) {
 
     // Add classroom to the database
     const insertResult = await dbRun("INSERT INTO classroom(name, owner, key, tags) VALUES(?, ?, ?, ?)", [className, ownerId, key, null]);
-
-    logger.log("verbose", "[createClass] Added classroom to database");
 
     // Use the ID of the newly created classroom returned by dbRun
     const classId = insertResult;
@@ -184,13 +174,8 @@ async function createClass(className, ownerId, ownerEmail) {
  * @returns {Promise<void>}
  */
 async function initializeClassroom(id) {
-    logger.log("verbose", `[initializeClassroom] Initializing class with id=(${id})`);
-
     // Fetch classroom data from database
-    const classroom = await dbGet(
-        "SELECT classroom.id, classroom.name, classroom.key, classroom.owner, classroom.tags, (CASE WHEN class_polls.pollId IS NULL THEN json_array() ELSE json_group_array(DISTINCT class_polls.pollId) END) as sharedPolls, (SELECT json_group_array(json_object('id', poll_history.id, 'class', poll_history.class, 'data', poll_history.data, 'date', poll_history.date)) FROM poll_history WHERE poll_history.class = classroom.id ORDER BY poll_history.date) as pollHistory FROM classroom LEFT JOIN class_polls ON class_polls.classId = classroom.id WHERE classroom.id = ?",
-        [id]
-    );
+    const classroom = await dbGet("SELECT id, name, key, owner, tags FROM classroom WHERE id = ?", [id]);
 
     if (!classroom) {
         throw new NotFoundError(`Class with id ${id} does not exist`);
@@ -207,11 +192,6 @@ async function initializeClassroom(id) {
 
     // Normalize classroom data (JSON parsing, tags, poll history)
     normalizeClassroomData(classroom);
-
-    logger.log(
-        "verbose",
-        `[initializeClassroom] id=(${id}) name=(${classroom.name}) key=(${classroom.key}) sharedPolls=(${JSON.stringify(classroom.sharedPolls)})`
-    );
 
     // Validate and normalize permissions
     if (Object.keys(permissions).sort().toString() !== Object.keys(DEFAULT_CLASS_PERMISSIONS).sort().toString()) {
@@ -230,29 +210,28 @@ async function initializeClassroom(id) {
     }
 
     // Create or update classroom in memory
-    if (!classInformation.classrooms[id]) {
-        classInformation.classrooms[id] = new Classroom(
+    if (!classStateStore.getClassroom(id)) {
+        classStateStore.setClassroom(
             id,
-            classroom.name,
-            classroom.key,
-            classroom.owner,
-            permissions,
-            classroom.sharedPolls,
-            classroom.pollHistory,
-            classroom.tags
+            new Classroom({
+                id,
+                className: classroom.name,
+                key: classroom.key,
+                owner: classroom.owner,
+                permissions,
+                tags: classroom.tags,
+            })
         );
     } else {
-        classInformation.classrooms[id].permissions = permissions;
-        classInformation.classrooms[id].sharedPolls = classroom.sharedPolls;
-        classInformation.classrooms[id].pollHistory = classroom.pollHistory;
-        classInformation.classrooms[id].tags = classroom.tags;
+        classStateStore.getClassroom(id).permissions = permissions;
+        classStateStore.getClassroom(id).tags = classroom.tags;
     }
 
     // Get all students in the class and add them to the classroom
     const classStudents = await getStudentsInClass(id);
     for (const studentEmail in classStudents) {
         // If the student is already in the class, skip
-        if (classInformation.classrooms[id].students[studentEmail]) continue;
+        if (classStateStore.getClassroomStudent(id, studentEmail)) continue;
 
         const student = classStudents[studentEmail];
 
@@ -274,11 +253,9 @@ async function initializeClassroom(id) {
         }
 
         student.displayName = student.displayName || student.email;
-        classInformation.users[studentEmail] = student;
-        classInformation.classrooms[id].students[studentEmail] = student;
+        classStateStore.setUser(studentEmail, student);
+        classStateStore.setClassroomStudent(id, studentEmail, student);
     }
-
-    logger.log("verbose", `[initializeClassroom] Successfully initialized class ${id}`);
 }
 
 /**
@@ -287,19 +264,16 @@ async function initializeClassroom(id) {
  * @param {string|number} classId - The ID of the class to start.
  */
 async function startClass(classId) {
-    logger.log("info", `[startClass] classId=(${classId})`);
     await advancedEmitToClass("startClassSound", classId, { api: true });
 
     // Activate the class and send the class active event
-    classInformation.classrooms[classId].isActive = true;
+    classStateStore.getClassroom(classId).isActive = true;
     advancedEmitToClass(
         "isClassActive",
         classId,
         { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classInformation.classrooms[classId].isActive
+        classStateStore.getClassroom(classId).isActive
     );
-
-    logger.log("verbose", `[startClass] classInformation=(${JSON.stringify(classInformation)})`);
 }
 
 /**
@@ -309,20 +283,18 @@ async function startClass(classId) {
  * @param {Object} [userSession] - The session object of the user ending the class.
  */
 async function endClass(classId, userSession) {
-    logger.log("info", `[endClass] classId=(${classId})`);
     await advancedEmitToClass("endClassSound", classId, { api: true });
 
     // Deactivate the class and send the class active event
-    classInformation.classrooms[classId].isActive = false;
+    classStateStore.getClassroom(classId).isActive = false;
     await clearPoll(classId, userSession, true);
 
     advancedEmitToClass(
         "isClassActive",
         classId,
         { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classInformation.classrooms[classId].isActive
+        classStateStore.getClassroom(classId).isActive
     );
-    logger.log("verbose", `[endClass] classInformation=(${JSON.stringify(classInformation)})`);
 }
 
 /**
@@ -334,8 +306,8 @@ async function endClass(classId, userSession) {
  */
 async function checkUserClassPermission(userId, classId, permission) {
     const email = await getEmailFromId(userId);
-    const user = classInformation.users[email];
-    const classroom = classInformation.classrooms[classId];
+    const user = classStateStore.getUser(email);
+    const classroom = classStateStore.getClassroom(classId);
 
     if (!user || !classroom) {
         throw new NotFoundError("User or classroom not found in active sessions");
@@ -357,10 +329,10 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     // Find the user
     let user = await dbGet("SELECT id FROM users WHERE email=?", [email]);
 
-    if (!user && !classInformation.users[email]) {
+    if (!user && !classStateStore.getUser(email)) {
         throw new NotFoundError("User is not in database");
-    } else if (classInformation.users[email] && classInformation.users[email].isGuest) {
-        user = classInformation.users[email];
+    } else if (classStateStore.getUser(email) && classStateStore.getUser(email).isGuest) {
+        user = classStateStore.getUser(email);
     }
 
     // Get the class-user relationship if the user is not a guest
@@ -391,7 +363,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         }
 
         // Get the student's session data
-        let currentUser = classInformation.users[email];
+        let currentUser = classStateStore.getUser(email);
 
         // Set class permissions and active class
         currentUser.classPermissions = classUser.permissions;
@@ -400,14 +372,14 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         // Load tags from classusers table
         currentUser.tags = classUser.tags ? classUser.tags.split(",").filter(Boolean) : [];
         currentUser.tags = currentUser.tags.filter((tag) => tag !== "Offline");
-        classInformation.users[email].tags = currentUser.tags;
+        classStateStore.getUser(email).tags = currentUser.tags;
 
         // Add the student to the class
-        const classroom = classInformation.classrooms[classId];
-        classroom.students[email] = currentUser;
+        const classroom = classStateStore.getClassroom(classId);
+        classStateStore.setClassroomStudent(classId, email, currentUser);
 
         // Set the active class of the user
-        classInformation.users[email].activeClass = classId;
+        classStateStore.getUser(email).activeClass = classId;
         advancedEmitToClass("joinSound", classId, {});
 
         // Set session class and classId
@@ -422,8 +394,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Call classUpdate on all user's tabs
         userUpdateSocket(email, "classUpdate", classId, { global: false, restrictToControlPanel: true });
-
-        logger.log("verbose", `[addUserToClassroomSession] User joined successfully`);
         return true;
     } else {
         // If the user is not a guest, insert them into the database
@@ -431,23 +401,21 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
             await dbRun("INSERT INTO classusers(classId, studentId, permissions) VALUES(?, ?, ?)", [
                 classId,
                 user.id,
-                classInformation.classrooms[classId].permissions.userDefaults,
+                classStateStore.getClassroom(classId).permissions.userDefaults,
             ]);
-
-            logger.log("info", "[addUserToClassroomSession] Added user to classusers");
         }
 
         // Grab the user from the users list
-        const classData = classInformation.classrooms[classId];
-        let currentUser = classInformation.users[email];
+        const classData = classStateStore.getClassroom(classId);
+        let currentUser = classStateStore.getUser(email);
         currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
         currentUser.activeClass = classId;
         currentUser.tags = [];
 
         // Add the student to the class
-        classData.students[email] = currentUser;
+        classStateStore.setClassroomStudent(classId, email, currentUser);
 
-        classInformation.users[email].activeClass = classId;
+        classStateStore.getUser(email).activeClass = classId;
 
         setClassOfApiSockets(currentUser.API, classId);
 
@@ -457,8 +425,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Call classUpdate on all user's tabs
         userUpdateSocket(email, "classUpdate", classId, { global: false, restrictToControlPanel: true });
-
-        logger.log("verbose", `[addUserToClassroomSession] New user joined successfully`);
         return true;
     }
 }
@@ -473,8 +439,6 @@ async function joinClass(userData, classId) {
     const email = userData.email;
     requireInternalParam(classId, "classId");
     requireInternalParam(email, "email");
-
-    logger.log("info", `[joinClass] session=(${JSON.stringify(userData)}) classId=${classId}`);
 
     // Convert class key to ID if necessary
     const dbClassroom = await dbGet("SELECT * FROM classroom WHERE key=? OR id=?", [classId, classId]);
@@ -500,7 +464,7 @@ async function joinClass(userData, classId) {
     }
 
     // Initialize classroom if not already loaded
-    if (!classInformation.classrooms[classId]) {
+    if (!classStateStore.getClassroom(classId)) {
         await initializeClassroom(classId);
     }
 
@@ -508,8 +472,9 @@ async function joinClass(userData, classId) {
     const response = await addUserToClassroomSession(classId, email, userData);
 
     // Update all user sockets with the new class
-    if (response === true && userSockets[email]) {
-        for (const userSocket of Object.values(userSockets[email])) {
+    const userSockets = socketStateStore.getUserSocketsByEmail(email);
+    if (response === true && userSockets) {
+        for (const userSocket of Object.values(userSockets)) {
             userSocket.request.session.classId = classId;
             userSocket.request.session.save();
             userSocket.emit("joinClass", response);
@@ -532,7 +497,7 @@ function leaveClass(userData, classId) {
     }
 
     const email = userData.email;
-    const user = classInformation.users[email];
+    const user = classStateStore.getUser(email);
     if (!user || user.activeClass !== classId) {
         throw new NotFoundError("User is not in the specified class");
     }
@@ -540,7 +505,7 @@ function leaveClass(userData, classId) {
     // Kick the user from the classroom entirely if they're a guest
     // If not, kick them from the session
     advancedEmitToClass("leaveSound", classId, {});
-    classKickStudent(user.id, classId, { exitRoom: classInformation.users[email].isGuest });
+    classKickStudent(user.id, classId, { exitRoom: classStateStore.getUser(email).isGuest });
     return true;
 }
 
@@ -550,7 +515,7 @@ function leaveClass(userData, classId) {
  * @returns {boolean} True if the class is active, false otherwise.
  */
 function isClassActive(classId) {
-    const classroom = classInformation.classrooms[classId];
+    const classroom = classStateStore.getClassroom(classId);
     return classroom.isActive;
 }
 
@@ -564,7 +529,7 @@ async function deleteRooms(userId) {
 
     await dbRun("DELETE FROM classroom WHERE owner=?", classrooms[0].owner);
     for (const classroom of classrooms) {
-        if (classInformation.classrooms[classroom.id]) {
+        if (classStateStore.getClassroom(classroom.id)) {
             await endClass(classroom.id);
         }
 
@@ -574,6 +539,8 @@ async function deleteRooms(userId) {
             dbRun("DELETE FROM links WHERE classId=?", classroom.id),
             dbRun("DELETE FROM lessons WHERE class=?", classroom.id),
         ]);
+        invalidateClassPollCache(classroom.id);
+        classCodeCacheStore.invalidateByClassId(classroom.id);
     }
 }
 

@@ -1,7 +1,7 @@
-const { classInformation } = require("../class/classroom");
+const { classStateStore } = require("../class/classroom");
 const { database, dbGetAll, dbGet } = require("../database");
-const { logger } = require("../logger");
 const { compare } = require("../crypto");
+const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 
 /**
  * Asynchronous function to get the current user's data.
@@ -88,8 +88,9 @@ async function getUser(userIdentifier) {
         };
 
         // If the user is in a class and is logged in
-        if (classInformation.classrooms[classId] && classInformation.classrooms[classId].students[dbUser.email]) {
-            let cdUser = classInformation.classrooms[classId].students[dbUser.email];
+        const classroom = classStateStore.getClassroom(classId);
+        if (classroom && classroom.students[dbUser.email]) {
+            let cdUser = classroom.students[dbUser.email];
             if (cdUser) {
                 // Update the user's data with the data from the class
                 userData.loggedIn = true;
@@ -98,9 +99,6 @@ async function getUser(userIdentifier) {
                 userData.pogMeter = cdUser.pogMeter;
             }
         }
-
-        // Log the user's data
-        logger.log("verbose", `[getUser] userData=(${JSON.stringify(userData)})`);
 
         // Return the user's data
         return userData;
@@ -116,9 +114,6 @@ async function getUser(userIdentifier) {
  * @param userSession
  */
 async function getUserOwnedClasses(email, userSession) {
-    logger.log("info", `[getOwnedClasses] session=(${JSON.stringify(userSession)})`);
-    logger.log("info", `[getOwnedClasses] email=(${email})`);
-
     const userId = (await dbGet("SELECT id FROM users WHERE email = ?", [email])).id;
     return await dbGetAll("SELECT * FROM classroom WHERE owner=?", [userId]);
 }
@@ -131,23 +126,15 @@ async function getUserOwnedClasses(email, userSession) {
  */
 function getUserClass(email) {
     try {
-        // Log the email
-        logger.log("info", `[getUserClass] email=(${email})`);
-
+        const allClassrooms = classStateStore.getAllClassrooms();
         // Iterate over the classrooms to find which class the user is in
-        for (const classroomId in classInformation.classrooms) {
-            const classroom = classInformation.classrooms[classroomId];
+        for (const classroomId in allClassrooms) {
+            const classroom = allClassrooms[classroomId];
             if (classroom.students[email]) {
-                // Log the class id
-                logger.log("verbose", `[getUserClass] classId=(${classInformation.id})`);
-
                 // Return the class code
                 return classroom.id;
             }
         }
-
-        // If the user is not found in any class, log null
-        logger.log("verbose", `[getUserClass] classId=(${null})`);
 
         // Return null
         return null;
@@ -156,8 +143,6 @@ function getUserClass(email) {
         return err;
     }
 }
-
-const API_KEY_CACHE = new Map(); // Stores API key to email mappings
 
 /**
  * Asynchronous function to get the email associated with a given API key.
@@ -170,8 +155,9 @@ async function getEmailFromAPIKey(api) {
         if (!api) return { error: "Missing API key" };
 
         // Check if the API key is already cached
-        if (API_KEY_CACHE.has(api)) {
-            return API_KEY_CACHE.get(api);
+        const cachedEmail = apiKeyCacheStore.get(api);
+        if (cachedEmail) {
+            return cachedEmail;
         }
 
         // Query the database for the email associated with the API key
@@ -190,7 +176,6 @@ async function getEmailFromAPIKey(api) {
                     }
 
                     if (!userData) {
-                        logger.log("verbose", "[getEmailFromAPIKeyClass] not a valid API Key");
                         resolve({ error: "Not a valid API key" });
                         return;
                     }
@@ -206,7 +191,7 @@ async function getEmailFromAPIKey(api) {
         if (user.error) return user;
 
         // If no error occurred, cache the email and return it
-        API_KEY_CACHE.set(api, user.email);
+        apiKeyCacheStore.set(api, user.email);
         return user.email;
     } catch (err) {
         // If an error occurs, return the error

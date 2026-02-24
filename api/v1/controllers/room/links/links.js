@@ -50,6 +50,7 @@ module.exports = (router) => {
     router.get("/room/:id/links", isAuthenticated, hasClassPermission(GUEST_PERMISSIONS), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
+        req.infoEvent("room.links.view.attempt", "Attempting to view room links", { classId });
 
         const links = getLinksInRoom(classId);
         if (!(await isUserInRoom(req.user.id, classId))) {
@@ -57,6 +58,7 @@ module.exports = (router) => {
         }
 
         if (links) {
+            req.infoEvent("room.links.view.success", "Room links returned", { classId, linkCount: links.length });
             res.status(200).json({
                 success: true,
                 data: { links },

@@ -1,7 +1,8 @@
-const { classInformation, Classroom } = require("../class/classroom");
+const { Classroom } = require("../class/classroom");
 const { Student } = require("../student");
-const express = require("express");
 const { SocketUpdates } = require("../socket-updates");
+const { classStateStore } = require("@modules/class/classroom");
+const express = require("express");
 
 // Common test data
 const testData = {
@@ -17,12 +18,12 @@ const testData = {
  */
 function createTestUser(email, classId, permissions = 5) {
     const student = new Student(email, 1, permissions, 0, [], [], [], "", false);
-    classInformation.users[email] = student;
+    // setUser(email, student);
 
     // If a class id is provided, also create the student in the class
     if (classId) {
         student.classPermissions = student.permissions;
-        classInformation.classrooms[classId].students[email] = student;
+        setClassroomStudent(classId, email, student);
     }
     return student;
 }
@@ -34,8 +35,9 @@ function createTestUser(email, classId, permissions = 5) {
  * @param {string} name - The name of the test class
  */
 function createTestClass(code, name) {
-    classInformation.classrooms[code] = new Classroom(code, name, code, 1, [], [], []);
-    return classInformation.classrooms[code];
+    const classroom = new Classroom({ id: code, className: name, key: code, owner: 1 });
+    classStateStore.setClassroom(code, classroom);
+    return classStateStore.getClassroom(code);
 }
 
 // Creates an express server for testing

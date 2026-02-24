@@ -1,6 +1,5 @@
-const { isAuthenticated, permCheck } = require("@modules/middleware/authentication");
-const { classInformation } = require("@modules/class/classroom");
-const { logger } = require("@modules/logger");
+const { isAuthenticated, permCheck } = require("@middleware/authentication");
+const { classStateStore } = require("@modules/class/classroom");
 const AuthError = require("@errors/auth-error");
 
 module.exports = {
@@ -13,9 +12,9 @@ module.exports = {
         router.get("/student", isAuthenticated, permCheck, (req, res) => {
             // If the student is not currently in a class, redirect them back to the home page
             const email = req.user.email;
-            const userData = classInformation.users[email];
+            const userData = classStateStore.getUser(email);
             const classId = userData && userData.activeClass != null ? userData.activeClass : req.user.classId;
-            const classroom = classInformation.classrooms[classId];
+            const classroom = classStateStore.getClassroom(classId);
             if (!classroom || !classroom.students || !classroom.students[email]) {
                 throw new AuthError("You are not currently in a class.");
             }
@@ -28,24 +27,27 @@ module.exports = {
             };
             let answer = req.query.letter;
 
-            logger.log("info", `[get /student] ip=(${req.ip}) user=(${req.user?.email})`);
-            logger.log("verbose", `[get /student] question=(${JSON.stringify(req.query.question)}) answer=(${req.query.letter})`);
+            req.infoEvent("student.page.view", "Student page accessed", { classId });
+            req.infoEvent("student.question.view", "Student viewing question", { questionId: req.query.question, answer: req.query.letter });
 
             if (answer) {
-                classInformation.classrooms[classId].students[req.user.email].pollRes.buttonRes = answer;
+                classStateStore.updateClassroomStudent(classId, req.user.email, (student) => {
+                    student.pollRes.buttonRes = answer;
+                });
             }
 
             // Render the student page with the user's information
-            logger.log(
-                "verbose",
-                `[get /student] user=(${JSON.stringify(user)}) myRes = (classInformation.classrooms[${"classId"}].students[req.user.email].pollRes.buttonRes) myTextRes = (classInformation.classrooms[${"classId"}].students[req.user.email].pollRes.textRes) lesson = (classInformation.classrooms[${"classId"}].lesson)`
-            );
+            req.infoEvent("student.page.render", `Student page data retrieved`, {
+                user: req.user.email,
+                classId,
+                hasButtonRes: !!classStateStore.getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
+            });
             res.status(200).json({
                 success: true,
                 data: {
                     user: JSON.stringify(user),
-                    myRes: classInformation.classrooms[classId].students[req.user.email].pollRes.buttonRes,
-                    myTextRes: classInformation.classrooms[classId].students[req.user.email].pollRes.textRes,
+                    myRes: classStateStore.getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
+                    myTextRes: classStateStore.getClassroomStudent(classId, req.user.email).pollRes.textRes,
                 },
             });
         });
@@ -95,16 +97,18 @@ module.exports = {
         It'll save your response to the student object and the database.
         */
         router.post("/student", isAuthenticated, permCheck, (req, res) => {
-            logger.log("info", `[post /student] ip=(${req.ip}) user=(${req.user?.email})`);
-            logger.log("verbose", `[post /student] poll=(${JSON.stringify(req.query.poll)}) question=(${JSON.stringify(req.body.question)})`);
+            req.infoEvent("student.poll.submit", "Student submitting poll response");
+            req.infoEvent("student.poll.data", "Poll submission data", { pollId: req.query.poll, questionId: req.body.question });
             const email = req.user.email;
-            const userData = classInformation.users[email];
+            const userData = classStateStore.getUser(email);
             const classId = userData && userData.activeClass != null ? userData.activeClass : req.user.classId;
 
             if (req.query.poll) {
                 const answer = req.body.poll;
                 if (answer) {
-                    classInformation.classrooms[classId].students[req.user.email].pollRes.buttonRes = answer;
+                    classStateStore.updateClassroomStudent(classId, req.user.email, (student) => {
+                        student.pollRes.buttonRes = answer;
+                    });
                 }
                 res.status(200).end();
             }

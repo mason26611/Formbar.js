@@ -1,6 +1,5 @@
-const { logger } = require("@modules/logger");
-const { classInformation } = require("@modules/class/classroom");
 const { Student } = require("@modules/student");
+const { classStateStore } = require("@modules/class/classroom");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 
@@ -69,30 +68,34 @@ module.exports = (router) => {
             throw new ValidationError("Email and password are required.");
         }
 
-        logger.log("info", `[post /auth/login] ip=(${req.ip}) email=(${email})`);
+        req.infoEvent("auth.login.attempt", "User login attempt");
 
         // Attempt login through auth service
         const result = await authService.login(email, password);
         if (result.code) {
-            logger.log("verbose", "[post /auth/login] Invalid credentials");
-            throw new ValidationError("Incorrect password. Try again.");
+            throw new ValidationError("Incorrect password. Try again.", { event: "auth.login.invalid", reason: "invalid_credentials" });
         }
 
         // If not already logged in, create a new Student instance in classInformation
         const { tokens, user: userData } = result;
-        if (!classInformation.users[email]) {
-            classInformation.users[email] = new Student(
-                userData.email,
-                userData.id,
-                userData.permissions,
-                userData.API,
-                JSON.parse(userData.ownedPolls || "[]"),
-                JSON.parse(userData.sharedPolls || "[]"),
-                userData.tags ? userData.tags.split(",") : [],
-                userData.displayName,
-                false
+        if (!classStateStore.getUser(email)) {
+            classStateStore.setUser(
+                email,
+                new Student(
+                    userData.email,
+                    userData.id,
+                    userData.permissions,
+                    userData.API,
+                    JSON.parse(userData.ownedPolls || "[]"),
+                    JSON.parse(userData.sharedPolls || "[]"),
+                    userData.tags ? userData.tags.split(",") : [],
+                    userData.displayName,
+                    false
+                )
             );
         }
+
+        req.infoEvent("auth.login.success", "User logged in successfully");
 
         res.json({
             success: true,

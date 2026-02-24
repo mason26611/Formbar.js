@@ -17,16 +17,15 @@ if (!fs.existsSync("database/database.db")) {
 }
 
 // Custom modules
-const { logger } = require("@modules/logger.js");
 const { initSocketRoutes } = require("./sockets/init.js");
 const { app, io, http } = require("@modules/web-server.js");
 const { settings } = require("@modules/config.js");
-const { lastActivities, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
+const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
 
 const { logout } = require("@modules/user/user-session");
 const { passport } = require("@modules/google-oauth.js");
-const { rateLimiter } = require("@modules/middleware/rate-limiter");
+const { rateLimiter } = require("@middleware/rate-limiter");
 
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
@@ -35,14 +34,18 @@ const sessionMiddleware = session({
     saveUninitialized: false, // Forces a session that is new, but not modified, or 'uninitialized' to be saved to the session store
 });
 
-const errorHandlerMiddleware = require("@modules/middleware/error-handler");
+const errorHandlerMiddleware = require("@middleware/error-handler");
+const requestLoggerMiddleware = require("@middleware/request-logger");
+
+// Apply logger middleware
+// This should always be applied first so that we can log when anything goes wrong
+app.use(requestLoggerMiddleware);
 
 // Connect rate limiter middleware
 app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
-
 // Initialize passport for Google OAuth
 app.use(passport.initialize());
 app.use(passport.session());
@@ -81,9 +84,11 @@ app.use(express.json());
 const INACTIVITY_CHECK_TIME = 60000; // 1 Minute
 setInterval(() => {
     const currentTime = Date.now();
-    for (const email of Object.keys(lastActivities)) {
-        const userSockets = lastActivities[email];
-        for (const [socketId, activity] of Object.entries(userSockets)) {
+    for (const email of Object.keys(socketStateStore.getLastActivities())) {
+        const userActivities = socketStateStore.getUserLastActivities(email);
+        if (!userActivities) continue;
+
+        for (const [socketId, activity] of Object.entries(userActivities)) {
             if (currentTime - activity.time > INACTIVITY_LIMIT) {
                 // Check if this is an API socket - API sockets should not timeout
                 let isApiSocket = false;
@@ -99,7 +104,7 @@ setInterval(() => {
                 // Only logout non-API sockets
                 if (!isApiSocket) {
                     logout(activity.socket); // Log the user out
-                    delete lastActivities[email]; // Remove the user from the inactivity check
+                    socketStateStore.clearUserLastActivities(email);
                 }
             }
         }
@@ -166,7 +171,6 @@ for (const apiVersionFolder of apiVersionFolders) {
             const registerRoute = require(`./api/${apiVersionFolder}/${controllerFolder}/${routeFile}`);
             if (typeof registerRoute === "function") {
                 registerRoute(router);
-                router.use(`/api/${apiVersionFolder}/${routeFile}`, registerRoute);
             }
         }
 
@@ -174,7 +178,6 @@ for (const apiVersionFolder of apiVersionFolders) {
             const registerRoute = require(`./api/${apiVersionFolder}/${controllerFolder}/${routeFile}`);
             if (typeof registerRoute === "function") {
                 registerRoute(router);
-                router.use(`/api/${apiVersionFolder}/${routeFile}`, registerRoute);
             }
         }
 
@@ -205,5 +208,4 @@ http.listen(settings.port, async () => {
         console.log(
             'To enable the disabled function(s), follow the related instructions under "Hosting Formbar.js Locally" in the Formbar wiki page at https://github.com/csmith1188/Formbar.js/wiki'
         );
-    logger.log("info", "Start");
 });

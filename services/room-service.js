@@ -1,5 +1,4 @@
-const { logger } = require("@modules/logger");
-const { classInformation } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser } = require("@modules/socket-updates");
 const { getIdFromEmail } = require("@modules/student");
@@ -39,7 +38,6 @@ function getLinksInRoom(classId) {
  */
 async function joinRoomByCode(code, sessionUser) {
     const email = sessionUser.email;
-    logger.log("info", `[joinRoomByCode] email=(${email}) roomCode=(${code})`);
 
     // Find the classroom from the database
     const classroomDb = await dbGet("SELECT * FROM classroom WHERE key=?", [code]);
@@ -50,15 +48,13 @@ async function joinRoomByCode(code, sessionUser) {
     }
 
     // Initialize classroom if not already loaded
-    if (!classInformation.classrooms[classroomDb.id]) {
+    if (!classStateStore.getClassroom(classroomDb.id)) {
         await getClassService().initializeClassroom(classroomDb.id);
     }
 
     // Delegate to class-service to handle the actual joining logic
     // This avoids code duplication and keeps room-service focused on code validation
     const result = await getClassService().addUserToClassroomSession(classroomDb.id, email, sessionUser);
-
-    logger.log("verbose", `[joinRoomByCode] User joined successfully`);
     return result;
 }
 
@@ -70,8 +66,6 @@ async function joinRoomByCode(code, sessionUser) {
  * @returns {Promise<boolean>} Returns true if joined successfully.
  */
 async function joinRoom(userSession, classCode) {
-    logger.log("info", `[joinRoom] session=(${JSON.stringify(userSession)}) classCode=${classCode}`);
-
     const response = await joinRoomByCode(classCode, userSession);
     emitToUser(userSession.email, "joinClass", response);
     return true;
@@ -90,11 +84,13 @@ async function leaveRoom(userData) {
     const studentId = await getIdFromEmail(email);
 
     // Remove the user from the class
-    delete classInformation.classrooms[classId].students[email];
-    classInformation.users[email].activeClass = null;
-    classInformation.users[email].break = false;
-    classInformation.users[email].help = false;
-    classInformation.users[email].classPermissions = null;
+    classStateStore.removeClassroomStudent(classId, email);
+    classStateStore.updateUser(email, {
+        activeClass: null,
+        break: false,
+        help: false,
+        classPermissions: null,
+    });
     await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
 
     // If the owner of the classroom leaves, then delete the classroom

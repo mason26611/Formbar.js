@@ -1,5 +1,5 @@
-const { logger } = require("@modules/logger");
-const { classInformation } = require("@modules/class/classroom");
+const { getLogger } = require("@modules/logger");
+const { classStateStore } = require("@modules/class/classroom");
 const { settings } = require("@modules/config");
 const { PAGE_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll, dbRun } = require("@modules/database");
@@ -23,7 +23,13 @@ async function cleanRefreshTokens() {
         // Also clean up expired authorization codes
         await cleanupExpiredAuthorizationCodes();
     } catch (err) {
-        logger.log("error", err.stack);
+        const logger = await getLogger();
+        logger.error({
+            event: "auth.cleanup.error",
+            message: "Failed to clean up expired refresh tokens or authorization codes",
+            error: err.message,
+            stack: err.stack,
+        });
     }
 }
 
@@ -44,21 +50,25 @@ async function cleanRefreshTokens() {
 function isAuthenticated(req, res, next) {
     const accessToken = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : null;
     if (!accessToken) {
+        req.warnEvent(req, "auth.missing_token", "User is not authenticated: No access token provided");
         throw new AuthError("User is not authenticated");
     }
 
     const decodedToken = verifyToken(accessToken);
     if (decodedToken.error) {
+        req.warnEvent(req, "auth.invalid_token", "Invalid access token provided", { error: decodedToken.error });
         throw new AuthError("Invalid access token provided.");
     }
 
     const email = decodedToken.email;
     if (!email) {
+        req.warnEvent(req, "auth.missing_email", "Invalid access token provided: Missing 'email'");
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
-    const user = classInformation.users[email];
+    const user = classStateStore.getUser(email);
     if (!user) {
+        req.warnEvent(req, "auth.user_not_found", `User not found in ClassStateStore: ${email}`, { email });
         throw new AuthError("User is not authenticated");
     }
 
@@ -79,6 +89,7 @@ function isVerified(req, res, next) {
     if (!email) {
         const accessToken = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : null;
         if (!accessToken) {
+            req.warnEvent(req, "auth.not_authenticated", "User is not authenticated: No token found");
             throw new AuthError("User is not authenticated.");
         }
 
@@ -89,26 +100,27 @@ function isVerified(req, res, next) {
     }
 
     if (!email) {
+        req.warnEvent(req, "auth.not_authenticated", "User is not authenticated: Could not determine email");
         throw new AuthError("User is not authenticated.");
     }
 
-    const user = classInformation.users[email];
+    const user = classStateStore.getUser(email);
     // If the user is verified or email functionality is disabled...
     if ((user && user.verified) || !settings.emailEnabled || (user && user.permissions == GUEST_PERMISSIONS)) {
         next();
     } else {
+        req.warnEvent(req, "auth.not_verified", `User email is not verified: ${email}`, { email });
         throw new AuthError("User email is not verified.");
     }
 }
 
 // Check if user has the permission levels to enter that page
-function permCheck(req, res, next) {
+async function permCheck(req, res, next) {
     const email = req.user?.email;
     if (!email) {
+        req.warnEvent(req, "auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
         throw new AuthError("User is not authenticated");
     }
-
-    logger.log("info", `[permCheck] ip=(${req.ip}) user=(${email}) url=(${req.url})`);
 
     if (req.url) {
         // Defines users desired endpoint
@@ -131,15 +143,14 @@ function permCheck(req, res, next) {
 
         // Ensure the url path is all lowercase
         urlPath = urlPath.toLowerCase();
-
-        logger.log("verbose", `[permCheck] urlPath=(${urlPath})`);
         if (!PAGE_PERMISSIONS[urlPath]) {
-            logger.log("info", `[permCheck] ${urlPath} is not in the page permissions`);
+            req.warnEvent(req, "auth.perm_check.not_found", `Page permissions not found for path: ${urlPath}`, { urlPath });
             throw new NotFoundError(`${urlPath} is not in the page permissions`);
         }
 
-        const user = classInformation.users[email];
+        const user = classStateStore.getUser(email);
         if (!user) {
+            req.warnEvent(req, "auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
             throw new AuthError("User not found");
         }
 
@@ -149,29 +160,16 @@ function permCheck(req, res, next) {
         } else if (!PAGE_PERMISSIONS[urlPath].classPage && user.permissions >= PAGE_PERMISSIONS[urlPath].permissions) {
             next();
         } else {
-            logger.log("info", "[permCheck] Not enough permissions");
-            throw new ForbiddenError("You do not have permissions to access this page.");
+            req.warnEvent(req, "auth.perm_check.forbidden", `User ${email} does not have permissions to access this resource`, {
+                email,
+                userPermissions: user.permissions,
+                requiredPermissions: PAGE_PERMISSIONS[urlPath].permissions,
+            });
+            throw new ForbiddenError("You do not have permission to access this resource.");
         }
+    } else {
+        next();
     }
-}
-
-function checkIPBanned(ip) {
-    if (!ip) return false;
-    if (settings.whitelistActive && Object.keys(whitelistedIps).length > 0) {
-        const isWhitelisted = Object.values(whitelistedIps).some((value) => ip.startsWith(value.ip));
-        if (!isWhitelisted) {
-            return true;
-        }
-    }
-
-    if (settings.blacklistActive && Object.keys(blacklistedIps).length > 0) {
-        const isBlacklisted = Object.values(blacklistedIps).some((value) => ip.startsWith(value.ip));
-        if (isBlacklisted) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 module.exports = {
@@ -185,5 +183,4 @@ module.exports = {
     isAuthenticated,
     isVerified,
     permCheck,
-    checkIPBanned,
 };

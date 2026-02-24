@@ -1,7 +1,6 @@
-const { classInformation } = require("./class/classroom");
+const { classStateStore } = require("./class/classroom");
 const { database, dbGet } = require("./database");
 const { STUDENT_PERMISSIONS } = require("./permissions");
-const { logger } = require("./logger");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
@@ -41,7 +40,6 @@ async function getStudentsInClass(classId) {
     const studentIdsAndPermissions = await new Promise((resolve, reject) => {
         database.all("SELECT studentId, permissions FROM classusers WHERE classId = ?", [classId], (err, rows) => {
             if (err) {
-                logger.log("error", err.stack);
                 return reject(err);
             }
 
@@ -59,7 +57,6 @@ async function getStudentsInClass(classId) {
     const studentsData = await new Promise((resolve, reject) => {
         database.all("SELECT * FROM users WHERE id IN (" + studentIds.map(() => "?").join(",") + ")", studentIds, (err, rows) => {
             if (err) {
-                logger.log("error", err.stack);
                 return reject(err);
             }
 
@@ -103,8 +100,9 @@ async function getStudentsInClass(classId) {
 function getIdFromEmail(email) {
     try {
         // If the user is already loaded, return the id
-        if (classInformation.users[email]) {
-            return classInformation.users[email].id;
+        const user = classStateStore.getUser(email);
+        if (user) {
+            return user.id;
         }
 
         // If the user isn't loaded, get the id from the database
@@ -115,13 +113,13 @@ function getIdFromEmail(email) {
             });
         });
     } catch (err) {
-        logger.log("error", err.stack);
+        // Error handled by caller
     }
 }
 
 async function getEmailFromId(userId) {
     let email = null;
-    for (const user of Object.values(classInformation.users)) {
+    for (const user of Object.values(classStateStore.getAllUsers())) {
         if (user.id === userId) {
             email = user.email;
             break;

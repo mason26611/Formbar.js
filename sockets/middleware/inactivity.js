@@ -1,6 +1,8 @@
-const { logger } = require("@modules/logger");
+const { handleSocketError } = require("@modules/socket-error-handler");
+const { socketStateStore } = require("@stores/socket-state-store");
+
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 60 minutes
-const lastActivities = {};
+const lastActivities = socketStateStore.getLastActivities();
 
 module.exports = {
     order: 40,
@@ -21,19 +23,18 @@ module.exports = {
                 if (!isApiSocket) {
                     const email = socket.request.session.email;
                     if (email) {
-                        if (!lastActivities[email]) {
-                            lastActivities[email] = {};
-                        }
-                        lastActivities[email][socket.id] = { socket, time: Date.now() };
+                        socketStateStore.touchLastActivity(email, socket.id, socket);
                     }
                 }
 
                 next();
             } catch (err) {
-                logger.log("error", err.stack);
+                handleSocketError(err, socket, "inactivity-middleware");
+                next(err);
             }
         });
     },
     INACTIVITY_LIMIT,
     lastActivities,
+    socketStateStore,
 };

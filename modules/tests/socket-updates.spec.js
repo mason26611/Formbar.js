@@ -1,4 +1,3 @@
-const { classInformation } = require("../class/classroom");
 const { SocketUpdates } = require("../socket-updates");
 const { createTestUser, createTestClass, testData } = require("./tests");
 const { io } = require("../web-server");
@@ -34,7 +33,6 @@ describe("Socket Updates", () => {
         it("emits classUpdate with server-computed poll totals", async () => {
             const { createTestClass, createTestUser } = require("./tests");
             const { DEFAULT_CLASS_PERMISSIONS, TEACHER_PERMISSIONS, STUDENT_PERMISSIONS } = require("../permissions");
-            const { classInformation } = require("../class/classroom");
 
             // Setup classroom and permissions
             const classData = createTestClass(testData.code, "Test Class");

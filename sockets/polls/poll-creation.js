@@ -1,6 +1,6 @@
-const { classInformation } = require("@modules/class/classroom");
-const { logger } = require("@modules/logger");
+const { classStateStore } = require("@modules/class/classroom");
 const { createPoll } = require("@services/poll-service");
+const { handleSocketError } = require("@modules/socket-error-handler");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -8,7 +8,7 @@ module.exports = {
         socket.on("startPoll", async (...args) => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email].activeClass;
+                const classId = classStateStore.getUser(email).activeClass;
 
                 // Support both passing a single object or multiple arguments for backward compatibility
                 let pollData;
@@ -61,7 +61,7 @@ module.exports = {
                 );
                 socket.emit("startPoll");
             } catch (err) {
-                logger.log("error", err.stack);
+                handleSocketError(err, socket, "startPoll");
             }
         });
     },
