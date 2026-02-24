@@ -1,8 +1,8 @@
-const { userSockets, managerUpdate, userUpdateSocket } = require("../socket-updates");
+const { managerUpdate, userUpdateSocket } = require("../socket-updates");
 const { classStateStore } = require("../class/classroom");
 const { database, dbGet, dbRun } = require("../database");
 const { deleteRooms, endClass } = require("@services/class-service");
-const { lastActivities } = require("../../sockets/middleware/inactivity");
+const { socketStateStore } = require("@stores/socket-state-store");
 const { GUEST_PERMISSIONS } = require("../permissions");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { handleSocketError } = require("../socket-error-handler");
@@ -14,15 +14,8 @@ function logout(socket) {
 
     // Remove this socket from the user's active sockets first and determine if this was the last one
     let isLastSession = false;
-    if (userSockets[email]) {
-        delete userSockets[email][socket.id];
-        if (Object.keys(userSockets[email]).length === 0) {
-            delete userSockets[email];
-            isLastSession = true;
-        }
-    } else {
-        isLastSession = true;
-    }
+    const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
+    isLastSession = emptyAfterRemoval;
 
     // Leave the room only on this socket
     if (classId) socket.leave(`class-${classId}`);
@@ -35,9 +28,7 @@ function logout(socket) {
             socket.emit("reload");
 
             // If the socket had an associated last activity, remove it
-            if (lastActivities[email] && lastActivities[email][socket.id]) {
-                delete lastActivities[email][socket.id];
-            }
+            socketStateStore.removeLastActivity(email, socket.id);
 
             // Only clear global user/class state if this was the last active session
             if (isLastSession) {
@@ -116,7 +107,7 @@ async function deleteUser(userId, userSession) {
         }
 
         // Log the user out if they're currently online
-        const userSocketsMap = userSockets[user ? user.email : tempUser.email];
+        const userSocketsMap = socketStateStore.getUserSocketsByEmail(user ? user.email : tempUser.email);
         if (userSocketsMap) {
             const anySocket = Object.values(userSocketsMap)[0];
             if (anySocket) {

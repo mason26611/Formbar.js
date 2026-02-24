@@ -1,12 +1,13 @@
-const { getClassroom, getUser } = require("./class/classroom");
+const { classStateStore } = require("./class/classroom");
 const { database, dbGetAll } = require("./database");
 const { TEACHER_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, GUEST_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("./permissions");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("./web-server");
+const { socketStateStore } = require("@stores/socket-state-store");
 
-const runningTimers = {};
-const rateLimits = {};
-const userSockets = {};
+const runningTimers = socketStateStore.getRunningTimers();
+const rateLimits = socketStateStore.getRateLimits();
+const userSockets = socketStateStore.getUserSockets();
 const classPollIdCache = new Map();
 const CLASS_POLL_CACHE_TTL_MS = 5000;
 
@@ -47,7 +48,10 @@ function invalidateClassPollCache(classId) {
 }
 
 async function emitToUser(email, event, ...data) {
-    for (const socket of Object.values(userSockets[email])) {
+    const sockets = socketStateStore.getUserSocketsByEmail(email);
+    if (!sockets) return;
+
+    for (const socket of Object.values(sockets)) {
         socket.emit(event, ...data);
     }
 }
@@ -83,7 +87,7 @@ async function userUpdateSocket(email, methodName, ...args) {
  * @param  {...any} data - Additional data to emit with the event
  */
 async function advancedEmitToClass(event, classId, options, ...data) {
-    const classData = getClassroom(classId);
+    const classData = classStateStore.getClassroom(classId);
     if (!classData) return;
     const sockets = await io.in(`class-${classId}`).fetchSockets();
 
@@ -149,12 +153,12 @@ async function setClassOfApiSockets(api, classId) {
 async function setClassOfUserSockets(email, classId) {
     try {
         // Check if user has any sockets
-        if (!userSockets[email]) {
+        if (!socketStateStore.hasUserSockets(email)) {
             return;
         }
 
         // Update all sockets for this user
-        for (let socket of Object.values(userSockets[email])) {
+        for (let socket of Object.values(socketStateStore.getUserSocketsByEmail(email))) {
             // Ensure the socket has a session before continuing
             if (!socket.request.session) continue;
 
@@ -184,8 +188,8 @@ async function managerUpdate() {
         const { users, classrooms } = await getManagerData();
 
         // Emit only to connected manager sockets
-        for (const [email, sockets] of Object.entries(userSockets)) {
-            if (getUser(email)?.permissions >= MANAGER_PERMISSIONS) {
+        for (const [email, sockets] of Object.entries(socketStateStore.getUserSockets())) {
+            if (classStateStore.getUser(email)?.permissions >= MANAGER_PERMISSIONS) {
                 for (const socket of Object.values(sockets)) {
                     socket.emit("managerUpdate", users, classrooms);
                 }
@@ -368,7 +372,7 @@ class SocketUpdates {
 
     classUpdate(classId = this.socket.request.session.classId, options = { global: true, restrictToControlPanel: false }) {
         try {
-            const classData = structuredClone(getClassroom(classId));
+            const classData = structuredClone(classStateStore.getClassroom(classId));
             if (!classData) {
                 return; // If the class is not loaded, then we cannot send a class update
             }
@@ -446,13 +450,13 @@ class SocketUpdates {
         try {
             // Ignore any requests which do not have an associated socket with the email
             if (!email && socket.request.session) email = socket.request.session.email;
-            if (!getUser(email)) return;
+            if (!classStateStore.getUser(email)) return;
 
-            const user = getUser(email);
+            const user = classStateStore.getUser(email);
             const classId = user.activeClass;
-            if (!getClassroom(classId)) return;
+            if (!classStateStore.getClassroom(classId)) return;
 
-            const student = getClassroom(classId).students[email];
+            const student = classStateStore.getClassroom(classId).students[email];
             if (!student) return; // If the student is not in the class, then do not update the custom polls
 
             const userSharedPolls = student.sharedPolls;
@@ -528,7 +532,7 @@ class SocketUpdates {
                         advancedEmitToClass(
                             "classBannedUsersUpdate",
                             classId,
-                            { classPermissions: getClassroom(classId).permissions.manageStudents },
+                            { classPermissions: classStateStore.getClassroom(classId).permissions.manageStudents },
                             bannedStudents
                         );
                     } catch (err) {
@@ -544,12 +548,13 @@ class SocketUpdates {
     async getOwnedClasses(email) {
         try {
             // Check if the user exists before accessing .id
-            if (!getUser(email) || !getUser(email).id) {
+            const user = classStateStore.getUser(email);
+            if (!user || !user.id) {
                 return;
             }
 
             // Get the user's owned classes from the database
-            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [getUser(email).id]);
+            const ownedClasses = await dbGetAll("SELECT name, id FROM classroom WHERE owner=?", [user.id]);
 
             // Send the owned classes to the user's sockets
             io.to(`user-${email}`).emit("getOwnedClasses", ownedClasses);
@@ -596,20 +601,20 @@ class SocketUpdates {
 
     timer(sound, active) {
         try {
-            let classData = getClassroom(this.socket.request.session.classId);
+            const classId = this.socket.request.session.classId;
+            let classData = classStateStore.getClassroom(classId);
             if (classData.timer.timeLeft <= 0) {
-                clearInterval(runningTimers[this.socket.request.session.classId]);
-                runningTimers[this.socket.request.session.classId] = null;
+                socketStateStore.clearRunningTimer(classId);
             }
 
             if (classData.timer.timeLeft > 0 && active) classData.timer.timeLeft--;
             if (classData.timer.timeLeft <= 0 && active && sound) {
-                advancedEmitToClass("timerSound", this.socket.request.session.classId, {});
+                advancedEmitToClass("timerSound", classId, {});
             }
 
             advancedEmitToClass(
                 "vbTimer",
-                this.socket.request.session.classId,
+                classId,
                 {
                     classPermissions: CLASS_SOCKET_PERMISSIONS.vbTimer,
                 },
@@ -623,6 +628,7 @@ class SocketUpdates {
 
 module.exports = {
     // Socket information
+    socketStateStore,
     runningTimers,
     rateLimits,
     userSockets,

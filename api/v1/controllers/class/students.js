@@ -1,6 +1,6 @@
 const { hasClassPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { getClassroom } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { CLASS_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
@@ -78,7 +78,7 @@ module.exports = (router) => {
         }
 
         // Guest users cannot be found in the database, so if the classroom exists, then add them to the list
-        const classroom = getClassroom(classId);
+        const classroom = classStateStore.getClassroom(classId);
         if (classroom) {
             for (const [studentId, studentInfo] of Object.entries(classroom.students)) {
                 if (studentInfo.permissions === GUEST_PERMISSIONS && !classUsers.find((user) => user.id === studentId)) {

@@ -1,6 +1,6 @@
 const { dbGetAll } = require("@modules/database");
 const { hasClassPermission } = require("@middleware/permission-check");
-const { getClassroom } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
@@ -74,7 +74,7 @@ module.exports = (router) => {
         req.infoEvent("class.banned.view", "Viewing banned users for class", { classId });
 
         // Ensure class exists
-        if (!getClassroom(classId)) {
+        if (!classStateStore.getClassroom(classId)) {
             throw new NotFoundError("Class not started");
         }
 

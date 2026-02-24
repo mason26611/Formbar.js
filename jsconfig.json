@@ -3,6 +3,7 @@
         "baseUrl": ".",
         "paths": {
             "@modules/*": ["modules/*"],
+            "@middleware/*": ["middleware/*"],
             "@services/*": ["services/*"],
             "@controllers/*": ["api/v1/controllers/*"],
             "@errors/*": ["errors/*"],

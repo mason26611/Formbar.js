@@ -9,6 +9,7 @@ const { getEmailFromId, getIdFromEmail } = require("@modules/student");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { classKickStudents, classKickStudent } = require("@modules/class/kick");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -188,14 +189,18 @@ module.exports = {
             try {
                 // Generate a new class code
                 const accessCode = generateKey(4);
+                const classId = socket.request.session.classId;
+                const oldClassCode = classStateStore.getClassroom(classId)?.key;
 
                 // Update the class code in the database
-                database.run("UPDATE classroom SET key=? WHERE id= ?", [accessCode, socket.request.session.classId], (err) => {
+                database.run("UPDATE classroom SET key=? WHERE id= ?", [accessCode, classId], (err) => {
                     try {
                         if (err) throw err;
 
                         // Update the class code in the class information, session, then refresh the page
-                        classStateStore.updateClassroom(socket.request.session.classId, { key: accessCode });
+                        classStateStore.updateClassroom(classId, { key: accessCode });
+                        if (oldClassCode) classCodeCacheStore.delete(oldClassCode);
+                        classCodeCacheStore.set(accessCode, classId);
                         socket.emit("reload");
                     } catch (err) {
                         handleSocketError(err, socket, "regenerateClassCode:callback");
@@ -249,6 +254,7 @@ module.exports = {
                             if (classStateStore.getClassroom(classId)) {
                                 socketUpdates.endClass(classroom.key, classroom.id);
                             }
+                            classCodeCacheStore.invalidateByClassId(classroom.id);
 
                             database.run("DELETE FROM classroom WHERE id=?", classroom.id);
                             database.run("DELETE FROM classusers WHERE classId=?", classroom.id);
@@ -405,7 +411,7 @@ module.exports = {
 
                 // Update the permission in the classInformation and in the database
                 classStateStore.updateClassroomStudent(classId, email, { classPermissions: newPerm });
-                updateUser(email, { classPermissions: newPerm });
+                classStateStore.updateUser(email, { classPermissions: newPerm });
                 await dbRun("UPDATE classusers SET permissions=? WHERE classId=? AND studentId=?", [
                     newPerm,
                     classroom.id,

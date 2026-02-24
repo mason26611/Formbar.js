@@ -2,13 +2,14 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 
 const {
     advancedEmitToClass,
-    userSockets,
     setClassOfApiSockets,
     setClassOfUserSockets,
     userUpdateSocket,
     invalidateClassPollCache,
 } = require("@modules/socket-updates");
 const { Classroom, classStateStore } = require("@modules/class/classroom");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { socketStateStore } = require("@stores/socket-state-store");
 const {
     MANAGER_PERMISSIONS,
     DEFAULT_CLASS_PERMISSIONS,
@@ -476,8 +477,9 @@ async function joinClass(userData, classId) {
     const response = await addUserToClassroomSession(classId, email, userData);
 
     // Update all user sockets with the new class
-    if (response === true && userSockets[email]) {
-        for (const userSocket of Object.values(userSockets[email])) {
+    const userSockets = socketStateStore.getUserSocketsByEmail(email);
+    if (response === true && userSockets) {
+        for (const userSocket of Object.values(userSockets)) {
             userSocket.request.session.classId = classId;
             userSocket.request.session.save();
             userSocket.emit("joinClass", response);
@@ -543,6 +545,7 @@ async function deleteRooms(userId) {
             dbRun("DELETE FROM lessons WHERE class=?", classroom.id),
         ]);
         invalidateClassPollCache(classroom.id);
+        classCodeCacheStore.invalidateByClassId(classroom.id);
     }
 }
 

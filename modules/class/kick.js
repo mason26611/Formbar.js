@@ -1,8 +1,9 @@
 const { classStateStore } = require("./classroom");
 const { getEmailFromId } = require("../student");
-const { setClassOfApiSockets, userSockets, userUpdateSocket } = require("../socket-updates");
+const { setClassOfApiSockets, userUpdateSocket } = require("../socket-updates");
 const { dbRun, dbGet } = require("../database");
 const { TEACHER_PERMISSIONS, BANNED_PERMISSIONS } = require("../permissions");
+const { socketStateStore } = require("@stores/socket-state-store");
 
 // Kicks a student from a class
 // If exitRoom is set to true, then it will fully remove the student from the class;
@@ -65,9 +66,9 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
         }
 
         // If the user is logged in, then handle the user's session
-        const usersSockets = userSockets[email];
+        const usersSockets = socketStateStore.getUserSocketsByEmail(email);
         if (usersSockets) {
-            for (const userSocket of Object.values(userSockets[email])) {
+            for (const userSocket of Object.values(usersSockets)) {
                 userSocket.leave(`class-${classId}`);
                 userSocket.request.session.classId = null;
                 userSocket.request.session.save();

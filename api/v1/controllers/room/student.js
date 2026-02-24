@@ -1,5 +1,5 @@
 const { isAuthenticated, permCheck } = require("@middleware/authentication");
-const { getClassroom, getClassroomStudent, getUser, updateClassroomStudent } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const AuthError = require("@errors/auth-error");
 
 module.exports = {
@@ -12,9 +12,9 @@ module.exports = {
         router.get("/student", isAuthenticated, permCheck, (req, res) => {
             // If the student is not currently in a class, redirect them back to the home page
             const email = req.user.email;
-            const userData = getUser(email);
+            const userData = classStateStore.getUser(email);
             const classId = userData && userData.activeClass != null ? userData.activeClass : req.user.classId;
-            const classroom = getClassroom(classId);
+            const classroom = classStateStore.getClassroom(classId);
             if (!classroom || !classroom.students || !classroom.students[email]) {
                 throw new AuthError("You are not currently in a class.");
             }
@@ -31,7 +31,7 @@ module.exports = {
             req.infoEvent("student.question.view", "Student viewing question", { questionId: req.query.question, answer: req.query.letter });
 
             if (answer) {
-                updateClassroomStudent(classId, req.user.email, (student) => {
+                classStateStore.updateClassroomStudent(classId, req.user.email, (student) => {
                     student.pollRes.buttonRes = answer;
                 });
             }
@@ -40,14 +40,14 @@ module.exports = {
             req.infoEvent("student.page.render", `Student page data retrieved`, {
                 user: req.user.email,
                 classId,
-                hasButtonRes: !!getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
+                hasButtonRes: !!classStateStore.getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
             });
             res.status(200).json({
                 success: true,
                 data: {
                     user: JSON.stringify(user),
-                    myRes: getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
-                    myTextRes: getClassroomStudent(classId, req.user.email).pollRes.textRes,
+                    myRes: classStateStore.getClassroomStudent(classId, req.user.email).pollRes.buttonRes,
+                    myTextRes: classStateStore.getClassroomStudent(classId, req.user.email).pollRes.textRes,
                 },
             });
         });
@@ -100,13 +100,13 @@ module.exports = {
             req.infoEvent("student.poll.submit", "Student submitting poll response");
             req.infoEvent("student.poll.data", "Poll submission data", { pollId: req.query.poll, questionId: req.body.question });
             const email = req.user.email;
-            const userData = getUser(email);
+            const userData = classStateStore.getUser(email);
             const classId = userData && userData.activeClass != null ? userData.activeClass : req.user.classId;
 
             if (req.query.poll) {
                 const answer = req.body.poll;
                 if (answer) {
-                    updateClassroomStudent(classId, req.user.email, (student) => {
+                    classStateStore.updateClassroomStudent(classId, req.user.email, (student) => {
                         student.pollRes.buttonRes = answer;
                     });
                 }

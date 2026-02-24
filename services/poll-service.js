@@ -9,12 +9,7 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const { requireInternalParam } = require("@modules/error-wrapper");
-
-// Stores an object containing the pog meter increases for users in a poll
-// This is only stored in an object because Javascript passes objects as references
-const pogMeterTracker = {
-    pogMeterIncreased: [],
-};
+const { pollRuntimeStore } = require("@stores/poll-runtime-store");
 
 /**
  * Gets a classroom by ID and throws an error if not found.
@@ -163,7 +158,7 @@ async function createPoll(classId, pollData, userData) {
     requireInternalParam(pollData, "pollData");
     requireInternalParam(userData, "userData");
 
-    pogMeterTracker.pogMeterIncreased = [];
+    pollRuntimeStore.resetPogMeterTracker(classId);
 
     const classroom = getClassroom(classId);
 
@@ -214,7 +209,7 @@ async function createPoll(classId, pollData, userData) {
     }
 
     // Set the poll's data in the classroom
-    classroom.poll.startTime = Date.now();
+    pollRuntimeStore.setPollStartTime(classId, Date.now());
     classroom.poll.weight = weight;
     classroom.poll.allowTextResponses = allowTextResponses;
     classroom.poll.prompt = prompt;
@@ -260,7 +255,7 @@ async function updatePoll(classId, options, userSession) {
         // Save to history when ending poll
         if (option === "status" && value === false && classroom.poll.status === true) {
             const savedPollId = await savePollToHistory(classId);
-            classroom.poll.lastSavedPollId = savedPollId;
+            pollRuntimeStore.setLastSavedPollId(classId, savedPollId);
         }
 
         // If studentsAllowedToVote is being changed, then ensure it always contains numbers
@@ -349,7 +344,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
         await updatePoll(classId, { status: false }, userSession);
     }
 
-    const currentPollId = classroom.poll.lastSavedPollId;
+    const currentPollId = pollRuntimeStore.getLastSavedPollId(classId);
 
     classroom.poll.responses = [];
     classroom.poll.prompt = "";
@@ -361,7 +356,6 @@ async function clearPoll(classId, userSession, updateClass = true) {
         weight: 1,
         blind: false,
         excludedRespondents: [],
-        lastSavedPollId: null,
     };
 
     // Adds data to the previous poll answers table upon clearing the poll
@@ -369,6 +363,9 @@ async function clearPoll(classId, userSession, updateClass = true) {
         if (updateClass && userSession) {
             broadcastClassUpdate(userSession.email, classId);
         }
+        pollRuntimeStore.clearPogMeterTracker(classId);
+        pollRuntimeStore.clearLastSavedPollId(classId);
+        pollRuntimeStore.clearPollStartTime(classId);
         return;
     }
 
@@ -400,6 +397,10 @@ async function clearPoll(classId, userSession, updateClass = true) {
     if (updateClass && userSession) {
         broadcastClassUpdate(userSession.email, classId);
     }
+
+    pollRuntimeStore.clearPogMeterTracker(classId);
+    pollRuntimeStore.clearLastSavedPollId(classId);
+    pollRuntimeStore.clearPollStartTime(classId);
 }
 
 /**
@@ -465,7 +466,7 @@ function sendPollResponse(classId, res, textRes, userSession) {
     updateStudentPollResponse(student, res, textRes, isRemoving, classroom.poll.allowMultipleResponses);
 
     // Handle pog meter updates
-    if (!isRemoving && !pogMeterTracker.pogMeterIncreased[email]) {
+    if (!isRemoving && !pollRuntimeStore.hasPogMeterIncreased(classId, email)) {
         const resWeight = calculateResponseWeight(classroom.poll, res);
 
         // Increase pog meter by 100 times the weight of the response
@@ -481,7 +482,7 @@ function sendPollResponse(classId, res, textRes, userSession) {
                 }
             });
         }
-        pogMeterTracker.pogMeterIncreased[email] = true;
+        pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
     broadcastClassUpdate(email, classId);
@@ -583,5 +584,5 @@ module.exports = {
     sendPollResponse,
     getPollResponses,
     deleteCustomPolls,
-    pogMeterTracker,
+    pollRuntimeStore,
 };

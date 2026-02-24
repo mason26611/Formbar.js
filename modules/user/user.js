@@ -1,6 +1,7 @@
-const { getAllClassrooms, getClassroom } = require("../class/classroom");
+const { classStateStore } = require("../class/classroom");
 const { database, dbGetAll, dbGet } = require("../database");
 const { compare } = require("../crypto");
+const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 
 /**
  * Asynchronous function to get the current user's data.
@@ -87,7 +88,7 @@ async function getUser(userIdentifier) {
         };
 
         // If the user is in a class and is logged in
-        const classroom = getClassroom(classId);
+        const classroom = classStateStore.getClassroom(classId);
         if (classroom && classroom.students[dbUser.email]) {
             let cdUser = classroom.students[dbUser.email];
             if (cdUser) {
@@ -125,7 +126,7 @@ async function getUserOwnedClasses(email, userSession) {
  */
 function getUserClass(email) {
     try {
-        const allClassrooms = getAllClassrooms();
+        const allClassrooms = classStateStore.getAllClassrooms();
         // Iterate over the classrooms to find which class the user is in
         for (const classroomId in allClassrooms) {
             const classroom = allClassrooms[classroomId];
@@ -143,8 +144,6 @@ function getUserClass(email) {
     }
 }
 
-const API_KEY_CACHE = new Map(); // Stores API key to email mappings
-
 /**
  * Asynchronous function to get the email associated with a given API key.
  * @param {string} api - The API key.
@@ -156,8 +155,9 @@ async function getEmailFromAPIKey(api) {
         if (!api) return { error: "Missing API key" };
 
         // Check if the API key is already cached
-        if (API_KEY_CACHE.has(api)) {
-            return API_KEY_CACHE.get(api);
+        const cachedEmail = apiKeyCacheStore.get(api);
+        if (cachedEmail) {
+            return cachedEmail;
         }
 
         // Query the database for the email associated with the API key
@@ -191,7 +191,7 @@ async function getEmailFromAPIKey(api) {
         if (user.error) return user;
 
         // If no error occurred, cache the email and return it
-        API_KEY_CACHE.set(api, user.email);
+        apiKeyCacheStore.set(api, user.email);
         return user.email;
     } catch (err) {
         // If an error occurs, return the error

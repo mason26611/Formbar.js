@@ -1,11 +1,11 @@
 const { classStateStore } = require("@modules/class/classroom");
 const { database } = require("@modules/database");
-const { userSockets } = require("@modules/socket-updates");
 const { Student } = require("@modules/student");
 const { getUserClass } = require("@modules/user/user");
 const { classKickStudent } = require("@modules/class/kick");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
+const { socketStateStore } = require("@stores/socket-state-store");
 const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -63,10 +63,7 @@ function joinSocketRooms(socket, email, classId, isApiAuth = false) {
  * Tracks user socket connections in the global userSockets object.
  */
 function trackUserSocket(email, socketId, socket) {
-    if (!userSockets[email]) {
-        userSockets[email] = {};
-    }
-    userSockets[email][socketId] = socket;
+    socketStateStore.setUserSocket(email, socketId, socket);
 }
 
 /**
@@ -77,17 +74,12 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
         removeUserSocketUpdate(email, socket.id);
 
         if (isApiAuth) {
-            if (!userSockets[email]) {
+            if (!socketStateStore.hasUserSockets(email)) {
                 classKickStudent(email, classId, false);
             }
         } else {
-            if (userSockets[email]) {
-                delete userSockets[email][socket.id];
-                if (Object.keys(userSockets[email]).length === 0) {
-                    delete userSockets[email];
-                    classKickStudent(email, classId, false);
-                }
-            }
+            const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
+            if (emptyAfterRemoval) classKickStudent(email, classId, false);
         }
     });
 }
@@ -213,12 +205,7 @@ module.exports = {
                 // Cleanup on disconnect
                 socket.on("disconnect", () => {
                     removeUserSocketUpdate(email, socket.id);
-                    if (userSockets[email]) {
-                        delete userSockets[email][socket.id];
-                        if (Object.keys(userSockets[email]).length === 0) {
-                            delete userSockets[email];
-                        }
-                    }
+                    socketStateStore.removeUserSocket(email, socket.id);
                 });
             }
         } catch (err) {

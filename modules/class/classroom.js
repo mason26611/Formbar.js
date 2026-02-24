@@ -1,8 +1,10 @@
 const { database } = require("../database");
 const { MOD_PERMISSIONS, STUDENT_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS } = require("../permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 
 const classStateStore = new ClassStateStore();
+const classInformation = classStateStore.getRawState();
 const DEFAULT_CLASS_SETTINGS = {
     mute: false,
     filter: "",
@@ -163,10 +165,10 @@ async function getClassUsers(user, key) {
     }
 }
 
-const classCache = {};
 function getClassIDFromCode(code) {
-    if (classCache[code]) {
-        return classCache[code];
+    const cachedClassId = classCodeCacheStore.get(code);
+    if (cachedClassId) {
+        return cachedClassId;
     }
 
     return new Promise((resolve, reject) => {
@@ -181,15 +183,90 @@ function getClassIDFromCode(code) {
                 return;
             }
 
-            classCache[code] = classroom.id;
+            classCodeCacheStore.set(code, classroom.id);
             resolve(classroom.id);
         });
     });
 }
 
+// -----------------------------------------------------------------------------
+// Legacy compatibility wrappers
+// -----------------------------------------------------------------------------
+
+function getUser(email) {
+    return classStateStore.getUser(email);
+}
+
+function setUser(email, user) {
+    classStateStore.setUser(email, user);
+}
+
+function updateUser(email, mutation) {
+    classStateStore.updateUser(email, mutation);
+}
+
+function removeUser(email) {
+    classStateStore.removeUser(email);
+}
+
+function getAllUsers() {
+    return classStateStore.getAllUsers();
+}
+
+function getClassroom(classId) {
+    return classStateStore.getClassroom(classId);
+}
+
+function setClassroom(classId, classroom) {
+    classStateStore.setClassroom(classId, classroom);
+}
+
+function updateClassroom(classId, mutation) {
+    classStateStore.updateClassroom(classId, mutation);
+}
+
+function removeClassroom(classId) {
+    classStateStore.removeClassroom(classId);
+}
+
+function getAllClassrooms() {
+    return classStateStore.getAllClassrooms();
+}
+
+function getClassroomStudent(classId, email) {
+    return classStateStore.getClassroomStudent(classId, email);
+}
+
+function setClassroomStudent(classId, email, student) {
+    classStateStore.setClassroomStudent(classId, email, student);
+}
+
+function updateClassroomStudent(classId, email, mutation) {
+    classStateStore.updateClassroomStudent(classId, email, mutation);
+}
+
+function removeClassroomStudent(classId, email) {
+    classStateStore.removeClassroomStudent(classId, email);
+}
+
 module.exports = {
     Classroom,
+    classInformation,
     classStateStore,
+    getUser,
+    setUser,
+    updateUser,
+    removeUser,
+    getAllUsers,
+    getClassroom,
+    setClassroom,
+    updateClassroom,
+    removeClassroom,
+    getAllClassrooms,
+    getClassroomStudent,
+    setClassroomStudent,
+    updateClassroomStudent,
+    removeClassroomStudent,
     getClassUsers,
     getClassIDFromCode,
 };

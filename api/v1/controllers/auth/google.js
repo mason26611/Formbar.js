@@ -1,4 +1,4 @@
-const { getUser, setUser } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { Student } = require("@modules/student");
 const { settings } = require("@modules/config");
 const { passport } = require("@modules/google-oauth");
@@ -92,8 +92,8 @@ module.exports = (router) => {
 
             // If not already logged in, create a new Student instance in classInformation
             const { tokens, user: userData } = result;
-            if (!getUser(email)) {
-                setUser(
+            if (!classStateStore.getUser(email)) {
+                classStateStore.setUser(
                     email,
                     new Student(
                         userData.email,

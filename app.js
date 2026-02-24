@@ -20,7 +20,7 @@ if (!fs.existsSync("database/database.db")) {
 const { initSocketRoutes } = require("./sockets/init.js");
 const { app, io, http } = require("@modules/web-server.js");
 const { settings } = require("@modules/config.js");
-const { lastActivities, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
+const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
 
 const { logout } = require("@modules/user/user-session");
@@ -81,9 +81,11 @@ app.use(express.json());
 const INACTIVITY_CHECK_TIME = 60000; // 1 Minute
 setInterval(() => {
     const currentTime = Date.now();
-    for (const email of Object.keys(lastActivities)) {
-        const userSockets = lastActivities[email];
-        for (const [socketId, activity] of Object.entries(userSockets)) {
+    for (const email of Object.keys(socketStateStore.getLastActivities())) {
+        const userActivities = socketStateStore.getUserLastActivities(email);
+        if (!userActivities) continue;
+
+        for (const [socketId, activity] of Object.entries(userActivities)) {
             if (currentTime - activity.time > INACTIVITY_LIMIT) {
                 // Check if this is an API socket - API sockets should not timeout
                 let isApiSocket = false;
@@ -99,7 +101,7 @@ setInterval(() => {
                 // Only logout non-API sockets
                 if (!isApiSocket) {
                     logout(activity.socket); // Log the user out
-                    delete lastActivities[email]; // Remove the user from the inactivity check
+                    socketStateStore.clearUserLastActivities(email);
                 }
             }
         }
