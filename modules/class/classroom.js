@@ -4,7 +4,6 @@ const { ClassStateStore } = require("@stores/class-state-store");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 
 const classStateStore = new ClassStateStore();
-const classInformation = classStateStore.getRawState();
 const DEFAULT_CLASS_SETTINGS = {
     mute: false,
     filter: "",
@@ -191,7 +190,6 @@ function getClassIDFromCode(code) {
 
 module.exports = {
     Classroom,
-    classInformation,
     classStateStore,
     getClassUsers,
     getClassIDFromCode,
