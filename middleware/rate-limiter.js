@@ -64,7 +64,7 @@ async function rateLimiter(req, res, next) {
     if (userRequests[path].length >= limit) {
         if (!userRequests["hasBeenMessaged"]) {
             userRequests["hasBeenMessaged"] = true;
-            req.warnEvent(req, "rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
+            req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
                 identifier,
                 path,
                 limit,
