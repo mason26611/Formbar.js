@@ -1,16 +1,14 @@
 const handlebars = require("handlebars");
 const fs = require("fs");
+const bcrypt = require("bcrypt");
+const AppError = require("@errors/app-error");
+const NotFoundError = require("@errors/not-found-error");
 const { sendMail } = require("@modules/mail");
 const { dbGet, dbRun, dbGetAll, database } = require("@modules/database");
 const { frontendUrl } = require("@modules/config");
-const { hash } = require("bcrypt");
-const crypto = require("crypto");
-const AppError = require("@errors/app-error");
-const NotFoundError = require("@errors/not-found-error");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { compare } = require("@modules/crypto");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
@@ -55,7 +53,7 @@ async function resetPassword(password, token) {
         throw new NotFoundError("Password reset token is invalid or has expired.", { event: "user.password.reset.failed", reason: "invalid_token" });
     }
 
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
     return true;
 }
@@ -96,7 +94,7 @@ async function getEmailFromAPIKey(api) {
                     if (err) throw err;
                     let userData = null;
                     for (const user of users) {
-                        if (user.API && (await compare(api, user.API))) {
+                        if (user.API && (await bcrypt.compare(api, user.API))) {
                             userData = user;
                             break;
                         }
