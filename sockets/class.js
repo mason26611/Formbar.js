@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { database, dbRun } = require("@modules/database");
 const { advancedEmitToClass, setClassOfApiSockets } = require("@modules/socket-updates");
 const { generateKey } = require("@modules/util");
@@ -9,6 +9,7 @@ const { getEmailFromId, getIdFromEmail } = require("@modules/student");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { classKickStudents, classKickStudent } = require("@modules/class/kick");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -16,7 +17,7 @@ module.exports = {
         socket.on("startClass", () => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email].activeClass;
+                const classId = classStateStore.getUser(email).activeClass;
                 startClass(classId);
             } catch (err) {
                 handleSocketError(err, socket, "startClass", "There was a server error. Please try again");
@@ -27,7 +28,7 @@ module.exports = {
         socket.on("endClass", () => {
             try {
                 const email = socket.request.session.email;
-                const classId = classInformation.users[email].activeClass;
+                const classId = classStateStore.getUser(email).activeClass;
                 endClass(classId, socket.request.session);
             } catch (err) {
                 handleSocketError(err, socket, "endClass", "There was a server error. Please try again");
@@ -64,8 +65,8 @@ module.exports = {
             try {
                 const api = socket.request.session.api;
 
-                for (const email in classInformation.users) {
-                    const user = classInformation.users[email];
+                for (const email in classStateStore.getAllUsers()) {
+                    const user = classStateStore.getAllUsers()[email];
                     if (user.API == api) {
                         setClassOfApiSockets(api, user.activeClass);
                         return;
@@ -85,7 +86,7 @@ module.exports = {
          */
         function clearVotesFromExcludedStudents(classId) {
             const { GUEST_PERMISSIONS, MOD_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-            const classData = classInformation.classrooms[classId];
+            const classData = classStateStore.getClassroom(classId);
             if (!classData) return;
 
             // Get the list of excluded students using the same logic as sortStudentsInPoll
@@ -153,8 +154,10 @@ module.exports = {
                 const classId = socket.request.session.classId;
 
                 // Update the setting in the classInformation and in the database
-                classInformation.classrooms[classId].settings[setting] = value;
-                await dbRun("UPDATE classroom SET settings=? WHERE id=?", [JSON.stringify(classInformation.classrooms[classId].settings), classId]);
+                classStateStore.updateClassroom(classId, (classroom) => {
+                    classroom.settings[setting] = value;
+                });
+                await dbRun("UPDATE classroom SET settings=? WHERE id= ?", [JSON.stringify(classStateStore.getClassroom(classId).settings), classId]);
 
                 // If the isExcluded setting changed, clear votes from newly excluded students
                 if (setting === "isExcluded") {
@@ -186,14 +189,18 @@ module.exports = {
             try {
                 // Generate a new class code
                 const accessCode = generateKey(4);
+                const classId = socket.request.session.classId;
+                const oldClassCode = classStateStore.getClassroom(classId)?.key;
 
                 // Update the class code in the database
-                database.run("UPDATE classroom SET key=? WHERE id=?", [accessCode, socket.request.session.classId], (err) => {
+                database.run("UPDATE classroom SET key=? WHERE id= ?", [accessCode, classId], (err) => {
                     try {
                         if (err) throw err;
 
                         // Update the class code in the class information, session, then refresh the page
-                        classInformation.classrooms[socket.request.session.classId].key = accessCode;
+                        classStateStore.updateClassroom(classId, { key: accessCode });
+                        if (oldClassCode) classCodeCacheStore.delete(oldClassCode);
+                        classCodeCacheStore.set(accessCode, classId);
                         socket.emit("reload");
                     } catch (err) {
                         handleSocketError(err, socket, "regenerateClassCode:callback");
@@ -216,12 +223,12 @@ module.exports = {
                 }
 
                 // Update the class name in the database
-                database.run("UPDATE classroom SET name=? WHERE id=?", [name, socket.request.session.classId], (err) => {
+                database.run("UPDATE classroom SET name=? WHERE id= ?", [name, socket.request.session.classId], (err) => {
                     try {
                         if (err) throw err;
 
                         // Update the class name in the class information
-                        classInformation.classrooms[socket.request.session.classId].className = name;
+                        classStateStore.updateClassroom(socket.request.session.classId, { className: name });
                         socket.emit("changeClassName", name);
                         socket.emit("message", "Class name updated.");
                     } catch (err) {
@@ -244,9 +251,10 @@ module.exports = {
                         if (err) throw err;
 
                         if (classroom) {
-                            if (classInformation.classrooms[classId]) {
+                            if (classStateStore.getClassroom(classId)) {
                                 socketUpdates.endClass(classroom.key, classroom.id);
                             }
+                            classCodeCacheStore.invalidateByClassId(classroom.id);
 
                             database.run("DELETE FROM classroom WHERE id=?", classroom.id);
                             database.run("DELETE FROM classusers WHERE classId=?", classroom.id);
@@ -267,10 +275,11 @@ module.exports = {
          * Kicks a user from the classroom
          * @param {string} email - The email of the user to kick.
          */
-        socket.on("classKickStudent", (email) => {
+        socket.on("classKickStudent", async (email) => {
             try {
                 const classId = socket.request.session.classId;
-                classKickStudent(email, classId);
+                const userId = await getIdFromEmail(email);
+                classKickStudent(userId, classId);
                 advancedEmitToClass("leaveSound", classId, {});
             } catch (err) {
                 handleSocketError(err, socket, "classKickStudent");
@@ -315,8 +324,8 @@ module.exports = {
                         try {
                             if (err) throw err;
 
-                            if (classInformation.classrooms[socket.request.session.classId].students[email]) {
-                                classInformation.classrooms[socket.request.session.classId].students[email].classPermissions = 0;
+                            if (classStateStore.getClassroomStudent(socket.request.session.classId, email)) {
+                                classStateStore.updateClassroomStudent(socket.request.session.classId, email, { classPermissions: 0 });
                             }
 
                             classKickStudent(email, classId);
@@ -358,8 +367,8 @@ module.exports = {
                         try {
                             if (err) throw err;
 
-                            if (classInformation.classrooms[classId].students[email]) {
-                                classInformation.classrooms[classId].students[email].classPermissions = 1;
+                            if (classStateStore.getClassroomStudent(classId, email)) {
+                                classStateStore.updateClassroomStudent(classId, email, { classPermissions: 1 });
                             }
 
                             // After unbanning, remove the user from the class so they rejoin fresh next time
@@ -393,21 +402,21 @@ module.exports = {
                 const classId = socket.request.session.classId;
 
                 // Prevent changing the owner's permissions
-                const classroom = classInformation.classrooms[classId];
+                const classroom = classStateStore.getClassroom(classId);
                 if (classroom.owner == userId) {
                     socket.emit("message", "You cannot change the permissions of the class owner.");
                     return;
                 }
 
-                const oldPerm = classInformation.classrooms[classId].students[email].classPermissions || BANNED_PERMISSIONS;
+                const oldPerm = classStateStore.getClassroomStudent(classId, email).classPermissions || BANNED_PERMISSIONS;
 
                 // Update the permission in the classInformation and in the database
-                classInformation.classrooms[classId].students[email].classPermissions = newPerm;
-                classInformation.users[email].classPermissions = newPerm;
+                classStateStore.updateClassroomStudent(classId, email, { classPermissions: newPerm });
+                classStateStore.updateUser(email, { classPermissions: newPerm });
                 await dbRun("UPDATE classusers SET permissions=? WHERE classId=? AND studentId=?", [
                     newPerm,
-                    classInformation.classrooms[classId].id,
-                    classInformation.classrooms[classId].students[email].id,
+                    classroom.id,
+                    classStateStore.getClassroomStudent(classId, email).id,
                 ]);
 
                 // If the new permission is BANNED_PERMISSIONS, kick the user from the class and ban them
@@ -443,7 +452,9 @@ module.exports = {
         socket.on("setClassPermissionSetting", async (permission, level) => {
             try {
                 const classId = socket.request.session.classId;
-                classInformation.classrooms[classId].permissions[permission] = level;
+                classStateStore.updateClassroom(classId, (classroom) => {
+                    classroom.permissions[permission] = level;
+                });
                 dbRun(`UPDATE class_permissions SET ${permission}=? WHERE classId=?`, [level, classId]).catch((err) => {
                     handleSocketError(err, socket, "setClassPermissionSetting:dbRun");
                 });
@@ -456,7 +467,7 @@ module.exports = {
         socket.on("updateExcludedRespondents", (respondants) => {
             try {
                 const classId = socket.request.session.classId;
-                const classroom = classInformation.classrooms[classId];
+                const classroom = classStateStore.getClassroom(classId);
                 if (!Array.isArray(respondants)) return;
 
                 // Contains the list of student IDs who should be excluded from the poll

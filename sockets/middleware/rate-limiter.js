@@ -1,6 +1,7 @@
-const { rateLimits, PASSIVE_SOCKETS } = require("@modules/socket-updates");
+const { PASSIVE_SOCKETS } = require("@modules/socket-updates");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { socketStateStore } = require("@stores/socket-state-store");
 
 module.exports = {
     order: 0,
@@ -16,11 +17,7 @@ module.exports = {
                 const currentTime = Date.now();
                 const timeFrame = 1000; // 1 Second
                 const limit = socket.request.session.permissions >= TEACHER_PERMISSIONS ? 100 : 30;
-                if (!rateLimits[email]) {
-                    rateLimits[email] = {};
-                }
-
-                const userRequests = rateLimits[email];
+                const userRequests = socketStateStore.getUserRateLimits(email, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {
                     userRequests[event].shift();

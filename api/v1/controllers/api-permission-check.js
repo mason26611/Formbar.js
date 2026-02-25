@@ -1,4 +1,4 @@
-const { classInformation } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { getUser } = require("@modules/user/user");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -48,7 +48,7 @@ module.exports = (router) => {
             });
         }
 
-        const classroom = classInformation.classrooms[user.classId];
+        const classroom = classStateStore.getClassroom(user.classId);
         permissionTypes.games = classroom.permissions.games;
         permissionTypes.auxiliary = classroom.permissions.auxiliary;
 

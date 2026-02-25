@@ -1,13 +1,14 @@
-const { classInformation } = require("@modules/class/classroom");
+const { classStateStore } = require("@modules/class/classroom");
 const { CLASS_SOCKET_PERMISSIONS } = require("@modules/permissions");
-const { advancedEmitToClass, runningTimers } = require("@modules/socket-updates");
+const { advancedEmitToClass } = require("@modules/socket-updates");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { socketStateStore } = require("@stores/socket-state-store");
 
 module.exports = {
     run(socket, socketUpdates) {
         socket.on("vbTimer", () => {
             try {
-                let classData = classInformation.classrooms[socket.request.session.classId];
+                let classData = classStateStore.getClassroom(socket.request.session.classId);
                 let email = socket.request.session.email;
 
                 advancedEmitToClass(
@@ -27,7 +28,7 @@ module.exports = {
         // This handles the server side timer
         socket.on("timer", (startTime, active, sound) => {
             try {
-                let classData = classInformation.classrooms[socket.request.session.classId];
+                let classData = classStateStore.getClassroom(socket.request.session.classId);
                 startTime = Math.round(startTime);
 
                 classData.timer.startTime = startTime;
@@ -36,16 +37,20 @@ module.exports = {
                 classData.timer.sound = sound;
                 socketUpdates.classUpdate();
 
+                const classId = socket.request.session.classId;
                 if (active) {
+                    // Replace any previous timer interval for the class.
+                    socketStateStore.clearRunningTimer(classId);
+
                     // Run the function once instantly
                     socketUpdates.timer(sound, active);
 
                     // Save a clock in the class data, which will saves when the page is refreshed
-                    runningTimers[socket.request.session.classId] = setInterval(() => socketUpdates.timer(sound, active), 1000);
+                    const timerHandle = setInterval(() => socketUpdates.timer(sound, active), 1000);
+                    socketStateStore.setRunningTimer(classId, timerHandle);
                 } else {
                     // If the timer is not active, clear the interval
-                    clearInterval(runningTimers[socket.request.session.classId]);
-                    runningTimers[socket.request.session.classId] = null;
+                    socketStateStore.clearRunningTimer(classId);
 
                     socketUpdates.timer(sound, active);
                 }
@@ -56,7 +61,7 @@ module.exports = {
 
         socket.on("timerOn", () => {
             try {
-                socket.emit("timerOn", classInformation.classrooms[socket.request.session.classId].timer.active);
+                socket.emit("timerOn", classStateStore.getClassroom(socket.request.session.classId).timer.active);
             } catch (err) {
                 handleSocketError(err, socket, "timerOn");
             }

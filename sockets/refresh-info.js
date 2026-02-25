@@ -1,6 +1,7 @@
 const { dbRun } = require("@modules/database");
 const { hash } = require("@modules/crypto");
 const crypto = require("crypto");
+const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 
 module.exports = {
     run(socket) {
@@ -19,6 +20,11 @@ module.exports = {
                 const hashedAPI = await hash(newAPI);
                 await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPI, id]);
                 socket.request.session.API = hashedAPI;
+                if (socket.request.session.email) {
+                    apiKeyCacheStore.invalidateByEmail(socket.request.session.email);
+                } else {
+                    apiKeyCacheStore.clear();
+                }
 
                 // Log the successful API key update and emit the plaintext key (one-time view)
                 socket.emit("apiKeyUpdated", newAPI);
