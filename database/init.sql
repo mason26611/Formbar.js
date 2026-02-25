@@ -149,3 +149,11 @@ CREATE TABLE IF NOT EXISTS "inventory"
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
     UNIQUE(user_id, item_id)
 );
+
+CREATE TABLE IF NOT EXISTS "item_registry" (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    stack_size INTEGER NOT NULL DEFAULT 1 CHECK (stack_size > 0),
+    image_url TEXT
+);
