@@ -34,7 +34,7 @@ function loadPasswordResetTemplate() {
     }
 }
 
-async function getUserData(userId) {
+async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
     return user;
 }
@@ -325,7 +325,7 @@ async function deleteUser(userId, userSession) {
 }
 
 module.exports = {
-    getUserData,
+    getUserDataFromDb,
     requestPasswordReset,
     resetPassword,
     getUser,

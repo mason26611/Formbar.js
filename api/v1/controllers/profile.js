@@ -1,7 +1,7 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { getUserData } = require("@services/user-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { getUserTransactions } = require("@services/digipog-service");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -72,7 +72,7 @@ module.exports = (router) => {
             throw new ForbiddenError("You do not have permission to view these transactions.");
         }
 
-        const userData = await getUserData(userId);
+        const userData = await getUserDataFromDb(userId);
         if (!userData) {
             throw new NotFoundError("User not found.", { event: "profile.user_not_found", reason: "user_not_in_database" });
         }
@@ -170,7 +170,7 @@ module.exports = (router) => {
 
         // Check if userData is null or undefined
         const userId = req.params.userId || req.user.id;
-        const userData = await getUserData(userId);
+        const userData = await getUserDataFromDb(userId);
         if (!userData) {
             throw new NotFoundError("User not found.", { event: "profile.user_not_found", reason: "user_not_in_database" });
         }

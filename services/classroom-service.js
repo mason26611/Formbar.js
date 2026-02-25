@@ -1,7 +1,8 @@
-const { database } = require("@modules/database");
+const { database, dbGet } = require("@modules/database");
 const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { requireInternalParam } = require("@modules/error-wrapper");
 
 const classStateStore = new ClassStateStore();
 const DEFAULT_CLASS_SETTINGS = {
@@ -66,6 +67,11 @@ class Classroom {
     }
 }
 
+function getClassroomFromDb(id) {
+    requireInternalParam(id, "id");
+    return dbGet("SELECT * FROM classroom WHERE id = ?", [id]);
+}
+
 function getClassIDFromCode(code) {
     const cachedClassId = classCodeCacheStore.get(code);
     if (cachedClassId) {
@@ -93,5 +99,6 @@ function getClassIDFromCode(code) {
 module.exports = {
     Classroom,
     classStateStore,
+    getClassroomFromDb,
     getClassIDFromCode,
 };
