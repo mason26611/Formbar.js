@@ -120,23 +120,18 @@ async function getUserOwnedClasses(email, userSession) {
 
 /**
  * Retrieves the class id for a given user.
- *
  * @param {string} email - The email of the user.
  * @returns {string|null|Error} The class id if the user is found, null if the user is not found, or an Error object if an error occurs.
  */
 function getUserClass(email) {
     try {
-        const allClassrooms = classStateStore.getAllClassrooms();
-        // Iterate over the classrooms to find which class the user is in
-        for (const classroomId in allClassrooms) {
-            const classroom = allClassrooms[classroomId];
-            if (classroom.students[email]) {
-                // Return the class code
-                return classroom.id;
-            }
+        // Check if the user exists in the in-memory users map
+        const user = classStateStore.getUser(email);
+        if (user && user.activeClass) {
+            return user.activeClass;
         }
 
-        // Return null
+        // User is not logged in or not in any class
         return null;
     } catch (err) {
         // If an error occurs, return the error

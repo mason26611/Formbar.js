@@ -108,6 +108,7 @@ const CLASS_SOCKET_PERMISSION_MAPPER = {
     classPermChange: "manageStudents",
     classKickStudent: "manageStudents",
     classKickStudents: "manageStudents",
+    classRemoveFromSession: "manageStudents",
     approveBreak: "breakHelp",
     deleteTicket: "breakHelp",
     startClass: "manageClass",
