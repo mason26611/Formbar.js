@@ -29,11 +29,6 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
-async function isUserInClass(userId, classId) {
-    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
-    return !!result;
-}
-
 function getUserJoinedClasses(userId) {
     return dbGetAll(
         "SELECT classroom.name, classroom.id, classusers.permissions FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
@@ -895,7 +890,6 @@ async function getClassUsers(user, key) {
 }
 
 module.exports = {
-    isUserInClass,
     getUserJoinedClasses,
     getClassCode,
     getClassLinks,

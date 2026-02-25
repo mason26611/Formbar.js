@@ -1,8 +1,9 @@
 const { classStateStore } = require("@services/classroom-service");
-const { dbGet, dbRun } = require("@modules/database");
+const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
 const { userSocketUpdates } = require("../sockets/init");
+const { requireInternalParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
 
 // Lazy-load class-service to avoid circular dependency
@@ -12,6 +13,16 @@ function getClassService() {
         classService = require("@services/class-service");
     }
     return classService;
+}
+
+async function isUserInRoom(userId, classId) {
+    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
+    return !!result;
+}
+
+function getLinksInRoom(classId) {
+    requireInternalParam(classId, "classId");
+    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
 }
 
 /**
@@ -102,6 +113,8 @@ async function leaveRoom(userData) {
 }
 
 module.exports = {
+    isUserInRoom,
+    getLinksInRoom,
     joinRoomByCode,
     joinRoom,
     leaveRoom,
