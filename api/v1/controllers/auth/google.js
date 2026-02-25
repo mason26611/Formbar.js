@@ -1,5 +1,5 @@
-const { classStateStore } = require("@modules/class/classroom");
-const { Student } = require("@modules/student");
+const { classStateStore } = require("@services/classroom-service");
+const { Student } = require("@services/student-service");
 const { settings } = require("@modules/config");
 const { passport } = require("@modules/google-oauth");
 const authService = require("@services/auth-service");

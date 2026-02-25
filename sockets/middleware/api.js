@@ -1,8 +1,8 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { database } = require("@modules/database");
-const { Student, getIdFromEmail } = require("@modules/student");
-const { getUserClass } = require("@modules/user/user");
-const { classKickStudent } = require("@modules/class/kick");
+const { Student, getIdFromEmail } = require("@services/student-service");
+const { getUserClass } = require("@services/user-service");
+const { classKickStudent } = require("@services/class-service");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
 const { socketStateStore } = require("@stores/socket-state-store");

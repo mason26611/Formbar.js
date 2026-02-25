@@ -1,5 +1,5 @@
-const { isAuthenticated, permCheck } = require("@middleware/authentication");
-const { classStateStore } = require("@modules/class/classroom");
+const { isAuthenticated } = require("@middleware/authentication");
+const { classStateStore } = require("@services/classroom-service");
 const AuthError = require("@errors/auth-error");
 
 module.exports = {
@@ -9,7 +9,7 @@ module.exports = {
         There is currently 1 working mode:
             Poll: For displaying a multiple choice or essay question
         */
-        router.get("/student", isAuthenticated, permCheck, (req, res) => {
+        router.get("/student", isAuthenticated, (req, res) => {
             // If the student is not currently in a class, redirect them back to the home page
             const email = req.user.email;
             const userData = classStateStore.getUser(email);
@@ -96,7 +96,7 @@ module.exports = {
         This is for when you send poll data via a post command
         It'll save your response to the student object and the database.
         */
-        router.post("/student", isAuthenticated, permCheck, (req, res) => {
+        router.post("/student", isAuthenticated, (req, res) => {
             req.infoEvent("student.poll.submit", "Student submitting poll response");
             req.infoEvent("student.poll.data", "Poll submission data", { pollId: req.query.poll, questionId: req.body.question });
             const email = req.user.email;

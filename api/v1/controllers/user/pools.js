@@ -1,6 +1,6 @@
 const { dbGet } = require("@modules/database");
-const { isAuthenticated, isVerified, permCheck } = require("@middleware/authentication");
-const pools = require("@modules/pools");
+const { isAuthenticated, isVerified } = require("@middleware/authentication");
+const pools = require("@services/digipog-service");
 
 module.exports = {
     run(router) {
@@ -42,7 +42,7 @@ module.exports = {
          *               $ref: '#/components/schemas/ServerError'
          */
         // Handle displaying the pools management page
-        router.get("/user/pools", isAuthenticated, isVerified, permCheck, async (req, res) => {
+        router.get("/user/pools", isAuthenticated, isVerified, async (req, res) => {
             const userId = req.user.id;
             req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
 

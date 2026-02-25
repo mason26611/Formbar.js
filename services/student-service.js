@@ -1,6 +1,6 @@
-const { classStateStore } = require("./class/classroom");
-const { database, dbGet } = require("./database");
-const { STUDENT_PERMISSIONS } = require("./permissions");
+const { classStateStore } = require("@services/classroom-service");
+const { database, dbGet } = require("@modules/database");
+const { STUDENT_PERMISSIONS } = require("@modules/permissions");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {

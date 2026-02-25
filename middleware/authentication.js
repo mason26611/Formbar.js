@@ -1,12 +1,10 @@
 const { getLogger } = require("@modules/logger");
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { PAGE_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll, dbRun } = require("@modules/database");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
-const NotFoundError = require("@errors/not-found-error");
-const ForbiddenError = require("@errors/forbidden-error");
 
 const whitelistedIps = {};
 const blacklistedIps = {};
@@ -114,64 +112,6 @@ function isVerified(req, res, next) {
     }
 }
 
-// Check if user has the permission levels to enter that page
-async function permCheck(req, res, next) {
-    const email = req.user?.email;
-    if (!email) {
-        req.warnEvent(req, "auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
-        throw new AuthError("User is not authenticated");
-    }
-
-    if (req.url) {
-        // Defines users desired endpoint
-        let urlPath = req.url;
-
-        // Checks if url has a / in it and removes it from the string
-        if (urlPath.indexOf("/") != -1) {
-            urlPath = urlPath.slice(urlPath.indexOf("/") + 1);
-        }
-
-        // Check for ?(urlParams) and removes it from the string
-        if (urlPath.indexOf("?") != -1) {
-            urlPath = urlPath.slice(0, urlPath.indexOf("?"));
-        }
-
-        // Check for a second / in the url and remove it from the string
-        if (urlPath.indexOf("/") != -1) {
-            urlPath = urlPath.slice(0, urlPath.indexOf("/"));
-        }
-
-        // Ensure the url path is all lowercase
-        urlPath = urlPath.toLowerCase();
-        if (!PAGE_PERMISSIONS[urlPath]) {
-            req.warnEvent(req, "auth.perm_check.not_found", `Page permissions not found for path: ${urlPath}`, { urlPath });
-            throw new NotFoundError(`${urlPath} is not in the page permissions`);
-        }
-
-        const user = classStateStore.getUser(email);
-        if (!user) {
-            req.warnEvent(req, "auth.perm_check.user_not_found", `User not found for permission check: ${email}`, { email });
-            throw new AuthError("User not found");
-        }
-
-        // Checks if users permissions are high enough
-        if (PAGE_PERMISSIONS[urlPath].classPage && user.classPermissions >= PAGE_PERMISSIONS[urlPath].permissions) {
-            next();
-        } else if (!PAGE_PERMISSIONS[urlPath].classPage && user.permissions >= PAGE_PERMISSIONS[urlPath].permissions) {
-            next();
-        } else {
-            req.warnEvent(req, "auth.perm_check.forbidden", `User ${email} does not have permissions to access this resource`, {
-                email,
-                userPermissions: user.permissions,
-                requiredPermissions: PAGE_PERMISSIONS[urlPath].permissions,
-            });
-            throw new ForbiddenError("You do not have permission to access this resource.");
-        }
-    } else {
-        next();
-    }
-}
-
 module.exports = {
     cleanRefreshTokens,
 
@@ -182,5 +122,4 @@ module.exports = {
     // Authentication functions
     isAuthenticated,
     isVerified,
-    permCheck,
 };

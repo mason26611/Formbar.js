@@ -1,5 +1,5 @@
 const { dbRun, dbGet } = require("@modules/database");
-const pools = require("@modules/pools");
+const pools = require("@services/digipog-service");
 
 module.exports = {
     run(socket) {

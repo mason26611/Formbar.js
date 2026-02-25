@@ -1,4 +1,4 @@
-const { getUser } = require("@modules/user/user");
+const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
 const { TEACHER_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 

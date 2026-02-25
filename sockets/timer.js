@@ -1,6 +1,6 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { CLASS_SOCKET_PERMISSIONS } = require("@modules/permissions");
-const { advancedEmitToClass } = require("@modules/socket-updates");
+const { advancedEmitToClass } = require("@services/socket-updates-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { socketStateStore } = require("@stores/socket-state-store");
 
