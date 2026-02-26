@@ -21,6 +21,8 @@ const { requireInternalParam } = require("@modules/error-wrapper");
 const { getEmailFromId } = require("@services/student-service");
 
 let passwordResetTemplate;
+let verifyEmailTemplate;
+let pinResetTemplate;
 
 function loadPasswordResetTemplate() {
     if (passwordResetTemplate) {
@@ -42,6 +44,107 @@ function loadPasswordResetTemplate() {
     }
 }
 
+function loadPinResetTemplate() {
+    if (pinResetTemplate) {
+        return pinResetTemplate;
+    }
+
+    try {
+        const pinResetEmailContent = fs.readFileSync("email-templates/pin-reset.hbs", "utf8");
+        pinResetTemplate = handlebars.compile(pinResetEmailContent);
+        return pinResetTemplate;
+    } catch (err) {
+        console.error("Failed to load PIN reset email template:", err);
+        throw new AppError("Failed to load PIN reset email template.", {
+            statusCode: 500,
+            event: "user.pin.reset.failed",
+            reason: "template_load_error",
+        });
+    }
+}
+
+async function requestPinReset(userId) {
+    requireInternalParam(userId, "userId");
+
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.pin.reset.request.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    const template = loadPinResetTemplate();
+    const token = crypto.randomBytes(64).toString("hex");
+    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [token, userId]);
+
+    sendMail(user.email, "Formbar PIN Reset", template({ resetUrl: `${frontendUrl}/user/me/pin?code=${token}` }));
+}
+
+async function resetPin(newPin, token) {
+    requireInternalParam(newPin, "newPin");
+    requireInternalParam(token, "token");
+
+    const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
+    if (!user) {
+        throw new NotFoundError("PIN reset token is invalid or has expired.", {
+            event: "user.pin.reset.failed",
+            reason: "invalid_token",
+        });
+    }
+
+    const hashedPin = await hash(String(newPin));
+    await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, user.id]);
+}
+
+async function updatePin(userId, oldPin, newPin) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(newPin, "newPin");
+
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.pin.update.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    // If user already has a PIN, verify the old one matches
+    if (user.pin) {
+        requireInternalParam(oldPin, "oldPin");
+        const oldPinMatches = await bcrypt.compare(String(oldPin), user.pin);
+        if (!oldPinMatches) {
+            const AuthError = require("@errors/auth-error");
+            throw new AuthError("Current PIN is incorrect.", {
+                event: "user.pin.update.failed",
+                reason: "incorrect_old_pin",
+            });
+        }
+    }
+
+    const hashedPin = await hash(String(newPin));
+    await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
+}
+
+function loadVerifyEmailTemplate() {
+    if (verifyEmailTemplate) {
+        return verifyEmailTemplate;
+    }
+
+    try {
+        const verifyEmailContent = fs.readFileSync("email-templates/verify-email.hbs", "utf8");
+        verifyEmailTemplate = handlebars.compile(verifyEmailContent);
+        return verifyEmailTemplate;
+    } catch (err) {
+        console.error("Failed to load verification email template:", err);
+        throw new AppError("Failed to load verification email template.", {
+            statusCode: 500,
+            event: "user.verify.email.failed",
+            reason: "template_load_error",
+        });
+    }
+}
+
 async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
     return user;
@@ -53,6 +156,53 @@ async function requestPasswordReset(email) {
     await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, email]);
 
     sendMail(email, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
+}
+
+async function requestVerificationEmail(userId, apiBaseUrl) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(apiBaseUrl, "apiBaseUrl");
+
+    const user = await dbGet("SELECT id, email, verified FROM users WHERE id = ?", [userId]);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.verify.email.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    if (user.verified) {
+        return { alreadyVerified: true };
+    }
+
+    const template = loadVerifyEmailTemplate();
+    const secret = crypto.randomBytes(256).toString("hex");
+    const verifyUrl = `${apiBaseUrl}/api/v1/user/verify/email?code=${secret}`;
+
+    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [secret, user.id]);
+    sendMail(user.email, "Formbar Email Verification", template({ verifyUrl }));
+
+    return { alreadyVerified: false };
+}
+
+async function verifyEmailFromCode(code) {
+    requireInternalParam(code, "code");
+
+    const user = await dbGet("SELECT id, email, verified FROM users WHERE secret = ?", [code]);
+    if (!user) {
+        throw new NotFoundError("Verification token is invalid or has expired.", {
+            event: "user.verify.email.failed",
+            reason: "invalid_code",
+        });
+    }
+
+    if (!user.verified) {
+        await dbRun("UPDATE users SET verified = 1 WHERE id = ?", [user.id]);
+        if (classStateStore.getUser(user.email)) {
+            classStateStore.updateUser(user.email, { verified: 1 });
+        }
+    }
+
+    return { userId: user.id, alreadyVerified: Boolean(user.verified) };
 }
 
 async function resetPassword(password, token) {
@@ -360,8 +510,13 @@ async function deleteUser(userId, userSession) {
 module.exports = {
     getUserDataFromDb,
     requestPasswordReset,
+    requestVerificationEmail,
+    verifyEmailFromCode,
     resetPassword,
     regenerateAPIKey,
+    requestPinReset,
+    resetPin,
+    updatePin,
     getUser,
     getUserOwnedClasses,
     getUserClass,
