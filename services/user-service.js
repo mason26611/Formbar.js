@@ -1,6 +1,7 @@
 const handlebars = require("handlebars");
 const fs = require("fs");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const { sendMail } = require("@modules/mail");
@@ -11,6 +12,13 @@ const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
+const { endClass } = require("@services/class-service");
+const { deleteRooms } = require("@services/class-service");
+const { deleteCustomPolls } = require("@services/poll-service");
+const { hash } = require("@modules/crypto");
+const { requireInternalParam } = require("@modules/error-wrapper");
+const { getEmailFromId } = require("@services/student-service");
 
 let passwordResetTemplate;
 
@@ -48,6 +56,9 @@ async function requestPasswordReset(email) {
 }
 
 async function resetPassword(password, token) {
+    requireInternalParam(password, "password");
+    requireInternalParam(token, "token");
+
     const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
     if (!user) {
         throw new NotFoundError("Password reset token is invalid or has expired.", { event: "user.password.reset.failed", reason: "invalid_token" });
@@ -56,6 +67,21 @@ async function resetPassword(password, token) {
     const hashedPassword = await bcrypt.hash(password, 10);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
     return true;
+}
+
+async function regenerateAPIKey(userId) {
+    requireInternalParam(userId, "userId");
+
+    // Generate a new API key for the user
+    const apiKey = crypto.randomBytes(32).toString("hex");
+    const hashedAPIKey = await hash(apiKey);
+    await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
+
+    // Invalidate the cache for the user's email
+    const email = await getEmailFromId(apiKey);
+    apiKeyCacheStore.invalidateByEmail(email);
+
+    return apiKey;
 }
 
 // ─── User lookup ──────────────────────────────────────────────────────────────
@@ -199,10 +225,6 @@ async function getUserOwnedClasses(email) {
  * Logs a user out from a specific socket, cleaning up session state.
  */
 function logout(socket) {
-    const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
-    const { endClass } = require("@services/class-service");
-    const { deleteCustomPolls } = require("@services/poll-service");
-
     const email = socket.request.session.email;
     const userId = socket.request.session.userId;
     const classId = socket.request.session.classId;
@@ -271,10 +293,6 @@ function logout(socket) {
  * Deletes a user account and all associated data.
  */
 async function deleteUser(userId, userSession) {
-    const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
-    const { deleteRooms } = require("@services/class-service");
-    const { deleteCustomPolls } = require("@services/poll-service");
-
     try {
         const user = await dbGet("SELECT * FROM users WHERE id=?", [userId]);
         let tempUser;
@@ -328,6 +346,7 @@ module.exports = {
     getUserDataFromDb,
     requestPasswordReset,
     resetPassword,
+    regenerateAPIKey,
     getUser,
     getUserOwnedClasses,
     getUserClass,

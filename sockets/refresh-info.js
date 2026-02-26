@@ -5,34 +5,6 @@ const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 
 module.exports = {
     run(socket) {
-        socket.on("refreshApiKey", async () => {
-            try {
-                // Log the request information
-                const id = socket.request.session.userId;
-
-                // Check if userId is null or undefined
-                if (!id) {
-                    return socket.emit("error", "There was a server error try again.");
-                }
-
-                // Generate a new API key and hash it before storing it in the database
-                let newAPI = crypto.randomBytes(32).toString("hex");
-                const hashedAPI = await hash(newAPI);
-                await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPI, id]);
-                socket.request.session.API = hashedAPI;
-                if (socket.request.session.email) {
-                    apiKeyCacheStore.invalidateByEmail(socket.request.session.email);
-                } else {
-                    apiKeyCacheStore.clear();
-                }
-
-                // Log the successful API key update and emit the plaintext key (one-time view)
-                socket.emit("apiKeyUpdated", newAPI);
-            } catch (err) {
-                socket.emit("error", "There was a server error try again.");
-            }
-        });
-
         socket.on("refreshPin", async (data) => {
             try {
                 // Log the request information
