@@ -61,7 +61,10 @@ async function resetPassword(password, token) {
 
     const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
     if (!user) {
-        throw new NotFoundError("Password reset token is invalid or has expired.", { event: "user.password.reset.failed", reason: "invalid_token" });
+        throw new NotFoundError("Password reset token is invalid or has expired.", {
+            event: "user.password.reset.failed",
+            reason: "invalid_token",
+        });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -72,14 +75,26 @@ async function resetPassword(password, token) {
 async function regenerateAPIKey(userId) {
     requireInternalParam(userId, "userId");
 
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found for API key regeneration.", {
+            event: "user.api_key.regenerate.failed",
+            reason: "user_not_found",
+        });
+    }
+
     // Generate a new API key for the user
     const apiKey = crypto.randomBytes(32).toString("hex");
     const hashedAPIKey = await hash(apiKey);
     await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
 
     // Invalidate the cache for the user's email
-    const email = await getEmailFromId(apiKey);
-    apiKeyCacheStore.invalidateByEmail(email);
+    const email = await getEmailFromId(userId);
+    if (email) {
+        apiKeyCacheStore.invalidateByEmail(email);
+    } else {
+        apiKeyCacheStore.clear();
+    }
 
     return apiKey;
 }

@@ -1,6 +1,7 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const userService = require("@services/user-service");
+const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     /**
@@ -62,6 +63,12 @@ module.exports = (router) => {
     router.post("/user/:id/api/regenerate", isAuthenticated, async (req, res) => {
         const userId = req.params.id;
         requireQueryParam(userId, "id");
+
+        // Check if the user is trying to regenerate their own API key
+        // If the user is a manager, then they may regenerate any user's API key
+        if (req.user.id !== userId && req.user.permissions < 5) {
+            throw new ForbiddenError("You do not have permission to regenerate this user's API key.");
+        }
 
         req.infoEvent("user.api.view", "Attempting to regenerate user API key", { targetUserId: userId });
         const apiKey = await userService.regenerateAPIKey(userId);
