@@ -3,6 +3,9 @@ require("module-alias/register");
 
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
+const csv = require("csv-parser");
+
+const itemsCSVPath = "./database/items.csv";
 
 initializeDatabase();
 function initializeDatabase() {
@@ -21,6 +24,8 @@ function initializeDatabase() {
         const database = new sqlite3.Database("./database/database.db");
         database.serialize(() => {
             database.run("BEGIN TRANSACTION");
+
+            populateItemRegistry(database);
 
             // Execute initialization SQL
             database.exec(initSQL, (err) => {
@@ -49,6 +54,36 @@ function initializeDatabase() {
             });
         });
     });
+}
+
+function populateItemRegistry(database) {
+    const results = [];
+
+    fs.createReadStream(itemsCSVPath)
+        .pipe(csv({
+            mapHeaders: ({ header }) => header.trim()
+        }))
+        .on('data', (data) => {
+            results.push({
+                name: data.name,
+                description: data.desc,
+                stackSize: parseInt(data.stackSize),
+            });
+            console.log(`Read item from CSV`);
+            console.log(data);
+        })
+        .on('end', () => {
+            console.log(results);
+            results.forEach((item) => {
+                const {name, description, stackSize } = item;
+                console.log(`Inserting item: ${name}`);
+                database.run("INSERT INTO item_registry (name, description, stack_size) VALUES (?, ?, ?)", [name, description, stackSize], (err) => {
+                    if (err) {
+                        console.error("Error inserting item into database:", err);
+                    }
+                });
+            });
+        });
 }
 
 

@@ -141,17 +141,16 @@ CREATE TABLE IF NOT EXISTS "users"
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
-CREATE TABLE IF NOT EXISTS "inventory"
-(
-    id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     item_id INTEGER NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
     UNIQUE(user_id, item_id)
 );
 
-CREATE TABLE IF NOT EXISTS "item_registry" (
-    id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS item_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     description TEXT,
     stack_size INTEGER NOT NULL DEFAULT 1 CHECK (stack_size > 0),
