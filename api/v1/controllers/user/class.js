@@ -1,10 +1,9 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { dbGet } = require("@modules/database");
 const { classStateStore, getClassroomFromDb } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const NotFoundError = require("@errors/not-found-error");
 const { getUserDataFromDb } = require("@services/user-service");
+const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
     /**
@@ -57,7 +56,7 @@ module.exports = (router) => {
         requireQueryParam(userId, "id");
         req.infoEvent("user.class.view.attempt", "Attempting to view user active class", { targetUserId: userId });
 
-        const requestedUser = getUserDataFromDb(userId);
+        const requestedUser = await getUserDataFromDb(userId);
         const userInformation = classStateStore.getUser(requestedUser.email);
         if (!userInformation || !userInformation.activeClass) {
             throw new NotFoundError("User is not in a class.");

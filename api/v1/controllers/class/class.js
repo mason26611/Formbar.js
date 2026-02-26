@@ -2,6 +2,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { getClassUsers } = require("@services/class-service");
 const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
@@ -46,45 +47,46 @@ module.exports = (router) => {
      */
     router.get("/class/:id", isAuthenticated, async (req, res) => {
         const classId = req.params.id;
+        requireQueryParam(classId, "id");
 
         // Log the request details
         req.infoEvent("class.view", "Viewing class data", { classId });
 
         // Get a clone of the class data
         // If the class does not exist, return an error
-        const classData = structuredClone(classStateStore.getClassroom(classId));
-        if (!classData) {
+        const rawClassData = classStateStore.getClassroom(classId);
+        if (!rawClassData) {
             throw new NotFoundError("Class not started");
         }
 
         // Get the user from the session, and if the user is not in the class, return an error
         const user = req.user;
-        if (!classData.students[user.email]) {
+        if (!rawClassData.students[user.email]) {
             throw new ForbiddenError("User is not logged into the selected class", { event: "class.user_not_in_class", reason: "user_not_in_class" });
         }
 
         // Get the users in the class
-        const classUsers = await getClassUsers(user, classData.key);
+        const classUsers = await getClassUsers(user, rawClassData.key);
 
         // If an error occurs, log the error and return the error
         if (classUsers.error) {
             throw new NotFoundError(classUsers, { event: "class.users_error", reason: "retrieval_error" });
         }
 
-        // If the user is not a teacher or manager, remove the sensitive data from the class data
-        if (user.classPermissions < TEACHER_PERMISSIONS) {
-            delete classData.key;
-
-            classData.students = { [req.user.email]: classUsers[req.user.email] };
-        } else {
-            classData.students = classUsers;
-        }
-
         // Log the class data and send the response
-        req.infoEvent("class.data_sent", "Class data sent to client", { classId, hasPolls: !!classData.poll });
+        req.infoEvent("class.data_sent", "Class data sent to client", { classId, hasPolls: !!rawClassData.poll });
         res.status(200).json({
             success: true,
-            data: classData,
+            data: {
+                id: rawClassData.classId,
+                name: rawClassData.className,
+                isActive: rawClassData.isActive,
+                owner: rawClassData.owner,
+                students: user.classPermissions < TEACHER_PERMISSIONS ? { [user.email]: classUsers[user.email] } : classUsers,
+                tags: rawClassData.tags,
+                settings: rawClassData.settings,
+                timer: rawClassData.timer,
+            },
         });
     });
 };
