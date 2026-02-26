@@ -1,0 +1,121 @@
+const { classStateStore } = require("@services/classroom-service");
+const { dbGet, dbRun, dbGetAll } = require("@modules/database");
+const { advancedEmitToClass, emitToUser } = require("@services/socket-updates-service");
+const { getIdFromEmail } = require("@services/student-service");
+const { userSocketUpdates } = require("../sockets/init");
+const { requireInternalParam } = require("@modules/error-wrapper");
+const NotFoundError = require("@errors/not-found-error");
+
+// Lazy-load class-service to avoid circular dependency
+let classService;
+function getClassService() {
+    if (!classService) {
+        classService = require("@services/class-service");
+    }
+    return classService;
+}
+
+async function isUserInRoom(userId, classId) {
+    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
+    return !!result;
+}
+
+function getLinksInRoom(classId) {
+    requireInternalParam(classId, "classId");
+    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+}
+
+/**
+ * Allows a user to join a room using a room code for the FIRST TIME.
+ * This function should only be used when a user is joining with a code they received.
+ * For rejoining a class the user is already a member of, use joinClass from class-service.
+ * Handles loading classroom data, validating user permissions, and updating session state.
+ * @param {string} code - The room code to join
+ * @param {Object} sessionUser - The user's session object containing email and other data
+ * @returns {Promise<boolean>} Returns true if successful
+ * @throws {NotFoundError} If no class exists with that code
+ * @throws {ForbiddenError} If user is banned from the class
+ */
+async function joinRoomByCode(code, sessionUser) {
+    const email = sessionUser.email;
+
+    // Find the classroom from the database
+    const classroomDb = await dbGet("SELECT * FROM classroom WHERE key=?", [code]);
+
+    // Check to make sure there was a class with that code
+    if (!classroomDb) {
+        throw new NotFoundError("No class with that code");
+    }
+
+    // Initialize classroom if not already loaded
+    if (!classStateStore.getClassroom(classroomDb.id)) {
+        await getClassService().initializeClassroom(classroomDb.id);
+    }
+
+    // Delegate to class-service to handle the actual joining logic
+    // This avoids code duplication and keeps room-service focused on code validation
+    const result = await getClassService().addUserToClassroomSession(classroomDb.id, email, sessionUser);
+    return result;
+}
+
+/**
+ * Allows a user to join a room using a class code.
+ * Emits the joinClass event to the user with the result.
+ * @param {Object} userSession - The session object of the user attempting to join.
+ * @param {string} classCode - The code of the class to join.
+ * @returns {Promise<boolean>} Returns true if joined successfully.
+ */
+async function joinRoom(userSession, classCode) {
+    const response = await joinRoomByCode(classCode, userSession);
+    emitToUser(userSession.email, "joinClass", response);
+    return true;
+}
+
+/**
+ * Removes a user from a classroom.
+ * Deletes the user from the class in memory and the database, updates the user's session,
+ * emits leave events, and reloads the user's page.
+ * @param {Object} userData - The session object of the user leaving the room.
+ * @returns {Promise<void>}
+ */
+async function leaveRoom(userData) {
+    const classId = userData.classId;
+    const email = userData.email;
+    const studentId = await getIdFromEmail(email);
+
+    // Remove the user from the class
+    classStateStore.removeClassroomStudent(classId, email);
+    classStateStore.updateUser(email, {
+        activeClass: null,
+        break: false,
+        help: false,
+        classPermissions: null,
+    });
+    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
+
+    // If the owner of the classroom leaves, then delete the classroom
+    const owner = (await dbGet("SELECT owner FROM classroom WHERE id=?", classId)).owner;
+    if (owner == studentId) {
+        await dbRun("DELETE FROM classroom WHERE id=?", classId);
+    }
+
+    // Update the class and play leave sound
+    const userSockets = userSocketUpdates.get(email);
+    if (userSockets) {
+        for (const socketUpdate of userSockets.values()) {
+            socketUpdate.classUpdate(classId);
+        }
+    }
+
+    // Play leave sound and reload the user's page
+    await advancedEmitToClass("leaveSound", classId, {});
+    await emitToUser(email, "reload");
+}
+
+module.exports = {
+    isUserInRoom,
+    getLinksInRoom,
+    joinRoomByCode,
+    joinRoom,
+    leaveRoom,
+};
