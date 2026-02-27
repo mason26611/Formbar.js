@@ -1,6 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { getUserDataFromDb } = require("@services/user-service");
+const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 const AppError = require("@errors/app-error");
 
@@ -45,7 +46,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id", async (req, res) => {
+    router.get("/user/:id", isAuthenticated, async (req, res) => {
         const userId = req.params.id;
         req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 
@@ -64,7 +65,7 @@ module.exports = (router) => {
 
         const requesterEmail = req.user?.email;
         const isManager = requesterEmail && classStateStore.getUser(requesterEmail)?.permissions >= MANAGER_PERMISSIONS;
-        const isOwnProfile = req.user?.id === userId;
+        const isOwnProfile = String(req.user?.id) === String(userId);
         const emailVisible = isOwnProfile || isManager;
 
         // Load in-memory state for live pogMeter
@@ -77,6 +78,7 @@ module.exports = (router) => {
                 id: id,
                 displayName: displayName,
                 email: emailVisible ? email : undefined,
+                hasPin: isOwnProfile ? Boolean(pin) : undefined,
                 permissions: permissions,
                 verified: verified,
                 digipogs: digipogs,

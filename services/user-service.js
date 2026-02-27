@@ -126,6 +126,38 @@ async function updatePin(userId, oldPin, newPin) {
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
 }
 
+async function verifyPin(userId, pin) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(pin, "pin");
+
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.pin.verify.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    if (!user.pin) {
+        throw new AppError("No PIN is set for this account. Please create one first.", {
+            statusCode: 400,
+            event: "user.pin.verify.failed",
+            reason: "pin_not_set",
+        });
+    }
+
+    const pinMatches = await bcrypt.compare(String(pin), user.pin);
+    if (!pinMatches) {
+        const AuthError = require("@errors/auth-error");
+        throw new AuthError("PIN is incorrect.", {
+            event: "user.pin.verify.failed",
+            reason: "incorrect_pin",
+        });
+    }
+
+    return true;
+}
+
 function loadVerifyEmailTemplate() {
     if (verifyEmailTemplate) {
         return verifyEmailTemplate;
@@ -517,6 +549,7 @@ module.exports = {
     requestPinReset,
     resetPin,
     updatePin,
+    verifyPin,
     getUser,
     getUserOwnedClasses,
     getUserClass,
