@@ -2,7 +2,7 @@ const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
-const { dbGetAll, dbRun } = require("@modules/database");
+const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
 
@@ -81,7 +81,7 @@ function isAuthenticated(req, res, next) {
 }
 
 // Create a function to check if the user's email is verified
-function isVerified(req, res, next) {
+async function isVerified(req, res, next) {
     // Use req.user if available (set by isAuthenticated), otherwise decode from token
     let email = req.user?.email;
     if (!email) {
@@ -103,13 +103,40 @@ function isVerified(req, res, next) {
     }
 
     const user = classStateStore.getUser(email);
-    // If the user is verified or email functionality is disabled...
-    if ((user && user.verified) || !settings.emailEnabled || (user && user.permissions == GUEST_PERMISSIONS)) {
+
+    // If email verification is disabled, allow access.
+    if (!settings.emailEnabled) {
         next();
-    } else {
-        req.warnEvent("auth.not_verified", `User email is not verified: ${email}`, { email });
-        throw new AuthError("User email is not verified.");
+        return;
     }
+
+    // Guests bypass email verification.
+    if (user && user.permissions == GUEST_PERMISSIONS) {
+        next();
+        return;
+    }
+
+    // Fast path from in-memory session state.
+    if (user && user.verified) {
+        next();
+        return;
+    }
+
+    // Fallback to DB when in-memory state is stale or missing `verified`.
+    const dbUser = await dbGet("SELECT verified FROM users WHERE email = ?", [email]);
+    if (dbUser && dbUser.verified) {
+        if (user) {
+            classStateStore.updateUser(email, { verified: 1 });
+        }
+        if (req.user) {
+            req.user.verified = 1;
+        }
+        next();
+        return;
+    }
+
+    req.warnEvent("auth.not_verified", `User email is not verified: ${email}`, { email });
+    throw new AuthError("User email is not verified.");
 }
 
 module.exports = {

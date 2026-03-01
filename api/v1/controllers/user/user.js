@@ -1,7 +1,9 @@
 const { classStateStore } = require("@services/classroom-service");
-const { dbGet } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { getUserDataFromDb } = require("@services/user-service");
+const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
+const AppError = require("@errors/app-error");
 
 module.exports = (router) => {
     /**
@@ -12,10 +14,10 @@ module.exports = (router) => {
      *     tags:
      *       - Users
      *     description: |
-     *       Returns basic information about a user. The user's email address is only
-     *       included when the requester is the user themself or a manager. Other
-     *       fields (permissions, digipogs, displayName, verified) are always returned
-     *       when the user exists.
+     *       Returns information about a user including profile data (digipogs, API status,
+     *       PIN status, pogMeter). The user's email address is only included when the
+     *       requester is the user themselves or a manager. API key and PIN existence are
+     *       only surfaced for the user's own profile.
      *     parameters:
      *       - in: path
      *         name: id
@@ -32,7 +34,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/User'
      *       401:
-     *         description: Unauthorized (no session or insufficient permissions to view email)
+     *         description: Unauthorized
      *         content:
      *           application/json:
      *             schema:
@@ -48,42 +50,40 @@ module.exports = (router) => {
         const userId = req.params.id;
         req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 
-        // Check if the user is already logged in, and if they're not
-        // then load them from the database.
-        let user = Object.values(classStateStore.getAllUsers()).find((user) => user.id == userId);
-        if (!user) {
-            user = await dbGet("SELECT * FROM users WHERE id=?", userId);
-        } else {
-            // Load missing digipogs and verified values from the database
-            const { digipogs, verified } = (await dbGet("SELECT digipogs, verified FROM users WHERE id=?", userId)) || {};
-            user.digipogs = digipogs;
-            user.verified = verified;
-        }
-
-        // Only include the email if the requester is the user themselves or a manager
-        const requesterEmail = req.user?.email;
-        let userEmail = undefined;
-        // Safer check for manager permissions
-        const isManager = requesterEmail && classStateStore.getUser(requesterEmail)?.permissions === MANAGER_PERMISSIONS;
-        if (user && (requesterEmail === user.email || isManager)) {
-            userEmail = user.email;
-        }
-
-        if (user) {
-            req.infoEvent("user.view.success", "User data returned", { targetUserId: userId });
-            res.status(200).json({
-                success: true,
-                data: {
-                    id: user.id,
-                    email: userEmail,
-                    permissions: user.permissions,
-                    digipogs: user.digipogs,
-                    displayName: user.displayName,
-                    verified: user.verified,
-                },
-            });
-        } else {
+        const userData = await getUserDataFromDb(userId);
+        if (!userData) {
             throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
         }
+
+        const { id, displayName, email, digipogs, API, pin, permissions, verified } = userData;
+        if (!id || !displayName || !email || digipogs === undefined || !API) {
+            throw new AppError("Unable to retrieve user information. Please try again.", {
+                event: "user.get.failed",
+                reason: "missing_required_fields",
+            });
+        }
+
+        const requesterEmail = req.user?.email;
+        const isManager = requesterEmail && classStateStore.getUser(requesterEmail)?.permissions >= MANAGER_PERMISSIONS;
+        const isOwnProfile = String(req.user?.id) === String(userId);
+        const emailVisible = isOwnProfile || isManager;
+
+        // Load in-memory state for live pogMeter
+        const liveUser = classStateStore.getUser(email);
+
+        req.infoEvent("user.view.success", "User data returned", { targetUserId: userId });
+        res.status(200).json({
+            success: true,
+            data: {
+                id: id,
+                displayName: displayName,
+                email: emailVisible ? email : undefined,
+                hasPin: isOwnProfile ? Boolean(pin) : undefined,
+                permissions: permissions,
+                verified: verified,
+                digipogs: digipogs,
+                pogMeter: liveUser ? liveUser.pogMeter : 0,
+            },
+        });
     });
 };
