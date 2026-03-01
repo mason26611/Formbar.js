@@ -128,6 +128,11 @@ async function login(email, password) {
         const tokens = generateAuthTokens(userData);
         const decodedRefreshToken = jwt.decode(tokens.refreshToken);
         const tokenHash = hashToken(tokens.refreshToken);
+
+        // Delete any existing auth refresh tokens for this user before inserting.
+        // Without this, rapid successive logins within the same second produce
+        // identical JWTs (second-precision iat) → identical hashes → UNIQUE violation.
+        await dbRun("DELETE FROM refresh_tokens WHERE user_id = ? AND token_type = 'auth'", [userData.id]);
         await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
             userData.id,
             tokenHash,
@@ -135,7 +140,11 @@ async function login(email, password) {
             "auth",
         ]);
 
-        return { tokens, user: userData };
+        // Generate a legacy OAuth token (includes permissions) for backwards-compatible
+        // third-party apps (e.g. Jukebar) that use the /oauth redirect flow.
+        const legacyToken = generateLegacyOAuthToken(userData);
+
+        return { tokens: { ...tokens, legacyToken }, user: userData };
     } else {
         return invalidCredentials();
     }
@@ -215,7 +224,34 @@ function generateAuthTokens(userData) {
  * @returns {string} A JWT refresh token valid for 30 days
  */
 function generateRefreshToken(userData) {
-    return jwt.sign({ id: userData.id }, privateKey, { algorithm: "RS256", expiresIn: "30d" });
+    return jwt.sign({ id: userData.id, jti: crypto.randomBytes(16).toString("hex") }, privateKey, { algorithm: "RS256", expiresIn: "30d" });
+}
+
+/**
+ * Generates a legacy OAuth token for backwards-compatible third-party apps (e.g. Jukebar).
+ *
+ * Includes `permissions` in the payload because legacy clients read that field directly
+ * from the decoded JWT.  The token is still signed with RS256 so that the
+ * backwards-compat socket handler can verify it with `verifyToken()`.
+ *
+ * @param {Object} userData - The user data object
+ * @param {number} userData.id - The user's unique identifier
+ * @param {string} userData.email - The user's email address
+ * @param {string} userData.displayName - The user's display name
+ * @param {number} userData.permissions - The user's permission level
+ * @returns {string} A signed JWT valid for 1 hour
+ */
+function generateLegacyOAuthToken(userData) {
+    return jwt.sign(
+        {
+            id: userData.id,
+            email: userData.email,
+            displayName: userData.displayName,
+            permissions: userData.permissions,
+        },
+        privateKey,
+        { algorithm: "RS256", expiresIn: "1h" }
+    );
 }
 
 /**
@@ -499,4 +535,5 @@ module.exports = {
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
     hashToken,
+    generateLegacyOAuthToken,
 };
