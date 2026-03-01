@@ -1,7 +1,7 @@
 const { resetPin, requestPinReset } = require("@services/user-service");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const { settings } = require("express/lib/application");
+const { settings } = require("@modules/config");
 const AppError = require("@errors/app-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");

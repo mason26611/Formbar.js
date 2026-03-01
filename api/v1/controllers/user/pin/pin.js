@@ -88,7 +88,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.patch("/user/:id/pin", isAuthenticated, isVerified, async (req, res) => {
-        const targetUserId = req.params.id;
+        const targetUserId = Number(req.params.id);
 
         // Users may only update their own PIN
         if (req.user.id !== targetUserId) {
