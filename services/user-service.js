@@ -192,7 +192,6 @@ async function requestPasswordReset(email) {
 
 async function requestVerificationEmail(userId, apiBaseUrl) {
     requireInternalParam(userId, "userId");
-    requireInternalParam(apiBaseUrl, "apiBaseUrl");
 
     const user = await dbGet("SELECT id, email, verified FROM users WHERE id = ?", [userId]);
     if (!user) {
@@ -208,7 +207,7 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
 
     const template = loadVerifyEmailTemplate();
     const secret = crypto.randomBytes(256).toString("hex");
-    const verifyUrl = `${apiBaseUrl}/api/v1/user/verify/email?code=${secret}`;
+    const verifyUrl = frontendUrl ? `${frontendUrl}/user/verify/email?code=${secret}` : `${apiBaseUrl}/api/v1/user/verify/email?code=${secret}`;
 
     await dbRun("UPDATE users SET secret = ? WHERE id = ?", [secret, user.id]);
     sendMail(user.email, "Formbar Email Verification", template({ verifyUrl }));

@@ -37,6 +37,7 @@ module.exports = (router) => {
             targetUserId,
             alreadyVerified: result.alreadyVerified,
         });
+
         res.status(200).json({
             success: true,
             data: {
