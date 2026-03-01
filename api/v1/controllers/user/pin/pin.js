@@ -1,16 +1,9 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
 const { updatePin } = require("@services/user-service");
+const { isValidPin } = require("@modules/pin-validation");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
-
-/**
- * Validates that a PIN string meets format requirements (4-6 numeric digits).
- * @param {string} pin
- * @returns {boolean}
- */
-function isValidPin(pin) {
-    return pin && String(pin).length >= 4 && String(pin).length <= 6 && /^\d+$/.test(String(pin));
-}
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
@@ -89,6 +82,7 @@ module.exports = (router) => {
      */
     router.patch("/user/:id/pin", isAuthenticated, isVerified, async (req, res) => {
         const targetUserId = Number(req.params.id);
+        requireQueryParam(targetUserId, "id");
 
         // Users may only update their own PIN
         if (req.user.id !== targetUserId) {

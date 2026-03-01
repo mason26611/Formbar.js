@@ -3,7 +3,7 @@ const { settings } = require("@modules/config");
 module.exports = (router) => {
     router.get("/config", (req, res) => {
         req.infoEvent("config.view.attempt", "Attempting to read the server configuration");
-        req.infoEvent("certs.view.success", "Server configuration returned");
+        req.infoEvent("config.view.success", "Server configuration returned");
         res.json({
             success: true,
             data: {

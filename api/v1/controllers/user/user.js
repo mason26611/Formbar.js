@@ -46,7 +46,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id", isAuthenticated, async (req, res) => {
+    router.get("/user/:id", async (req, res) => {
         const userId = req.params.id;
         req.infoEvent("user.view.attempt", "Attempting to view user by id", { targetUserId: userId });
 

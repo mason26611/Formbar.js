@@ -2,18 +2,10 @@ const { resetPin, requestPinReset } = require("@services/user-service");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { settings } = require("@modules/config");
+const { isValidPin } = require("@modules/pin-validation");
 const AppError = require("@errors/app-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
-
-/**
- * Validates that a PIN string meets format requirements (4-6 numeric digits).
- * @param {string} pin
- * @returns {boolean}
- */
-function isValidPin(pin) {
-    return pin && String(pin).length >= 4 && String(pin).length <= 6 && /^\d+$/.test(String(pin));
-}
 
 module.exports = (router) => {
     /**

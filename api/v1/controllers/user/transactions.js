@@ -5,6 +5,7 @@ const { getUserTransactions } = require("@services/digipog-service");
 const { classStateStore } = require("@services/classroom-service");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
@@ -62,9 +63,8 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.get("/user/:id/transactions", isAuthenticated, isVerified, async (req, res) => {
-        req.infoEvent("user.transactions.view", "Viewing transactions", { targetUserId: req.params.id });
-
-        const userId = req.params.id;
+        const userId = Number(req.params.id);
+        requireQueryParam(userId, "id");
 
         // Check if the user has permission to view these transactions (either their own or they are a manager)
         if (req.user.id !== userId && classStateStore.getUser(req.user.email)?.permissions < MANAGER_PERMISSIONS) {
@@ -79,9 +79,10 @@ module.exports = (router) => {
             throw new NotFoundError("User not found.", { event: "user.transactions.view.failed", reason: "user_not_in_database" });
         }
 
+        req.infoEvent("user.transactions.view.attempt", "Attempting to view user transactions", { targetUserId: userId });
+
         const userDisplayName = userData.displayName || "Unknown User";
         const transactions = await getUserTransactions(userId);
-
         if (!transactions || transactions.length === 0) {
             req.infoEvent("user.transactions.empty", "No transactions found for user");
             res.status(200).json({
@@ -94,6 +95,8 @@ module.exports = (router) => {
             });
             return;
         }
+
+        req.infoEvent("user.transactions.view.success", "User transactions returned", { targetUserId: userId });
 
         res.status(200).json({
             success: true,
