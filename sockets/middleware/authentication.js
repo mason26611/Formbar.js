@@ -76,8 +76,6 @@ module.exports = {
                             next(err);
                         }
                     });
-                } else if (event == "reload") {
-                    next();
                 } else {
                     next(new Error("Missing authentication credentials"));
                 }

@@ -49,12 +49,15 @@ function setupSocketSession(socket, userData, includeApi = false) {
  * Joins socket to appropriate rooms based on authentication type.
  */
 function joinSocketRooms(socket, email, classId, isApiAuth = false) {
+    // Always join the personal room so future setClassOfApiSockets / setClassOfUserSockets
+    // calls can locate this socket even when no class is active yet.
+    if (isApiAuth) {
+        socket.join(`api-${socket.request.session.api}`);
+    } else {
+        socket.join(`user-${email}`);
+    }
+
     if (classId) {
-        if (isApiAuth) {
-            socket.join(`api-${socket.request.session.api}`);
-        } else {
-            socket.join(`user-${email}`);
-        }
         socket.join(`class-${classId}`);
     }
 }
@@ -80,7 +83,15 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
             }
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
-            if (emptyAfterRemoval) classKickStudent(userId, classId, false);
+            if (emptyAfterRemoval) {
+                // Give the client a short grace period (5 minutes) to reconnect
+                // before treating the disconnect as a deliberate class leave.
+                setTimeout(async () => {
+                    if (!socketStateStore.hasUserSockets(email)) {
+                        classKickStudent(userId, classId, false);
+                    }
+                }, 300000);
+            }
         }
     });
 }
@@ -107,6 +118,8 @@ function finalizeAuthentication(socket, userData, socketUpdates, isApiAuth = fal
 
 module.exports = {
     order: 10,
+    // Exported for use in backwards-compat.js to authenticate sockets via legacy socket events
+    finalizeAuthentication,
     async run(socket, socketUpdates) {
         try {
             const { api, authorization } = socket.request.headers;
