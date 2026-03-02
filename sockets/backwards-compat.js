@@ -13,8 +13,7 @@ const { handleSocketError } = require("@modules/socket-error-handler");
 const { finalizeAuthentication } = require("./middleware/api");
 
 const DEPRECATION_NOTICE =
-    "Deprecated authentication method used. Please update to use header-based authentication. " +
-    "See the Formbar.js API documentation for details.";
+    "Deprecated authentication method used. Please update to use header-based authentication. " + "See the Formbar.js API documentation for details.";
 
 module.exports = {
     run(socket, socketUpdates) {
