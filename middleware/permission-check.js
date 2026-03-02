@@ -5,6 +5,7 @@ const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { camelCaseToNormal } = require("@modules/util");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const NotFoundError = require("@errors/not-found-error");
 
 // For users who do not have teacher/manager permissions, then they can only access these endpoints when it's
 // only affecting themselves.
@@ -51,9 +52,12 @@ function hasPermission(permission) {
  */
 function hasClassPermission(classPermission) {
     return async function (req, res, next) {
-        const classId = req.params.id;
-        const classroom = classStateStore.getClassroom(classId);
+        const classId = req.user.activeClass;
+        if (!classId) {
+            throw new NotFoundError("You're not currently in a classroom.", { event: "permission.check.failed", reason: "class_not_found" });
+        }
 
+        const classroom = classStateStore.getClassroom(classId);
         const email = req.user.email;
         if (!email) {
             req.warnEvent("auth.class_perm_check.not_authenticated", "Class permission check failed: User is not authenticated");

@@ -1,12 +1,13 @@
 const { dbGet } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const pools = require("@services/digipog-service");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = {
     run(router) {
         /**
          * @swagger
-         * /api/v1/user/pools:
+         * /api/v1/user/:id/pools:
          *   get:
          *     summary: Get user's digipog pools
          *     tags:
@@ -42,22 +43,23 @@ module.exports = {
          *               $ref: '#/components/schemas/ServerError'
          */
         // Handle displaying the pools management page
-        router.get("/user/pools", isAuthenticated, isVerified, async (req, res) => {
-            const userId = req.user.id;
+        router.get("/user/:id/pools", isAuthenticated, isVerified, async (req, res) => {
+            const userId = Number(req.params.id);
+            requireQueryParam(userId, "id");
+
             req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
 
             // Get all pools for this user using the new schema helper
             const userPools = await pools.getPoolsForUser(userId);
-
             const ownedPools = userPools.filter((p) => p.owner).map((p) => String(p.pool_id));
             const memberPools = userPools.filter((p) => !p.owner).map((p) => String(p.pool_id));
             const poolObjs = await Promise.all(
-                userPools.map(async (p) => {
-                    const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [p.pool_id]);
+                userPools.map(async (poolData) => {
+                    const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
                     if (pool) {
-                        const users = await pools.getUsersForPool(p.pool_id);
-                        pool.members = users.filter((u) => !u.owner).map((u) => u.user_id);
-                        pool.owners = users.filter((u) => u.owner).map((u) => u.user_id);
+                        const users = await pools.getUsersForPool(poolData.pool_id);
+                        pool.members = users.filter((userData) => !userData.owner).map((u) => u.user_id);
+                        pool.owners = users.filter((userData) => userData.owner).map((u) => u.user_id);
                     }
                     return pool;
                 })

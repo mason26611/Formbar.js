@@ -2,13 +2,17 @@ const { httpPermCheck } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
 module.exports = (router) => {
     const approveBreakHandler = async (req, res) => {
-        const classId = req.params.id;
-        const targetUserId = req.params.userId;
+        const classId = Number(req.params.id);
+        const targetUserId = Number(req.params.userId);
+        requireQueryParam(classId, "id");
+        requireQueryParam(targetUserId, "userId");
+
         req.infoEvent("class.break.approve.attempt", "Attempting to approve class break", { classId, targetUserId });
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {

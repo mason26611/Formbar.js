@@ -2,6 +2,7 @@ const { httpPermCheck } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
@@ -63,15 +64,18 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/class/:id/students/:userId/break/deny", isAuthenticated, httpPermCheck("approveBreak"), async (req, res) => {
-        const classId = req.params.id;
-        const targetUserId = req.params.userId;
+        const classId = Number(req.params.id);
+        const targetUserId = Number(req.params.userId);
+        requireQueryParam(classId, "id");
+        requireQueryParam(targetUserId, "userId");
+
         req.infoEvent("class.break.deny.attempt", "Attempting to deny class break", { classId, targetUserId });
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && !classroom.students[req.user.email]) {
             throw new ForbiddenError("You do not have permission to approve this user's break.");
         }
 
-        const result = approveBreak(false, targetUserId, req.user);
+        const result = await approveBreak(false, targetUserId, { ...req.user, classId });
         if (result === true) {
             req.infoEvent("class.break.deny.success", "Class break denied", { classId, targetUserId });
             res.status(200).json({

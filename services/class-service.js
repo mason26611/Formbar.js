@@ -1,5 +1,4 @@
-const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-
+const { dbGetAll, dbGet, dbRun, database } = require("@modules/database");
 const {
     advancedEmitToClass,
     emitToUser,
@@ -8,7 +7,7 @@ const {
     userUpdateSocket,
     invalidateClassPollCache,
 } = require("@services/socket-updates-service");
-const { Classroom, classStateStore } = require("@services/classroom-service");
+const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
@@ -24,6 +23,7 @@ const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@service
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -492,7 +492,7 @@ async function joinClass(userData, classId) {
  * @param {number} [classId] - The ID of the class to leave. If not provided, uses the user's active class.
  * @returns {boolean} True if the user was removed successfully, false otherwise.
  */
-function leaveClass(userData, classId) {
+async function leaveClass(userData, classId) {
     // If no classId is provided, use the user's active class
     if (!classId) {
         classId = userData.activeClass;
@@ -506,8 +506,8 @@ function leaveClass(userData, classId) {
 
     // Kick the user from the classroom entirely if they're a guest
     // If not, kick them from the session
-    advancedEmitToClass("leaveSound", classId, {});
-    classKickStudent(user.id, classId, { exitRoom: classStateStore.getUser(email).isGuest });
+    await advancedEmitToClass("leaveSound", classId, {});
+    await classKickStudent(user.id, classId, { exitRoom: classStateStore.getUser(email).isGuest });
     return true;
 }
 
@@ -538,8 +538,7 @@ async function deleteRooms(userId) {
         await Promise.all([
             dbRun("DELETE FROM classusers WHERE classId=?", classroom.id),
             dbRun("DELETE FROM class_polls WHERE classId=?", classroom.id),
-            dbRun("DELETE FROM links WHERE classId=?", classroom.id),
-            dbRun("DELETE FROM lessons WHERE class=?", classroom.id),
+            dbRun("DELETE FROM links WHERE classId=?", classroom.id)
         ]);
         invalidateClassPollCache(classroom.id);
         classCodeCacheStore.invalidateByClassId(classroom.id);
@@ -627,62 +626,85 @@ function classKickStudents(classId) {
     } catch (err) {}
 }
 
+/**
+ * Broadcasts a class update using any connected socket in the class.
+ * Prefers a specific user's sockets first when provided.
+ */
+function broadcastClassUpdate(classId, preferredEmail) {
+    if (!classId) return false;
+
+    if (preferredEmail && userUpdateSocket(preferredEmail, "classUpdate", classId)) {
+        return true;
+    }
+
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom || !classroom.students) {
+        return false;
+    }
+
+    for (const email of Object.keys(classroom.students)) {
+        if (email === preferredEmail) continue;
+        if (userUpdateSocket(email, "classUpdate", classId)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // ─── Break ───────────────────────────────────────────────────────────────────
 
 /**
  * Requests a break for a student.
  */
 function requestBreak(reason, userData) {
-    try {
-        const classId = userData.classId;
-        const email = userData.email;
-        if (!classStateStore.getClassroom(classId)?.isActive) {
-            return "This class is not currently active.";
-        }
+    const classId = userData.classId;
+    const email = userData.email;
+    if (!classStateStore.getClassroom(classId)?.isActive) {
+        return "This class is not currently active.";
+    }
 
-        const classroom = classStateStore.getClassroom(classId);
-        const student = classroom.students[email];
-        advancedEmitToClass("breakSound", classId, {});
-        student.break = reason;
+    const classroom = classStateStore.getClassroom(classId);
+    const student = classroom.students[email];
+    advancedEmitToClass("breakSound", classId, {});
+    student.break = reason;
 
-        userUpdateSocket(email, "classUpdate", classId);
-        return true;
-    } catch (err) {}
+    broadcastClassUpdate(classId, email);
+    return true;
 }
 
 /**
  * Approves or denies a break for a student.
  */
 async function approveBreak(breakApproval, userId, userData) {
-    try {
-        const { io } = require("@modules/web-server");
-        const email = await getEmailFromId(userId);
+    const email = await getEmailFromId(userId);
 
-        const classId = userData.classId;
-        const classroom = classStateStore.getClassroom(classId);
-        const student = classroom.students[email];
-        student.break = breakApproval;
+    const classId = userData.classId;
+    const student = classStateStore.getClassroomStudent(classId, email);
+    classStateStore.updateClassroomStudent(classId, email, { break: breakApproval });
 
-        io.to(`user-${email}`).emit("break", breakApproval);
-        if (student && student.API) {
-            io.to(`api-${student.API}`).emit("break", breakApproval);
-        }
-        userUpdateSocket(email, "classUpdate", classId);
-        return true;
-    } catch (err) {}
+    io.to(`user-${email}`).emit("break", breakApproval);
+    if (student && student.API) {
+        io.to(`api-${student.API}`).emit("break", breakApproval);
+    }
+    broadcastClassUpdate(classId, userData.email || email);
+    return true;
 }
 
 /**
  * Ends a student's active break.
  */
 function endBreak(userData) {
-    try {
-        classStateStore.getClassroom(userData.classId);
-        const student = classStateStore.getUser(userData.email);
-        student.break = false;
-        userUpdateSocket(userData.email, "classUpdate", userData.classId);
-        return true;
-    } catch (err) {}
+    const email = userData.email;
+    const classId = userData.classId;
+    const student = classStateStore.getClassroomStudent(classId, email);
+    classStateStore.updateClassroomStudent(classId, userData.email, { break: false });
+
+    io.to(`user-${email}`).emit("break", false);
+    if (student && student.API) {
+        io.to(`api-${student.API}`).emit("break", false);
+    }
+    broadcastClassUpdate(classId, email);
 }
 
 // ─── Help ────────────────────────────────────────────────────────────────────
@@ -691,43 +713,39 @@ function endBreak(userData) {
  * Sends a help ticket for a student.
  */
 function sendHelpTicket(reason, userSession) {
-    try {
-        const classId = userSession.classId;
-        const email = userSession.email;
-        if (!classStateStore.getClassroom(classId)?.isActive) {
-            return "This class is not currently active.";
-        }
+    const classId = userSession.classId;
+    const email = userSession.email;
+    if (!classStateStore.getClassroom(classId)?.isActive) {
+        return "This class is not currently active.";
+    }
 
-        const student = classStateStore.getClassroomStudent(classId, email);
-        if (student.help.reason === reason) {
-            return "You have already requested help for this reason.";
-        }
+    const student = classStateStore.getClassroomStudent(classId, email);
+    if (student.help.reason === reason) {
+        return "You have already requested help for this reason.";
+    }
 
-        const time = Date.now();
-        classStateStore.updateClassroomStudent(classId, email, { help: { reason: reason, time: time } });
+    const time = Date.now();
+    classStateStore.updateClassroomStudent(classId, email, { help: { reason: reason, time: time } });
 
-        emitToUser(email, "helpSuccess");
-        advancedEmitToClass("helpSound", classId, {});
+    emitToUser(email, "helpSuccess");
+    advancedEmitToClass("helpSound", classId, {});
 
-        userUpdateSocket(email, "classUpdate", classId);
-        return true;
-    } catch (err) {}
+    broadcastClassUpdate(classId, email);
+    return true;
 }
 
 /**
  * Deletes a help ticket for a student.
  */
 async function deleteHelpTicket(studentId, userData) {
-    try {
-        const classId = userData.classId;
-        const email = userData.email;
-        const studentEmail = await getEmailFromId(studentId);
+    const classId = userData.classId;
+    const email = userData.email;
+    const studentEmail = await getEmailFromId(studentId);
 
-        classStateStore.updateClassroomStudent(classId, studentEmail, { help: false });
+    classStateStore.updateClassroomStudent(classId, studentEmail, { help: false });
 
-        userUpdateSocket(email, "classUpdate", classId);
-        return true;
-    } catch (err) {}
+    broadcastClassUpdate(classId, email);
+    return true;
 }
 
 // ─── Tags ────────────────────────────────────────────────────────────────────
@@ -736,80 +754,76 @@ async function deleteHelpTicket(studentId, userData) {
  * Sets the allowed tags for a class and normalizes existing student tags.
  */
 async function setTags(tags, userSession) {
-    try {
-        if (!Array.isArray(tags)) return;
+    if (!Array.isArray(tags)) return;
 
-        tags = tags
-            .filter((tag) => typeof tag === "string")
-            .map((tag) => tag.trim())
-            .map((tag) => tag.replace(/[\r\n\t]/g, ""))
-            .filter((tag) => tag !== "")
-            .sort();
-        if (!tags.includes("Offline")) tags.push("Offline");
+    tags = tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .map((tag) => tag.replace(/[\r\n\t]/g, ""))
+        .filter((tag) => tag !== "")
+        .sort();
+    if (!tags.includes("Offline")) tags.push("Offline");
 
-        const classId = userSession.classId;
-        const classroom = classStateStore.getClassroom(classId);
-        if (!classId || !classroom) return;
-        classStateStore.updateClassroom(classId, { tags });
+    const classId = userSession.classId;
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classId || !classroom) return;
+    classStateStore.updateClassroom(classId, { tags });
 
-        for (const student of Object.values(classroom.students)) {
-            if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
-            if (!student.tags) student.tags = [];
+    for (const student of Object.values(classroom.students)) {
+        if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
+        if (!student.tags) student.tags = [];
 
-            let studentTags = [];
-            studentTags = student.tags.filter(Boolean);
-            studentTags = studentTags.filter((tag) => tags.includes(tag));
-            student.tags = studentTags;
+        let studentTags = [];
+        studentTags = student.tags.filter(Boolean);
+        studentTags = studentTags.filter((tag) => tags.includes(tag));
+        student.tags = studentTags;
 
-            try {
-                await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [studentTags.join(","), student.id, classId]);
-            } catch (err) {}
-        }
+        try {
+            await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [studentTags.join(","), student.id, classId]);
+        } catch (err) {}
+    }
 
-        await dbRun("UPDATE classroom SET tags = ? WHERE id = ?", [tags.toString(), classId]);
-    } catch (err) {}
+    await dbRun("UPDATE classroom SET tags = ? WHERE id = ?", [tags.toString(), classId]);
 }
 
 /**
  * Saves the tags for a specific student in the class.
  */
 async function saveTags(studentId, tags, userSession) {
-    try {
-        const email = await getEmailFromId(studentId);
-        if (!Array.isArray(tags)) return;
+    const email = await getEmailFromId(studentId);
+    if (!Array.isArray(tags)) return;
 
-        const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
-        let normalized = tags
-            .filter((tag) => typeof tag === "string")
-            .map((tag) => tag.trim())
-            .map((tag) => tag.replace(/[\r\n\t]/g, ""))
-            .filter((tag) => tag !== "");
+    const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
+    let normalized = tags
+        .filter((tag) => typeof tag === "string")
+        .map((tag) => tag.trim())
+        .map((tag) => tag.replace(/[\r\n\t]/g, ""))
+        .filter((tag) => tag !== "");
 
-        if (isActiveInClass) {
-            normalized = normalized.filter((tag) => tag !== "Offline");
-        } else if (!normalized.includes("Offline")) {
-            normalized.push("Offline");
-        }
-
+    if (isActiveInClass) {
         normalized = normalized.filter((tag) => tag !== "Offline");
+    } else if (!normalized.includes("Offline")) {
+        normalized.push("Offline");
+    }
 
-        const student = classStateStore.getClassroom(userSession.classId)?.students[email];
-        if (!student) return;
-        const oldTags = student.tags || [];
+    normalized = normalized.filter((tag) => tag !== "Offline");
 
-        classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
+    const student = classStateStore.getClassroom(userSession.classId)?.students[email];
+    if (!student) return;
+    const oldTags = student.tags || [];
 
-        const wasExcluded = oldTags.includes("Excluded");
-        const isNowExcluded = normalized.includes("Excluded");
+    classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
 
-        if (!wasExcluded && isNowExcluded && student.pollRes) {
-            student.pollRes.buttonRes = "";
-            student.pollRes.textRes = "";
-            student.pollRes.date = null;
-        }
+    const wasExcluded = oldTags.includes("Excluded");
+    const isNowExcluded = normalized.includes("Excluded");
 
-        await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
-    } catch (err) {}
+    if (!wasExcluded && isNowExcluded && student.pollRes) {
+        student.pollRes.buttonRes = "";
+        student.pollRes.textRes = "";
+        student.pollRes.date = null;
+    }
+
+    await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
 }
 
 // ─── Class Users ─────────────────────────────────────────────────────────────
@@ -820,73 +834,66 @@ async function saveTags(studentId, tags, userSession) {
  * @param {string} key - The class key/code.
  */
 async function getClassUsers(user, key) {
-    const { database } = require("@modules/database");
-    const { getClassIDFromCode } = require("@services/classroom-service");
-    try {
-        let classPermissions = user.classPermissions;
-
-        let dbClassUsers = await new Promise((resolve, reject) => {
-            database.all(
-                "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
-                [key],
-                (err, rows) => {
-                    if (err) return reject(err);
-                    if (!rows) return resolve({ error: "class does not exist" });
-                    resolve(rows);
-                }
-            );
-        });
-
-        if (dbClassUsers.error) return dbClassUsers;
-
-        let classUsers = {};
-        let cDClassUsers = {};
-        let classId = await getClassIDFromCode(key);
-
-        const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
-        if (cdClassroom) {
-            cDClassUsers = cdClassroom.students || {};
-        }
-
-        for (let userRow of dbClassUsers) {
-            classUsers[userRow.email] = {
-                loggedIn: false,
-                ...userRow,
-                help: null,
-                break: null,
-                pogMeter: 0,
-            };
-
-            let cdUser = cDClassUsers[userRow.email];
-            if (cdUser) {
-                classUsers[userRow.email].loggedIn = true;
-                classUsers[userRow.email].help = cdUser.help;
-                classUsers[userRow.email].break = cdUser.break;
-                classUsers[userRow.email].pogMeter = cdUser.pogMeter;
+    const classPermissions = user.classPermissions;
+    const dbClassUsers = await new Promise((resolve, reject) => {
+        database.all(
+            "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
+            [key],
+            (err, rows) => {
+                if (err) return reject(err);
+                if (!rows) return resolve({ error: "class does not exist" });
+                resolve(rows);
             }
+        );
+    });
 
-            if (classPermissions <= MOD_PERMISSIONS) {
-                if (classUsers[userRow.email].help) {
-                    classUsers[userRow.email].help = true;
-                }
-                if (typeof classUsers[userRow.email].break == "string") {
-                    classUsers[userRow.email].break = false;
-                }
-            }
+    if (dbClassUsers.error) return dbClassUsers;
 
-            if (classPermissions <= STUDENT_PERMISSIONS) {
-                delete classUsers[userRow.email].permissions;
-                delete classUsers[userRow.email].classPermissions;
-                delete classUsers[userRow.email].help;
-                delete classUsers[userRow.email].break;
-                delete classUsers[userRow.email].pogMeter;
-            }
-        }
+    let classUsers = {};
+    let cDClassUsers = {};
+    let classId = await getClassIDFromCode(key);
 
-        return classUsers;
-    } catch (err) {
-        return err;
+    const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
+    if (cdClassroom) {
+        cDClassUsers = cdClassroom.students || {};
     }
+
+    for (let userRow of dbClassUsers) {
+        classUsers[userRow.email] = {
+            loggedIn: false,
+            ...userRow,
+            help: null,
+            break: null,
+            pogMeter: 0,
+        };
+
+        let cdUser = cDClassUsers[userRow.email];
+        if (cdUser) {
+            classUsers[userRow.email].loggedIn = true;
+            classUsers[userRow.email].help = cdUser.help;
+            classUsers[userRow.email].break = cdUser.break;
+            classUsers[userRow.email].pogMeter = cdUser.pogMeter;
+        }
+
+        if (classPermissions <= MOD_PERMISSIONS) {
+            if (classUsers[userRow.email].help) {
+                classUsers[userRow.email].help = true;
+            }
+            if (typeof classUsers[userRow.email].break == "string") {
+                classUsers[userRow.email].break = false;
+            }
+        }
+
+        if (classPermissions <= STUDENT_PERMISSIONS) {
+            delete classUsers[userRow.email].permissions;
+            delete classUsers[userRow.email].classPermissions;
+            delete classUsers[userRow.email].help;
+            delete classUsers[userRow.email].break;
+            delete classUsers[userRow.email].pogMeter;
+        }
+    }
+
+    return classUsers;
 }
 
 module.exports = {
