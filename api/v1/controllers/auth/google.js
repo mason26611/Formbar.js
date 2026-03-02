@@ -126,8 +126,13 @@ module.exports = (router) => {
                 delete req.session.oauthOrigin;
                 req.infoEvent("auth.google.callback.redirect", "Redirecting to SPA after Google OAuth");
                 const redirect = new URL(clientOrigin);
-                redirect.searchParams.set("accessToken", result.tokens.accessToken);
-                redirect.searchParams.set("refreshToken", result.tokens.refreshToken);
+                // Place tokens in the URL fragment instead of query parameters to
+                // avoid leaking them via Referer headers and intermediary logs.
+                const existingHash = redirect.hash ? redirect.hash.replace(/^#/, "") : "";
+                const hashParams = new URLSearchParams(existingHash);
+                hashParams.set("accessToken", tokens.accessToken);
+                hashParams.set("refreshToken", tokens.refreshToken);
+                redirect.hash = hashParams.toString();
                 return res.redirect(redirect.toString());
             }
 
