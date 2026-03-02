@@ -17,9 +17,18 @@ function checkEnabled(req, res, next) {
 
 module.exports = (router) => {
     // Initiate Google OAuth flow
+    // Accepts an optional `origin` query parameter which is stored in the session
+    // so the callback can redirect the browser back to the SPA with tokens.
     router.get(
         "/auth/google",
         checkEnabled,
+        (req, res, next) => {
+            // Persist the caller's origin so the callback can redirect back
+            if (req.query.origin) {
+                req.session.oauthOrigin = String(req.query.origin);
+            }
+            next();
+        },
         passport.authenticate("google", {
             scope: ["profile", "email"],
             session: false,
@@ -109,6 +118,25 @@ module.exports = (router) => {
                 );
             }
 
+            // If the request came from the SPA via a browser redirect (origin stored
+            // in session), redirect back to the client login page with the tokens so
+            // the SPA can complete the login flow without an extra round-trip.
+            const clientOrigin = req.session?.oauthOrigin;
+            if (clientOrigin) {
+                delete req.session.oauthOrigin;
+                req.infoEvent("auth.google.callback.redirect", "Redirecting to SPA after Google OAuth");
+                const redirect = new URL(clientOrigin);
+                // Place tokens in the URL fragment instead of query parameters to
+                // avoid leaking them via Referer headers and intermediary logs.
+                const existingHash = redirect.hash ? redirect.hash.replace(/^#/, "") : "";
+                const hashParams = new URLSearchParams(existingHash);
+                hashParams.set("accessToken", tokens.accessToken);
+                hashParams.set("refreshToken", tokens.refreshToken);
+                redirect.hash = hashParams.toString();
+                return res.redirect(redirect.toString());
+            }
+
+            // Fallback for direct API consumers: return tokens as JSON
             res.json({
                 success: true,
                 data: {

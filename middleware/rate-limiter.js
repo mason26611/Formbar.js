@@ -70,12 +70,14 @@ async function rateLimiter(req, res, next) {
                 limit,
                 permissions: user.permissions,
             });
-            return res.status(429).json({ error: `You are being rate limited. Please try again in ${timeFrame / 1000} seconds.` });
         }
-    } else {
-        userRequests[path].push(currentTime);
-        next();
+
+        // Always respond while over-limit; otherwise the request hangs forever.
+        return res.status(429).json({ error: `You are being rate limited. Please try again in ${timeFrame / 1000} seconds.` });
     }
+
+    userRequests[path].push(currentTime);
+    next();
 }
 
 module.exports = {

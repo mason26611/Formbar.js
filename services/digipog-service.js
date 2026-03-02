@@ -163,19 +163,17 @@ async function getUserTransactions(userId) {
 async function awardDigipogs(awardData, user) {
     try {
         const from = user.userId;
-        const to = awardData.to;
         const amount = Math.ceil(awardData.amount);
         const reason = awardData.reason || "Awarded";
 
+        let to = awardData.to;
         let deprecatedFormatUsed = false;
-        if (!to.id && !to.code) {
-            if (typeof to === "string" || typeof to === "number") {
-                to.id = to;
-                to.type = "user";
-            } else {
-                return { success: false, message: "Missing recipient identifier." };
-            }
+        if (typeof to === "string" || typeof to === "number") {
+            // Old API: `to` was a plain user ID — normalize to new object format
+            to = { id: to, type: "user" };
             deprecatedFormatUsed = true;
+        } else if (!to || (!to.id && !to.code)) {
+            return { success: false, message: "Missing recipient identifier." };
         }
 
         if (!from || !to || !amount) {
@@ -297,26 +295,32 @@ async function awardDigipogs(awardData, user) {
 
 async function transferDigipogs(transferData) {
     try {
-        const { from, to, pin, reason = "", pool } = transferData;
+        const { pin, reason = "", pool } = transferData;
+        let from = transferData.from;
+        let to = transferData.to;
         const amount = Math.floor(transferData.amount);
 
         let deprecatedFormatUsed = false;
-        if (!from.id) {
-            if (typeof from === "string" || typeof from === "number") {
-                from.id = from;
-                from.type = "user";
-            } else {
-                return { success: false, message: "Missing sender identifier." };
-            }
-            if (typeof to === "string" || typeof to === "number") {
-                to.id = pool ? pool : to;
-                to.type = pool ? "pool" : "user";
-            } else {
+        if (typeof from === "string" || typeof from === "number") {
+            // Old API: `from`/`to` were plain user IDs; `pool` flag indicated a pool recipient
+            if (typeof to !== "string" && typeof to !== "number") {
                 return { success: false, message: "Missing recipient identifier." };
             }
+            from = { id: from, type: "user" };
+            to = { id: pool ? pool : to, type: pool ? "pool" : "user" };
             deprecatedFormatUsed = true;
+        } else if (!from || !from.id) {
+            return { success: false, message: "Missing sender identifier." };
         }
         if (!from.type) from.type = "user";
+        // Normalize `to` independently: if it's still a primitive at this point
+        // (e.g. the caller passed an object `from` but a raw id for `to`), wrap it
+        // rather than letting `to.type` throw on a non-object.
+        if (typeof to === "string" || typeof to === "number") {
+            to = { id: to, type: pool ? "pool" : "user" };
+        } else if (!to || typeof to !== "object") {
+            return { success: false, message: "Missing recipient identifier." };
+        }
         if (!to.type) to.type = "user";
 
         if (!from || !from.id || !to || !to.id || !amount || reason === undefined || !pin) {
