@@ -1,9 +1,8 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { dbGet } = require("@modules/database");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore, getClassroomFromDb } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const ForbiddenError = require("@errors/forbidden-error");
+const { requireQueryParam } = require("@modules/error-wrapper");
+const { getUserDataFromDb } = require("@services/user-service");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
@@ -54,36 +53,28 @@ module.exports = (router) => {
      */
     router.get("/user/:id/class", isAuthenticated, httpPermCheck("getActiveClass"), async (req, res) => {
         const userId = req.params.id;
+        requireQueryParam(userId, "id");
         req.infoEvent("user.class.view.attempt", "Attempting to view user active class", { targetUserId: userId });
 
-        // Retrieve both users
-        const apiKey = req.headers.api;
-        const user = await dbGet("SELECT * FROM users WHERE API = ?", [apiKey]);
-        const requestedUser = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
-
-        if (user.id !== requestedUser.id && user.permissionLevel < MANAGER_PERMISSIONS) {
-            throw new ForbiddenError("You do not have permission to view this user's active class.");
+        const requestedUser = await getUserDataFromDb(userId);
+        const userInformation = classStateStore.getUser(requestedUser.email);
+        if (!userInformation || !userInformation.activeClass) {
+            throw new NotFoundError("User is not in a class.");
         }
 
-        const userInformation = classStateStore.getUser(user.email);
-        if (userInformation && userInformation.activeClass) {
-            const classId = userInformation.activeClass;
-            const classInfo = await dbGet("SELECT * FROM classroom WHERE id = ?", [classId]);
-            if (classInfo) {
-                req.infoEvent("user.class.view.success", "User active class returned", { targetUserId: userId, classId });
-                res.status(200).json({
-                    success: true,
-                    data: {
-                        id: classId,
-                        name: classInfo.name,
-                    },
-                });
-            } else {
-                throw new NotFoundError("Class not found.");
-            }
-            return;
+        const classId = userInformation.activeClass;
+        const classInfo = await getClassroomFromDb(classId);
+        if (!classInfo) {
+            throw new NotFoundError("Class not found.");
         }
 
-        throw new NotFoundError("User is not in a class.");
+        req.infoEvent("user.class.view.success", "User active class returned", { targetUserId: userId, classId });
+        res.status(200).json({
+            success: true,
+            data: {
+                id: classId,
+                name: classInfo.name,
+            },
+        });
     });
 };

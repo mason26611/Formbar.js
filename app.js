@@ -23,9 +23,10 @@ const { settings } = require("@modules/config.js");
 const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/inactivity");
 const NotFoundError = require("@errors/not-found-error");
 
-const { logout } = require("@modules/user/user-session");
+const { logout } = require("@services/user-service");
 const { passport } = require("@modules/google-oauth.js");
 const { rateLimiter } = require("@middleware/rate-limiter");
+const { ensureFormbarDeveloperPool } = require("@services/bootstrap-service");
 
 // Create session for user information to be transferred from page to page
 const sessionMiddleware = session({
@@ -156,6 +157,24 @@ function getJSFiles(dir, base = dir) {
     return results;
 }
 
+const LEGACY_API_WARNING =
+    '299 - "Deprecated API: Non-versioned /api endpoints are deprecated. Use /api/v1 endpoints instead. This compatibility layer will be removed in a future version."';
+
+function attachLegacyApiDeprecationHeaders(req, res, next) {
+    res.setHeader("X-Deprecated", "Use /api/v1 endpoints instead");
+    res.setHeader("Deprecation", "true");
+    res.setHeader("Sunset", "Tue, 01 Sep 2026 00:00:00 GMT");
+    res.append("Warning", LEGACY_API_WARNING);
+    next();
+}
+
+// This is hacky but it works, I suppose.
+function rewriteLegacyApiPaths(req, res, next) {
+    req.url = req.url.replace(/^\/me(?=\/|$|\?)/, "/user/me");
+    req.url = req.url.replace(/^\/user\/([^/]+)\/ownedClasses(?=\/|$|\?)/, "/user/$1/classes");
+    next();
+}
+
 // Import API routes
 const apiVersionFolders = fs.readdirSync("./api");
 for (const apiVersionFolder of apiVersionFolders) {
@@ -182,6 +201,18 @@ for (const apiVersionFolder of apiVersionFolders) {
         }
 
         app.use(`/api/${apiVersionFolder}`, router);
+
+        // Backwards compatibility for legacy non-versioned API paths.
+        if (apiVersionFolder === "v1") {
+            app.use("/api", (req, res, next) => {
+                // Keep /api/v{n} requests exclusively on their versioned mounts.
+                if (/^\/v\d+(?:\/|$)/.test(req.path)) return next();
+
+                attachLegacyApiDeprecationHeaders(req, res, () => {
+                    rewriteLegacyApiPaths(req, res, () => router(req, res, next));
+                });
+            });
+        }
     }
 }
 
@@ -199,6 +230,12 @@ app.use(errorHandlerMiddleware);
 // Start the server
 
 http.listen(settings.port, async () => {
+    try {
+        await ensureFormbarDeveloperPool();
+    } catch (err) {
+        console.error("Failed to ensure Formbar Developer Pool exists:", err);
+    }
+
     // Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
     // Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
     console.log(`Running on port: ${settings.port}`);

@@ -1,14 +1,21 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { database } = require("@modules/database");
-const { Student, getIdFromEmail } = require("@modules/student");
-const { getUserClass } = require("@modules/user/user");
-const { classKickStudent } = require("@modules/class/kick");
+const { Student, getIdFromEmail } = require("@services/student-service");
+const { getUserClass } = require("@services/user-service");
+const { classKickStudent } = require("@services/class-service");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
+
+/**
+ * Tracks per-user reconnect grace-period timer handles.
+ * Keyed by email; cleared whenever the user reconnects so stale timers
+ * cannot fire and kick a user who has already re-established a socket.
+ */
+const reconnectTimers = new Map();
 
 /**
  * Ensures a Student instance exists in classStateStore for the given user.
@@ -49,12 +56,15 @@ function setupSocketSession(socket, userData, includeApi = false) {
  * Joins socket to appropriate rooms based on authentication type.
  */
 function joinSocketRooms(socket, email, classId, isApiAuth = false) {
+    // Always join the personal room so future setClassOfApiSockets / setClassOfUserSockets
+    // calls can locate this socket even when no class is active yet.
+    if (isApiAuth) {
+        socket.join(`api-${socket.request.session.api}`);
+    } else {
+        socket.join(`user-${email}`);
+    }
+
     if (classId) {
-        if (isApiAuth) {
-            socket.join(`api-${socket.request.session.api}`);
-        } else {
-            socket.join(`user-${email}`);
-        }
         socket.join(`class-${classId}`);
     }
 }
@@ -76,11 +86,22 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
         const userId = await getIdFromEmail(email);
         if (isApiAuth) {
             if (!socketStateStore.hasUserSockets(email)) {
-                classKickStudent(userId, classId, false);
+                classKickStudent(userId, classId, { exitRoom: false, ban: false });
             }
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
-            if (emptyAfterRemoval) classKickStudent(userId, classId, false);
+            if (emptyAfterRemoval) {
+                // Give the client a short grace period (5 minutes) to reconnect
+                // before treating the disconnect as a deliberate class leave.
+                // Store the handle so a later reconnect can cancel it.
+                const timer = setTimeout(async () => {
+                    reconnectTimers.delete(email);
+                    if (!socketStateStore.hasUserSockets(email)) {
+                        classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                    }
+                }, 300000);
+                reconnectTimers.set(email, timer);
+            }
         }
     });
 }
@@ -93,6 +114,13 @@ function finalizeAuthentication(socket, userData, socketUpdates, isApiAuth = fal
     setupSocketSession(socket, userData, isApiAuth);
 
     const { email, classId } = socket.request.session;
+
+    // Cancel any pending reconnect-kick timer so a reconnecting user isn't
+    // evicted by a timer that was started during their previous disconnect.
+    if (reconnectTimers.has(email)) {
+        clearTimeout(reconnectTimers.get(email));
+        reconnectTimers.delete(email);
+    }
 
     joinSocketRooms(socket, email, classId, isApiAuth);
     socket.emit("setClass", classId);
@@ -107,6 +135,8 @@ function finalizeAuthentication(socket, userData, socketUpdates, isApiAuth = fal
 
 module.exports = {
     order: 10,
+    // Exported for use in backwards-compat.js to authenticate sockets via legacy socket events
+    finalizeAuthentication,
     async run(socket, socketUpdates) {
         try {
             const { api, authorization } = socket.request.headers;
@@ -114,8 +144,10 @@ module.exports = {
             // Try API key authentication first
             if (api) {
                 await new Promise((resolve, reject) => {
-                    // Look up the user by comparing API key hash
-                    database.all("SELECT * FROM users", [], async (err, users) => {
+                    // Look up the user by comparing API key hash.
+                    // Only fetch users that actually have an API key set to avoid
+                    // pulling sensitive columns (password hash, secret) for every user.
+                    database.all("SELECT id, email, API, permissions, tags, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
                         try {
                             if (err) throw err;
 

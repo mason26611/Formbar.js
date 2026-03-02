@@ -1,13 +1,12 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 const { database, dbRun } = require("@modules/database");
-const { advancedEmitToClass, setClassOfApiSockets } = require("@modules/socket-updates");
+const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-updates-service");
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
-const { startClass, endClass, leaveClass, isClassActive, joinClass } = require("@services/class-service");
+const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
 const { joinRoom, leaveRoom } = require("@services/room-service");
-const { getEmailFromId, getIdFromEmail } = require("@modules/student");
+const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
-const { classKickStudents, classKickStudent } = require("@modules/class/kick");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 
@@ -283,6 +282,23 @@ module.exports = {
                 advancedEmitToClass("leaveSound", classId, {});
             } catch (err) {
                 handleSocketError(err, socket, "classKickStudent");
+            }
+        });
+
+        /**
+         * Removes a student from the current class session without removing them from the classroom roster.
+         * The student will appear as offline on the teacher's page but can rejoin the session.
+         * @param {number} userId - The ID of the user to remove from the session.
+         */
+        socket.on("classRemoveFromSession", (userId) => {
+            try {
+                logger.log("info", `[classRemoveFromSession] ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`);
+                logger.log("info", `[classRemoveFromSession] userId=(${userId})`);
+
+                const classId = socket.request.session.classId;
+                classKickStudent(userId, classId, { exitRoom: false, ban: false });
+            } catch (err) {
+                logger.log("error", err.stack);
             }
         });
 

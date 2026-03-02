@@ -1,6 +1,5 @@
 const fs = require("fs");
 const crypto = require("crypto");
-const { dbGet, dbRun } = require("./database");
 require("dotenv").config();
 
 /*
@@ -64,19 +63,6 @@ function getConfig() {
 
     // If there is no .env file, create one from the template
     if (!fs.existsSync(".env")) fs.copyFileSync(".env-template", ".env");
-
-    // Ensure the Formbar Developer Pool exists in the database
-    dbGet("SELECT * FROM digipog_pools WHERE id = 0").then(async (formbarDevPool) => {
-        if (!formbarDevPool) {
-            await dbRun("INSERT INTO digipog_pools (id, name, description, amount) VALUES (?, ?, ?, ?)", [
-                0,
-                "Formbar Developer Pool",
-                "Formbar Developer pog pool. Accumulates from the 10% tax on digipog transactions.",
-                0,
-            ]);
-            await dbRun("INSERT INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [0, 1, 1]);
-        }
-    });
 
     return {
         settings: {

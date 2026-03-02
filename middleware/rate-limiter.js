@@ -1,4 +1,4 @@
-const { getUser } = require("@modules/user/user");
+const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
 const { TEACHER_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 
@@ -64,18 +64,20 @@ async function rateLimiter(req, res, next) {
     if (userRequests[path].length >= limit) {
         if (!userRequests["hasBeenMessaged"]) {
             userRequests["hasBeenMessaged"] = true;
-            req.warnEvent(req, "rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
+            req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
                 identifier,
                 path,
                 limit,
                 permissions: user.permissions,
             });
-            return res.status(429).json({ error: `You are being rate limited. Please try again in ${timeFrame / 1000} seconds.` });
         }
-    } else {
-        userRequests[path].push(currentTime);
-        next();
+
+        // Always respond while over-limit; otherwise the request hangs forever.
+        return res.status(429).json({ error: `You are being rate limited. Please try again in ${timeFrame / 1000} seconds.` });
     }
+
+    userRequests[path].push(currentTime);
+    next();
 }
 
 module.exports = {

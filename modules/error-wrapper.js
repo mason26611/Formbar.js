@@ -3,7 +3,7 @@ const AppError = require("@errors/app-error");
 
 function requireQueryParam(param, name) {
     if (!param) {
-        throw new ValidationError(`Required parameter '${name}' is missing.`);
+        throw new ValidationError(`Required query parameter '${name}' is missing.`);
     }
 }
 

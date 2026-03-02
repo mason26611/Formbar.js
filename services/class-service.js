@@ -2,12 +2,13 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 
 const {
     advancedEmitToClass,
+    emitToUser,
     setClassOfApiSockets,
     setClassOfUserSockets,
     userUpdateSocket,
     invalidateClassPollCache,
-} = require("@modules/socket-updates");
-const { Classroom, classStateStore } = require("@modules/class/classroom");
+} = require("@services/socket-updates-service");
+const { Classroom, classStateStore } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
@@ -16,21 +17,17 @@ const {
     CLASS_SOCKET_PERMISSIONS,
     BANNED_PERMISSIONS,
     TEACHER_PERMISSIONS,
+    MOD_PERMISSIONS,
+    STUDENT_PERMISSIONS,
 } = require("@modules/permissions");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@modules/student");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
-const { classKickStudent } = require("@modules/class/kick");
 const { clearPoll } = require("@services/poll-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
-
-async function isUserInClass(userId, classId) {
-    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
-    return !!result;
-}
 
 function getUserJoinedClasses(userId) {
     return dbGetAll(
@@ -549,8 +546,350 @@ async function deleteRooms(userId) {
     }
 }
 
+// ─── Kick ────────────────────────────────────────────────────────────────────
+
+/**
+ * Kicks a student from a class.
+ * If exitRoom is true, fully removes them; otherwise just removes from session.
+ */
+async function classKickStudent(userId, classId, options = { exitRoom: true, ban: false }) {
+    try {
+        const email = await getEmailFromId(userId);
+
+        const existingUser = classStateStore.getUser(email);
+        if (existingUser) {
+            const user = existingUser;
+            user.activeClass = null;
+            user.break = false;
+            user.help = false;
+
+            if (options.ban) {
+                user.classPermissions = BANNED_PERMISSIONS;
+            }
+            setClassOfApiSockets(existingUser.API, null);
+        }
+
+        const classroom = classStateStore.getClassroom(classId);
+        const classroomStudent = classroom ? classroom.students[email] : null;
+        if (classroom && classroomStudent) {
+            const student = classroomStudent;
+            student.activeClass = null;
+            student.break = false;
+            student.help = false;
+            student.tags = ["Offline"];
+            if (classStateStore.getUser(email)) {
+                classStateStore.setUser(email, student);
+            }
+
+            if (student.isGuest) {
+                classStateStore.removeClassroomStudent(classId, email);
+            }
+        }
+
+        if (options.exitRoom && classroom) {
+            const userObj = classStateStore.getUser(email);
+            if (userObj && !userObj.isGuest && !options.ban) {
+                await dbRun("DELETE FROM classusers WHERE studentId=? AND classId=?", [userObj.id, classId]);
+                classStateStore.removeClassroomStudent(classId, email);
+            }
+        }
+
+        const classOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
+        if (classOwner) {
+            const ownerEmail = await getEmailFromId(classOwner.owner);
+            userUpdateSocket(ownerEmail, "classUpdate", classId);
+        }
+
+        const usersSockets = socketStateStore.getUserSocketsByEmail(email);
+        if (usersSockets) {
+            for (const userSocket of Object.values(usersSockets)) {
+                userSocket.leave(`class-${classId}`);
+                userSocket.request.session.classId = null;
+                userSocket.request.session.save();
+                userSocket.emit("reload");
+            }
+        }
+    } catch (err) {}
+}
+
+/**
+ * Kicks all non-teacher students from a class.
+ */
+function classKickStudents(classId) {
+    try {
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classroom) return;
+        for (const student of Object.values(classroom.students)) {
+            if (student.classPermissions < TEACHER_PERMISSIONS) {
+                classKickStudent(student.id, classId);
+            }
+        }
+    } catch (err) {}
+}
+
+// ─── Break ───────────────────────────────────────────────────────────────────
+
+/**
+ * Requests a break for a student.
+ */
+function requestBreak(reason, userData) {
+    try {
+        const classId = userData.classId;
+        const email = userData.email;
+        if (!classStateStore.getClassroom(classId)?.isActive) {
+            return "This class is not currently active.";
+        }
+
+        const classroom = classStateStore.getClassroom(classId);
+        const student = classroom.students[email];
+        advancedEmitToClass("breakSound", classId, {});
+        student.break = reason;
+
+        userUpdateSocket(email, "classUpdate", classId);
+        return true;
+    } catch (err) {}
+}
+
+/**
+ * Approves or denies a break for a student.
+ */
+async function approveBreak(breakApproval, userId, userData) {
+    try {
+        const { io } = require("@modules/web-server");
+        const email = await getEmailFromId(userId);
+
+        const classId = userData.classId;
+        const classroom = classStateStore.getClassroom(classId);
+        const student = classroom.students[email];
+        student.break = breakApproval;
+
+        io.to(`user-${email}`).emit("break", breakApproval);
+        if (student && student.API) {
+            io.to(`api-${student.API}`).emit("break", breakApproval);
+        }
+        userUpdateSocket(email, "classUpdate", classId);
+        return true;
+    } catch (err) {}
+}
+
+/**
+ * Ends a student's active break.
+ */
+function endBreak(userData) {
+    try {
+        classStateStore.getClassroom(userData.classId);
+        const student = classStateStore.getUser(userData.email);
+        student.break = false;
+        userUpdateSocket(userData.email, "classUpdate", userData.classId);
+        return true;
+    } catch (err) {}
+}
+
+// ─── Help ────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends a help ticket for a student.
+ */
+function sendHelpTicket(reason, userSession) {
+    try {
+        const classId = userSession.classId;
+        const email = userSession.email;
+        if (!classStateStore.getClassroom(classId)?.isActive) {
+            return "This class is not currently active.";
+        }
+
+        const student = classStateStore.getClassroomStudent(classId, email);
+        if (student.help.reason === reason) {
+            return "You have already requested help for this reason.";
+        }
+
+        const time = Date.now();
+        classStateStore.updateClassroomStudent(classId, email, { help: { reason: reason, time: time } });
+
+        emitToUser(email, "helpSuccess");
+        advancedEmitToClass("helpSound", classId, {});
+
+        userUpdateSocket(email, "classUpdate", classId);
+        return true;
+    } catch (err) {}
+}
+
+/**
+ * Deletes a help ticket for a student.
+ */
+async function deleteHelpTicket(studentId, userData) {
+    try {
+        const classId = userData.classId;
+        const email = userData.email;
+        const studentEmail = await getEmailFromId(studentId);
+
+        classStateStore.updateClassroomStudent(classId, studentEmail, { help: false });
+
+        userUpdateSocket(email, "classUpdate", classId);
+        return true;
+    } catch (err) {}
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────────────
+
+/**
+ * Sets the allowed tags for a class and normalizes existing student tags.
+ */
+async function setTags(tags, userSession) {
+    try {
+        if (!Array.isArray(tags)) return;
+
+        tags = tags
+            .filter((tag) => typeof tag === "string")
+            .map((tag) => tag.trim())
+            .map((tag) => tag.replace(/[\r\n\t]/g, ""))
+            .filter((tag) => tag !== "")
+            .sort();
+        if (!tags.includes("Offline")) tags.push("Offline");
+
+        const classId = userSession.classId;
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classId || !classroom) return;
+        classStateStore.updateClassroom(classId, { tags });
+
+        for (const student of Object.values(classroom.students)) {
+            if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
+            if (!student.tags) student.tags = [];
+
+            let studentTags = [];
+            studentTags = student.tags.filter(Boolean);
+            studentTags = studentTags.filter((tag) => tags.includes(tag));
+            student.tags = studentTags;
+
+            try {
+                await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [studentTags.join(","), student.id, classId]);
+            } catch (err) {}
+        }
+
+        await dbRun("UPDATE classroom SET tags = ? WHERE id = ?", [tags.toString(), classId]);
+    } catch (err) {}
+}
+
+/**
+ * Saves the tags for a specific student in the class.
+ */
+async function saveTags(studentId, tags, userSession) {
+    try {
+        const email = await getEmailFromId(studentId);
+        if (!Array.isArray(tags)) return;
+
+        const isActiveInClass = classStateStore.getUser(email) && classStateStore.getUser(email).activeClass === userSession.classId;
+        let normalized = tags
+            .filter((tag) => typeof tag === "string")
+            .map((tag) => tag.trim())
+            .map((tag) => tag.replace(/[\r\n\t]/g, ""))
+            .filter((tag) => tag !== "");
+
+        if (isActiveInClass) {
+            normalized = normalized.filter((tag) => tag !== "Offline");
+        } else if (!normalized.includes("Offline")) {
+            normalized.push("Offline");
+        }
+
+        normalized = normalized.filter((tag) => tag !== "Offline");
+
+        const student = classStateStore.getClassroom(userSession.classId)?.students[email];
+        if (!student) return;
+        const oldTags = student.tags || [];
+
+        classStateStore.updateClassroomStudent(userSession.classId, email, { tags: normalized });
+
+        const wasExcluded = oldTags.includes("Excluded");
+        const isNowExcluded = normalized.includes("Excluded");
+
+        if (!wasExcluded && isNowExcluded && student.pollRes) {
+            student.pollRes.buttonRes = "";
+            student.pollRes.textRes = "";
+            student.pollRes.date = null;
+        }
+
+        await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
+    } catch (err) {}
+}
+
+// ─── Class Users ─────────────────────────────────────────────────────────────
+
+/**
+ * Gets the users of a class, merging in-memory session data with DB data.
+ * @param {Object} user - The requesting user (used for permission-based filtering).
+ * @param {string} key - The class key/code.
+ */
+async function getClassUsers(user, key) {
+    const { database } = require("@modules/database");
+    const { getClassIDFromCode } = require("@services/classroom-service");
+    try {
+        let classPermissions = user.classPermissions;
+
+        let dbClassUsers = await new Promise((resolve, reject) => {
+            database.all(
+                "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
+                [key],
+                (err, rows) => {
+                    if (err) return reject(err);
+                    if (!rows) return resolve({ error: "class does not exist" });
+                    resolve(rows);
+                }
+            );
+        });
+
+        if (dbClassUsers.error) return dbClassUsers;
+
+        let classUsers = {};
+        let cDClassUsers = {};
+        let classId = await getClassIDFromCode(key);
+
+        const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
+        if (cdClassroom) {
+            cDClassUsers = cdClassroom.students || {};
+        }
+
+        for (let userRow of dbClassUsers) {
+            classUsers[userRow.email] = {
+                loggedIn: false,
+                ...userRow,
+                help: null,
+                break: null,
+                pogMeter: 0,
+            };
+
+            let cdUser = cDClassUsers[userRow.email];
+            if (cdUser) {
+                classUsers[userRow.email].loggedIn = true;
+                classUsers[userRow.email].help = cdUser.help;
+                classUsers[userRow.email].break = cdUser.break;
+                classUsers[userRow.email].pogMeter = cdUser.pogMeter;
+            }
+
+            if (classPermissions <= MOD_PERMISSIONS) {
+                if (classUsers[userRow.email].help) {
+                    classUsers[userRow.email].help = true;
+                }
+                if (typeof classUsers[userRow.email].break == "string") {
+                    classUsers[userRow.email].break = false;
+                }
+            }
+
+            if (classPermissions <= STUDENT_PERMISSIONS) {
+                delete classUsers[userRow.email].permissions;
+                delete classUsers[userRow.email].classPermissions;
+                delete classUsers[userRow.email].help;
+                delete classUsers[userRow.email].break;
+                delete classUsers[userRow.email].pogMeter;
+            }
+        }
+
+        return classUsers;
+    } catch (err) {
+        return err;
+    }
+}
+
 module.exports = {
-    isUserInClass,
     getUserJoinedClasses,
     getClassCode,
     getClassLinks,
@@ -566,4 +905,14 @@ module.exports = {
     leaveClass,
     isClassActive,
     deleteRooms,
+    classKickStudent,
+    classKickStudents,
+    requestBreak,
+    approveBreak,
+    endBreak,
+    sendHelpTicket,
+    deleteHelpTicket,
+    setTags,
+    saveTags,
+    getClassUsers,
 };

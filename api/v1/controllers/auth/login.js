@@ -1,5 +1,5 @@
-const { Student } = require("@modules/student");
-const { classStateStore } = require("@modules/class/classroom");
+const { Student } = require("@services/student-service");
+const { classStateStore } = require("@services/classroom-service");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 

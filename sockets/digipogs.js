@@ -1,4 +1,4 @@
-const { awardDigipogs, transferDigipogs } = require("@modules/digipogs");
+const { awardDigipogs, transferDigipogs } = require("@services/digipog-service");
 
 module.exports = {
     run(socket) {

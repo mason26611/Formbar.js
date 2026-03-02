@@ -1,7 +1,7 @@
-const { classStateStore } = require("@modules/class/classroom");
+const { classStateStore } = require("@services/classroom-service");
 
 const { generateColors } = require("@modules/util");
-const { advancedEmitToClass, userUpdateSocket } = require("@modules/socket-updates");
+const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
 const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { userSocketUpdates } = require("../sockets/init");

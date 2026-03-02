@@ -1,6 +1,6 @@
 const { hasClassPermission } = require("@middleware/permission-check");
 const { CLASS_PERMISSIONS } = require("@modules/permissions");
-const { awardDigipogs } = require("@modules/digipogs");
+const { awardDigipogs } = require("@services/digipog-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 

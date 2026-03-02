@@ -1,6 +1,6 @@
 const { httpPermCheck } = require("@middleware/permission-check");
-const { classStateStore } = require("@modules/class/classroom");
-const { sendHelpTicket } = require("@modules/class/help");
+const { classStateStore } = require("@services/classroom-service");
+const { sendHelpTicket } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");

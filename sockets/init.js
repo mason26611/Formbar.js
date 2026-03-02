@@ -1,4 +1,4 @@
-const { SocketUpdates } = require("@modules/socket-updates");
+const { SocketUpdates } = require("@services/socket-updates-service");
 const { io } = require("@modules/web-server");
 const fs = require("fs");
 

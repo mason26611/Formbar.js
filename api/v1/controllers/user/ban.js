@@ -2,8 +2,8 @@ const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
 const { MANAGER_PERMISSIONS, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
-const { classStateStore } = require("@modules/class/classroom");
-const { managerUpdate } = require("@modules/socket-updates");
+const { classStateStore } = require("@services/classroom-service");
+const { managerUpdate } = require("@services/socket-updates-service");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {

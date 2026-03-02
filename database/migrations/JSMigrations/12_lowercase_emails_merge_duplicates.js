@@ -22,6 +22,7 @@ module.exports = {
             if (users.length === 0) {
                 console.log("No users found, skipping migration");
                 await dbRun("PRAGMA user_version = 2", [], database);
+                await dbRun("COMMIT", [], database);
                 return;
             }
 
