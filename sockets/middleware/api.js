@@ -1,6 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database } = require("@modules/database");
-const { Student, getIdFromEmail } = require("@services/student-service");
+const { createStudentFromUserData, getIdFromEmail } = require("@services/student-service");
 const { getUserClass } = require("@services/user-service");
 const { classKickStudent } = require("@services/class-service");
 const { compare } = require("@modules/crypto");
@@ -23,20 +23,7 @@ const reconnectTimers = new Map();
  */
 function ensureStudentExists(userData) {
     if (!classStateStore.getUser(userData.email)) {
-        classStateStore.setUser(
-            userData.email,
-            new Student(
-                userData.email,
-                userData.id,
-                userData.permissions,
-                userData.API,
-                null,
-                null,
-                userData.tags ? userData.tags.split(",") : [],
-                userData.displayName,
-                false
-            )
-        );
+        classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
     }
 }
 

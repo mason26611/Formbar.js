@@ -3,6 +3,8 @@ const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
+const { compare } = require("@modules/crypto");
+const { createStudentFromUserData } = require("@services/student-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const AuthError = require("@errors/auth-error");
 
@@ -45,10 +47,51 @@ async function cleanRefreshTokens() {
  *                     the token is missing an email, or the user is not found.
  * @returns {void}
  */
-function isAuthenticated(req, res, next) {
-    const accessToken = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : null;
+async function isAuthenticated(req, res, next) {
+    // Check if an API key is provided
+    // If it is, then authenticate via an API key. Otherwise, check via an access token.
+    const apiKeyHeader = req.headers.api || req.params.api || req.body.api;
+    const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
+    if (apiKey) {
+        const users = await dbGetAll("SELECT * FROM users WHERE API IS NOT NULL");
+
+        let apiUser = null;
+        for (const user of users) {
+            if (!user.API) continue;
+
+            matches = await compare(apiKey, user.API);
+            if (matches) {
+                apiUser = user;
+                break;
+            }
+        }
+
+        if (!apiUser) {
+            req.warnEvent("auth.invalid_api_key", "Invalid API key provided");
+            throw new AuthError("Invalid API key provided.");
+        }
+
+        let user = classStateStore.getUser(apiUser.email);
+        if (!user) {
+            user = createStudentFromUserData(apiUser, { isGuest: false });
+            classStateStore.setUser(apiUser.email, user);
+        }
+
+        req.user = {
+            email: apiUser.email,
+            ...user,
+            id: user.id || apiUser.id,
+            userId: user.id || apiUser.id,
+        };
+
+        next();
+        return;
+    }
+
+    const authorizationHeader = req.headers.authorization;
+    const accessToken = authorizationHeader ? authorizationHeader.replace(/^Bearer\s+/i, "") : null;
     if (!accessToken) {
-        req.warnEvent("auth.missing_token", "User is not authenticated: No access token provided");
+        req.warnEvent("auth.missing_token", "User is not authenticated: No access token or API key provided");
         throw new AuthError("User is not authenticated");
     }
 
