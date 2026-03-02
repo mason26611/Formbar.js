@@ -5,6 +5,10 @@ const authService = require("@services/auth-service");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
 
+// Legacy bootstrap events that must be allowed through before a session is
+// established — they ARE the authentication mechanism for old API clients.
+const LEGACY_AUTH_EVENTS = new Set(["getActiveClass", "auth"]);
+
 module.exports = {
     order: 20,
     run(socket, socketUpdates) {
@@ -12,6 +16,14 @@ module.exports = {
         // The user must be logged in order to connect to websockets
         socket.use(([event, ...args], next) => {
             try {
+                // Allow legacy backwards-compat events to reach their handlers
+                // so those handlers can establish a session before this middleware
+                // would otherwise reject them.
+                if (LEGACY_AUTH_EVENTS.has(event)) {
+                    next();
+                    return;
+                }
+
                 let { api, authorization } = socket.request.headers;
 
                 if (socket.request.session.email) {

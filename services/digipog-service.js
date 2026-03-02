@@ -313,6 +313,14 @@ async function transferDigipogs(transferData) {
             return { success: false, message: "Missing sender identifier." };
         }
         if (!from.type) from.type = "user";
+        // Normalize `to` independently: if it's still a primitive at this point
+        // (e.g. the caller passed an object `from` but a raw id for `to`), wrap it
+        // rather than letting `to.type` throw on a non-object.
+        if (typeof to === "string" || typeof to === "number") {
+            to = { id: to, type: pool ? "pool" : "user" };
+        } else if (!to || typeof to !== "object") {
+            return { success: false, message: "Missing recipient identifier." };
+        }
         if (!to.type) to.type = "user";
 
         if (!from || !from.id || !to || !to.id || !amount || reason === undefined || !pin) {

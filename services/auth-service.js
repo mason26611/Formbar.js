@@ -129,10 +129,8 @@ async function login(email, password) {
         const decodedRefreshToken = jwt.decode(tokens.refreshToken);
         const tokenHash = hashToken(tokens.refreshToken);
 
-        // Delete any existing auth refresh tokens for this user before inserting.
-        // Without this, rapid successive logins within the same second produce
-        // identical JWTs (second-precision iat) → identical hashes → UNIQUE violation.
-        await dbRun("DELETE FROM refresh_tokens WHERE user_id = ? AND token_type = 'auth'", [userData.id]);
+        // Each refresh token includes a random `jti` so tokens generated in the
+        // same second will have different hashes and won't collide.
         await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
             userData.id,
             tokenHash,

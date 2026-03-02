@@ -36,8 +36,9 @@ module.exports = {
                     return socket.emit("error", "Invalid API key format.");
                 }
 
-                // Find the user whose hashed API key matches the provided plaintext key
-                const users = await dbGetAll("SELECT * FROM users");
+                // Find the user whose hashed API key matches the provided plaintext key.
+                // Limit to users with an API key set and only fetch needed columns.
+                const users = await dbGetAll("SELECT id, email, API, permissions, tags, displayName FROM users WHERE API IS NOT NULL");
                 let userData = null;
                 for (const user of users) {
                     if (user.API && (await compare(apiKey, user.API))) {

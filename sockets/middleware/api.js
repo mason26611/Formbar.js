@@ -11,6 +11,13 @@ const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 const { handleSocketError } = require("@modules/socket-error-handler");
 
 /**
+ * Tracks per-user reconnect grace-period timer handles.
+ * Keyed by email; cleared whenever the user reconnects so stale timers
+ * cannot fire and kick a user who has already re-established a socket.
+ */
+const reconnectTimers = new Map();
+
+/**
  * Ensures a Student instance exists in classStateStore for the given user.
  * Creates a new Student object if one doesn't already exist for the user's email.
  */
@@ -79,18 +86,21 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
         const userId = await getIdFromEmail(email);
         if (isApiAuth) {
             if (!socketStateStore.hasUserSockets(email)) {
-                classKickStudent(userId, classId, false);
+                classKickStudent(userId, classId, { exitRoom: false, ban: false });
             }
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
             if (emptyAfterRemoval) {
                 // Give the client a short grace period (5 minutes) to reconnect
                 // before treating the disconnect as a deliberate class leave.
-                setTimeout(async () => {
+                // Store the handle so a later reconnect can cancel it.
+                const timer = setTimeout(async () => {
+                    reconnectTimers.delete(email);
                     if (!socketStateStore.hasUserSockets(email)) {
-                        classKickStudent(userId, classId, false);
+                        classKickStudent(userId, classId, { exitRoom: false, ban: false });
                     }
                 }, 300000);
+                reconnectTimers.set(email, timer);
             }
         }
     });
@@ -104,6 +114,13 @@ function finalizeAuthentication(socket, userData, socketUpdates, isApiAuth = fal
     setupSocketSession(socket, userData, isApiAuth);
 
     const { email, classId } = socket.request.session;
+
+    // Cancel any pending reconnect-kick timer so a reconnecting user isn't
+    // evicted by a timer that was started during their previous disconnect.
+    if (reconnectTimers.has(email)) {
+        clearTimeout(reconnectTimers.get(email));
+        reconnectTimers.delete(email);
+    }
 
     joinSocketRooms(socket, email, classId, isApiAuth);
     socket.emit("setClass", classId);
@@ -127,8 +144,10 @@ module.exports = {
             // Try API key authentication first
             if (api) {
                 await new Promise((resolve, reject) => {
-                    // Look up the user by comparing API key hash
-                    database.all("SELECT * FROM users", [], async (err, users) => {
+                    // Look up the user by comparing API key hash.
+                    // Only fetch users that actually have an API key set to avoid
+                    // pulling sensitive columns (password hash, secret) for every user.
+                    database.all("SELECT id, email, API, permissions, tags, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
                         try {
                             if (err) throw err;
 
