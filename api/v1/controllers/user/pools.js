@@ -2,6 +2,7 @@ const { dbGet } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const pools = require("@services/digipog-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
+const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = {
     run(router) {
@@ -48,6 +49,10 @@ module.exports = {
             requireQueryParam(userId, "id");
 
             req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
+            if (req.user.id !== userId && req.user.permissions < 5) {
+                throw new ForbiddenError("You do not have permission to view this user's pools.");
+            }
+
 
             // Get all pools for this user using the new schema helper
             const userPools = await pools.getPoolsForUser(userId);
