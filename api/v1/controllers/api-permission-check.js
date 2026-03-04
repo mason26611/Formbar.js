@@ -60,6 +60,20 @@ module.exports = (router) => {
         }
 
         req.infoEvent("api.permission.check.success", "API permission check passed", { permissionType, classId });
-        res.status(200).json({ allowed: true });
+
+        if (req.originalUrl.startsWith("/api/v1")) {
+            res.status(200).json({
+                success: true,
+                data: {
+                    allowed: true,
+                },
+            });
+        } else {
+            // If this is not being accessed from /api/v1, then we want to return the permission status in a different format for backward compatibility
+            res.status(200).json({
+                success: true,
+                allowed: true,
+            });
+        }
     });
 };

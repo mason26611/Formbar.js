@@ -1,6 +1,7 @@
 const { httpPermCheck } = require("@middleware/permission-check");
 const { joinClass } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
@@ -52,7 +53,9 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     router.post("/class/:id/join", isAuthenticated, httpPermCheck("joinClass"), async (req, res) => {
-        const classId = req.params.id;
+        const classId = Number(req.params.id);
+        requireQueryParam(classId, "id");
+
         req.infoEvent("class.join.attempt", "User attempting to join class", { classId });
 
         await joinClass(req.user, classId);

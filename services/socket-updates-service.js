@@ -62,21 +62,24 @@ async function emitToUser(email, event, ...data) {
  * @param {string} methodName - The name of the SocketUpdates method to call (e.g., 'classUpdate', 'customPollUpdate')
  * @param {...any} args - Arguments to pass to the method
  */
-async function userUpdateSocket(email, methodName, ...args) {
+function userUpdateSocket(email, methodName, ...args) {
     // Dynamically load to prevent circular dependency error
     const { userSocketUpdates } = require("../sockets/init");
 
     // If user has no socket connections yet, then return
     const userSockets = userSocketUpdates.get(email);
     if (!userSockets || userSockets.size === 0) {
-        return;
+        return false;
     }
 
+    let emitted = false;
     for (const socketUpdates of userSockets.values()) {
         if (socketUpdates && typeof socketUpdates[methodName] === "function") {
             socketUpdates[methodName](...args);
+            emitted = true;
         }
     }
+    return emitted;
 }
 
 /**

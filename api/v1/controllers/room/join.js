@@ -51,12 +51,14 @@ module.exports = (router) => {
         const code = req.params.code;
         req.infoEvent("room.join.attempt", "User attempting to join room", { code });
 
-        await joinRoom(req.user, code);
+        const response = await joinRoom(req.user, code);
 
         req.infoEvent("room.join.success", "User joined room successfully", { code });
         res.status(200).json({
             success: true,
-            data: {},
+            data: {
+                roomId: response.roomId,
+            },
         });
     });
 };

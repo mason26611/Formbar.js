@@ -3,6 +3,7 @@ const { CLASS_PERMISSIONS } = require("@modules/permissions");
 const { awardDigipogs } = require("@services/digipog-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
+const { requireBodyParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
@@ -33,9 +34,30 @@ module.exports = (router) => {
      *           schema:
      *             type: object
      *             properties:
+     *               to:
+     *                 oneOf:
+     *                   - type: string
+     *                     example: "user123"
+     *                   - type: object
+     *                     properties:
+     *                       id:
+     *                         type: string
+     *                         example: "user123"
+     *                       type:
+     *                         type: string
+     *                         enum: [user, class, pool]
+     *                         example: "user"
+     *                       code:
+     *                         type: string
+     *                         example: "ABCD12"
      *               userId:
      *                 type: string
      *                 example: "user123"
+     *                 description: Legacy alias for user recipient
+     *               studentId:
+     *                 type: string
+     *                 example: "user123"
+     *                 description: Legacy alias for user recipient
      *               amount:
      *                 type: integer
      *                 example: 10
@@ -70,12 +92,30 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/digipogs/award", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
-        const { userId, amount } = req.body;
+        const { amount, to, userId, studentId } = req.body || {};
+
+        if (amount === undefined || amount === null) {
+            requireBodyParam(undefined, "amount");
+        }
+
+        if (!to && !userId && !studentId) {
+            requireBodyParam(undefined, "to");
+        }
+
+        const awardPayload = {
+            ...(req.body || {}),
+            ...(to ? {} : { to: { id: userId || studentId, type: "user" } }),
+        };
+
         req.infoEvent("digipogs.award.attempt", "Attempting to award digipogs", { amount });
 
-        const result = await awardDigipogs(req.body, req.user);
+        const result = await awardDigipogs(awardPayload, req.user);
         if (!result.success) {
-            throw new AppError(result, { event: "digipogs.award.failed", reason: "award_error" });
+            throw new AppError(result.message || "Digipogs award failed", {
+                statusCode: result.statusCode || 400,
+                event: "digipogs.award.failed",
+                reason: "award_error",
+            });
         }
 
         req.infoEvent("digipogs.award.success", "Digipogs awarded successfully", { amount });
