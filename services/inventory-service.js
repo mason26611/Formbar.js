@@ -1,5 +1,5 @@
 const {dbGet, dbRun} = require('@modules/database');
-const NotFoundError = require('@modules/errors/NotFoundError');
+const NotFoundError = require('@errors/not-found-error');
 
 async function getInventory(userId) {
     const inventoryItems = await dbGet("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
