@@ -28,6 +28,8 @@ module.exports = (router) => {
 
         await markNotificationAsRead(notificationId);
 
+        req.infoEvent("notifications.mark_as_read.success", "Notification marked as read successfully");
+        
         res.json({
             success: true,
             data: {notification}
