@@ -42,7 +42,7 @@ const requestLoggerMiddleware = require("@middleware/request-logger");
 // from the X-Forwarded-For header instead of nginx's loopback address.
 // Without this, all requests appear to come from the same IP and rate limiting
 // is applied globally rather than per-user.
-app.set("trust proxy", process.env.TRUST_PROXY || 1);
+app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
 
 // Apply logger middleware
 // This should always be applied first so that we can log when anything goes wrong
@@ -60,7 +60,7 @@ app.use(passport.session());
 
 // For further uses on this use this link: https://socket.io/how-to/use-with-express-session
 // Uses a middleware function to successfully transmit data between the user and server
-// adds session middle ware to socket.io
+// adds session middleware to socket.io
 io.use((socket, next) => {
     sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
