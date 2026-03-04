@@ -52,7 +52,7 @@ function hasPermission(permission) {
  */
 function hasClassPermission(classPermission) {
     return async function (req, res, next) {
-        const classId = req.user.activeClass;
+        const classId = req.user.activeClass ?? req.params.id;
         if (!classId) {
             throw new NotFoundError("You're not currently in a classroom.", { event: "permission.check.failed", reason: "class_not_found" });
         }
