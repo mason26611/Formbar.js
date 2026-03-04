@@ -111,7 +111,11 @@ module.exports = (router) => {
 
         const result = await awardDigipogs(awardPayload, req.user);
         if (!result.success) {
-            throw new AppError(result, { event: "digipogs.award.failed", reason: "award_error" });
+            throw new AppError(result.message || "Digipogs award failed", {
+                statusCode: result.statusCode || 400,
+                event: "digipogs.award.failed",
+                reason: "award_error",
+            });
         }
 
         req.infoEvent("digipogs.award.success", "Digipogs awarded successfully", { amount });
