@@ -1,7 +1,8 @@
-const {getNotificationsForUser} = require("@services/notification-service");
+const {getNotificationsForUser, getNotificationById} = require("@services/notification-service");
 const {isAuthenticated} = require("@middleware/authentication");
 const {AppError} = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
+const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     router.get("/notifications/get-all-notifications", isAuthenticated, async (req, res) => {
@@ -21,7 +22,7 @@ module.exports = (router) => {
 
     });
 
-    router.get("/notification/get-notification/:id", isAuthenticated, async (req, res) => {
+    router.get("/notifications/get-notification/:id", isAuthenticated, async (req, res) => {
 
         const notificationId = req.params.id;
 
@@ -37,8 +38,8 @@ module.exports = (router) => {
             throw new NotFoundError("Notification not found", {event: "notifications.get.failed", reason: "Notification not found"});
         }
 
-        if (notification.userId !== req.user.id) {
-            throw new NotFoundError("Notification not found", {event: "notifications.get.failed", reason: "Notification does not belong to user"});
+        if (notification.user_id !== req.user.id) {
+            throw new ForbiddenError("Notification does not belong to user", {event: "notifications.get.failed", reason: "Notification does not belong to user"});
         }
 
         res.json({
