@@ -5,14 +5,14 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
-    router.get("/notifications/get-all-notifications", isAuthenticated, async (req, res) => {
+    router.get("/notifications/get-user-notifications", isAuthenticated, async (req, res) => {
 
-        req.infoEvent("notifications.get.attempt", "User is attempting to fetch all their notifications");
+        req.infoEvent("notifications.get_user_notifications.attempt", "User is attempting to fetch all their notifications");
 
         const notifications = await getNotificationsForUser(req.user.id);
 
         if (!notifications) {
-            throw new AppError("Failed to fetch notifications", {event: "notifications.get.failed"});
+            throw new AppError("Failed to fetch notifications", {event: "notifications.get_user_notifications.failed"});
         }
 
         res.json({
