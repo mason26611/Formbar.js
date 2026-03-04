@@ -53,7 +53,6 @@ module.exports = {
                 throw new ForbiddenError("You do not have permission to view this user's pools.");
             }
 
-
             // Get all pools for this user using the new schema helper
             const userPools = await pools.getPoolsForUser(userId);
             const ownedPools = userPools.filter((p) => p.owner).map((p) => String(p.pool_id));
