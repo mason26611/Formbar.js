@@ -6,10 +6,21 @@ async function getNotificationById(notificationId) {
 }
 
 async function getNotificationsForUser(userId) {
-    const notifications = await dbGetAll("SELECT * FROM notifications WHERE userId = ?", [userId]);
+    const notifications = await dbGetAll("SELECT * FROM notifications WHERE user_id = ?", [userId]);
     return notifications;
 }
 
 async function createNotification(userId, type, data) {
-    await dbRun("INSERT INTO notifications (userId, type, data) VALUES (?, ?, ?)", [userId, type, JSON.stringify(data)]);
+    await dbRun("INSERT INTO notifications (user_id, type, data) VALUES (?, ?, ?)", [userId, type, JSON.stringify(data)]);
 }
+
+async function deleteNotification(notificationId) {
+    await dbRun("DELETE FROM notifications WHERE id = ?", [notificationId]);
+}
+
+module.exports = {
+    getNotificationById,
+    getNotificationsForUser,
+    createNotification,
+    deleteNotification
+};
