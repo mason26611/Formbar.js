@@ -67,7 +67,7 @@ async function joinRoomByCode(code, sessionUser) {
 
     return {
         success: true,
-        roomId: classroomDb.id
+        roomId: classroomDb.id,
     };
 }
 

@@ -6,6 +6,7 @@ const { classKickStudent } = require("@services/class-service");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
 const { socketStateStore } = require("@stores/socket-state-store");
+const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { addUserSocketUpdate, removeUserSocketUpdate } = require("../init");
 
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -130,38 +131,58 @@ module.exports = {
 
             // Try API key authentication first
             if (api) {
-                await new Promise((resolve, reject) => {
-                    // Look up the user by comparing API key hash.
-                    // Only fetch users that actually have an API key set to avoid
-                    // pulling sensitive columns (password hash, secret) for every user.
-                    database.all("SELECT id, email, API, permissions, tags, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
-                        try {
-                            if (err) throw err;
+                // Fast-fail: API keys are 64-char hex strings. Reject anything
+                // that doesn't match the format before running any bcrypt comparisons.
+                if (!/^[0-9a-f]{64}$/.test(api)) {
+                    throw "Not a valid API key";
+                }
 
-                            // Compare the provided API key with each user's hashed API key
-                            let userData = null;
-                            for (const user of users) {
-                                if (user.API && (await compare(api, user.API))) {
-                                    userData = user;
-                                    break;
-                                }
-                            }
-
-                            if (!userData) {
-                                throw "Not a valid API key";
-                            }
-
-                            finalizeAuthentication(socket, userData, socketUpdates, true);
-                            resolve();
-                        } catch (err) {
-                            reject(err);
-                        }
+                // Check the in-memory cache first to avoid bcrypt comparisons on repeat connections.
+                const cachedEmail = apiKeyCacheStore.get(api);
+                if (cachedEmail) {
+                    const userData = await new Promise((resolve, reject) => {
+                        database.get("SELECT id, email, API, permissions, displayName FROM users WHERE email = ?", [cachedEmail], (err, row) => {
+                            if (err) return reject(err);
+                            if (!row) return reject("User not found");
+                            resolve(row);
+                        });
                     });
-                }).catch((err) => {
-                    if (err instanceof Error) {
+                    finalizeAuthentication(socket, userData, socketUpdates, true);
+                } else {
+                    await new Promise((resolve, reject) => {
+                        // Look up the user by comparing API key hash.
+                        // Only fetch users that actually have an API key set to avoid
+                        // pulling sensitive columns (password hash, secret) for every user.
+                        database.all("SELECT id, email, API, permissions, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
+                            try {
+                                if (err) throw err;
+
+                                // Compare the provided API key with each user's hashed API key
+                                let userData = null;
+                                for (const user of users) {
+                                    if (user.API && (await compare(api, user.API))) {
+                                        userData = user;
+                                        break;
+                                    }
+                                }
+
+                                if (!userData) {
+                                    throw "Not a valid API key";
+                                }
+
+                                // Cache the result for future connections
+                                apiKeyCacheStore.set(api, userData.email);
+
+                                finalizeAuthentication(socket, userData, socketUpdates, true);
+                                resolve();
+                            } catch (err) {
+                                reject(err);
+                            }
+                        });
+                    }).catch((err) => {
                         throw err;
-                    }
-                });
+                    });
+                }
             } else if (authorization) {
                 // Try JWT access token authentication
                 await new Promise((resolve, reject) => {
@@ -179,7 +200,7 @@ module.exports = {
                             throw "Invalid access token: missing required fields";
                         }
 
-                        // Fetch user data from database to get permissions, API key, and tags
+                        // Fetch user data from database to get permissions and API key
                         database.get("SELECT * FROM users WHERE id = ?", [userId], (err, userData) => {
                             try {
                                 if (err) throw err;
@@ -198,13 +219,10 @@ module.exports = {
                         reject(err);
                     }
                 }).catch((err) => {
-                    if (err instanceof Error) {
-                        throw err;
-                    }
+                    throw err;
                 });
-            }
-            // Fall back to session-based authentication
-            else if (socket.request.session.email) {
+            } else if (socket.request.session.email) {
+                // Fall back to session-based authentication
                 // Retrieve class id from the user's activeClass if session.classId is not set
                 const email = socket.request.session.email;
                 const user = classStateStore.getUser(email);

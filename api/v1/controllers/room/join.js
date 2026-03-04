@@ -57,7 +57,7 @@ module.exports = (router) => {
         res.status(200).json({
             success: true,
             data: {
-                roomId: response.roomId
+                roomId: response.roomId,
             },
         });
     });
