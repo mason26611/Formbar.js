@@ -61,7 +61,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/user/:id/api/regenerate", isAuthenticated, async (req, res) => {
-        const userId = req.params.id;
+        const userId = Number(req.params.id);
         requireQueryParam(userId, "id");
 
         // Check if the user is trying to regenerate their own API key
