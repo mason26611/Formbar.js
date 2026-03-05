@@ -1,4 +1,4 @@
-const { Student } = require("@services/student-service");
+const { createStudentFromUserData } = require("@services/student-service");
 const { classStateStore } = require("@services/classroom-service");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
@@ -78,21 +78,8 @@ module.exports = (router) => {
 
         // If not already logged in, create a new Student instance in classInformation
         const { tokens, user: userData } = result;
-        if (!classStateStore.getUser(email)) {
-            classStateStore.setUser(
-                email,
-                new Student(
-                    userData.email,
-                    userData.id,
-                    userData.permissions,
-                    userData.API,
-                    JSON.parse(userData.ownedPolls || "[]"),
-                    JSON.parse(userData.sharedPolls || "[]"),
-                    userData.tags ? userData.tags.split(",") : [],
-                    userData.displayName,
-                    false
-                )
-            );
+        if (!classStateStore.getUser(userData.email)) {
+            classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
         }
 
         req.infoEvent("auth.login.success", "User logged in successfully", { userId: userData.id });

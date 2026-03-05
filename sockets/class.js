@@ -48,8 +48,12 @@ module.exports = {
          * Leaves the classroom session
          * The user is still associated with the class, but they're not active in it
          */
-        socket.on("leaveClass", () => {
-            leaveClass(socket.request.session);
+        socket.on("leaveClass", async () => {
+            try {
+                leaveClass(socket.request.session);
+            } catch (err) {
+                handleSocketError(err, socket, "leaveClass", "There was a server error. Please try again");
+            }
         });
 
         /**

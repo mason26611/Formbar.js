@@ -1,6 +1,5 @@
 const { httpPermCheck } = require("@middleware/permission-check");
 const { leaveClass } = require("@services/class-service");
-const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 const { isAuthenticated } = require("@middleware/authentication");
 
@@ -68,10 +67,7 @@ module.exports = (router) => {
             throw new ValidationError("Class ID is required.");
         }
 
-        const result = leaveClass(req.user, Number(req.params.id));
-        if (!result) {
-            throw new ForbiddenError("Unauthorized");
-        }
+        await leaveClass(req.user, Number(req.params.id));
 
         req.infoEvent("class.leave.success", "Class left successfully", { classId });
         res.status(200).json({

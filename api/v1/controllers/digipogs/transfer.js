@@ -109,7 +109,7 @@ module.exports = (router) => {
 
         const result = await transferDigipogs(transferPayload);
         if (!result.success) {
-            throw new AppError(result, { event: "digipogs.transfer.failed", reason: "transfer_error" });
+            throw new AppError(result.message, { statusCode: 400, event: "digipogs.transfer.failed", reason: "transfer_error" });
         }
 
         req.infoEvent("digipogs.transfer.success", "Digipogs transferred successfully", { from, to, amount });
