@@ -1,5 +1,5 @@
--- 16_add_trades.sql
--- This migration adds an trades table to store information about trades between users.
+-- 20_add_trades.sql
+-- This migration adds a trades table to store information about trades between users.
 
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

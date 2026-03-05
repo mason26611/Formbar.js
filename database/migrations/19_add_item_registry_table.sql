@@ -1,4 +1,4 @@
--- 15_add_item_registry_table.sql
+-- 19_add_item_registry_table.sql
 -- This migration adds an item registry table to store information about items that can be in user inventories.
 
 CREATE TABLE IF NOT EXISTS item_registry (

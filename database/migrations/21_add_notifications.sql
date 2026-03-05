@@ -1,5 +1,5 @@
--- 17_add_notifications.sql
--- This migration adds an notifications table to store information about notifications for users.
+-- 21_add_notifications.sql
+-- This migration adds a notifications table to store information about notifications for users.
 
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

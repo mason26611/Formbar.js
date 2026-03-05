@@ -6,86 +6,130 @@ const fs = require("fs");
 const csv = require("csv-parser");
 
 const itemsCSVPath = "./database/items.csv";
+const createItemRegistryTableSQL = `
+    CREATE TABLE IF NOT EXISTS item_registry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        stack_size INTEGER NOT NULL DEFAULT 1 CHECK (stack_size >= 0),
+        image_url TEXT
+    )
+`;
 
-initializeDatabase();
-function initializeDatabase() {
-    new Promise((resolve) => {
-        if (fs.existsSync("./database/database.db")) {
-            console.log("Database already exists. Skipping initialization.");
-            process.exit(1);
+initializeDatabase().catch((err) => {
+    console.error("Database initialization failed:", err);
+    process.exit(1);
+});
+
+async function initializeDatabase() {
+    if (fs.existsSync("./database/database.db")) {
+        console.log("Database already exists. Skipping initialization.");
+        process.exit(1);
+    }
+
+    if (!fs.existsSync("./database/init.sql")) {
+        console.log("SQL initialization file not found.");
+        process.exit(1);
+    }
+
+    const initSQL = fs.readFileSync("./database/init.sql", "utf8");
+    const database = new sqlite3.Database("./database/database.db");
+
+    try {
+        await runStatement(database, "BEGIN TRANSACTION");
+        await execStatement(database, initSQL);
+        await runStatement(database, createItemRegistryTableSQL);
+        await populateItemRegistry(database);
+        await runStatement(database, "COMMIT");
+    } catch (err) {
+        try {
+            await runStatement(database, "ROLLBACK");
+        } catch {
+            // Ignore rollback failures so the original error is preserved.
         }
+        throw err;
+    } finally {
+        await closeDatabase(database);
+    }
 
-        if (!fs.existsSync("./database/init.sql")) {
-            console.log("SQL initialization file not found.");
-            process.exit(1);
-        }
+    console.log("Database initialized successfully.");
 
-        const initSQL = fs.readFileSync("./database/init.sql", "utf8");
-        const database = new sqlite3.Database("./database/database.db");
-        database.serialize(() => {
-            database.run("BEGIN TRANSACTION");
+    // Set flag to skip backup during init, then run the migrations
+    process.env.SKIP_BACKUP = "true";
+    require("./migrate.js");
+}
 
-            populateItemRegistry(database);
+function populateItemRegistry(database) {
+    return new Promise((resolve, reject) => {
+        const items = [];
 
-            // Execute initialization SQL
-            database.exec(initSQL, (err) => {
-                if (err) {
-                    console.error("Error executing initialization SQL:", err);
-                    database.run("ROLLBACK");
-                    database.close();
-                    process.exit(1);
-                }
-
-                database.run("COMMIT", (err) => {
-                    if (err) {
-                        console.error("Error committing initialization SQL:", err);
-                        database.run("ROLLBACK");
-                        database.close();
-                        process.exit(1);
-                    }
-
-                    console.log("Database initialized successfully.");
-                    resolve();
+        fs.createReadStream(itemsCSVPath)
+            .on("error", reject)
+            .pipe(
+                csv({
+                    mapHeaders: ({ header }) => header.trim(),
+                })
+            )
+            .on("error", reject)
+            .on("data", (data) => {
+                items.push({
+                    name: data.name,
+                    description: data.desc,
+                    stackSize: parseInt(data.stackSize, 10),
                 });
-
-                // Set flag to skip backup during init, then run the migrations
-                process.env.SKIP_BACKUP = "true";
-                require("./migrate.js");
+            })
+            .on("end", async () => {
+                try {
+                    for (const item of items) {
+                        const { name, description, stackSize } = item;
+                        await runStatement(database, "INSERT INTO item_registry (name, description, stack_size) VALUES (?, ?, ?)", [
+                            name,
+                            description,
+                            stackSize,
+                        ]);
+                    }
+                    resolve();
+                } catch (err) {
+                    reject(err);
+                }
             });
+    });
+}
+
+function runStatement(database, sql, params = []) {
+    return new Promise((resolve, reject) => {
+        database.run(sql, params, (err) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve();
         });
     });
 }
 
-function populateItemRegistry(database) {
-    const results = [];
-
-    fs.createReadStream(itemsCSVPath)
-        .pipe(
-            csv({
-                mapHeaders: ({ header }) => header.trim(),
-            })
-        )
-        .on("data", (data) => {
-            results.push({
-                name: data.name,
-                description: data.desc,
-                stackSize: parseInt(data.stackSize),
-            });
-            console.log(`Read item from CSV`);
-            console.log(data);
-        })
-        .on("end", () => {
-            console.log(results);
-            results.forEach((item) => {
-                const { name, description, stackSize } = item;
-                console.log(`Inserting item: ${name}`);
-                database.run("INSERT INTO item_registry (name, description, stack_size) VALUES (?, ?, ?)", [name, description, stackSize], (err) => {
-                    if (err) {
-                        console.error("Error inserting item into database:", err);
-                    }
-                });
-            });
+function execStatement(database, sql) {
+    return new Promise((resolve, reject) => {
+        database.exec(sql, (err) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve();
         });
+    });
+}
+
+function closeDatabase(database) {
+    return new Promise((resolve, reject) => {
+        database.close((err) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve();
+        });
+    });
 }
 
 module.exports = {
