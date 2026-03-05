@@ -1,6 +1,6 @@
 const {getNotificationsForUser, getNotificationById} = require("@services/notification-service");
 const {isAuthenticated} = require("@middleware/authentication");
-const {AppError} = require("@errors/app-error");
+const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
