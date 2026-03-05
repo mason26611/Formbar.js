@@ -1,4 +1,4 @@
-const {dbGet, dbGetAll, dbRun} = require("@modules/database");
+const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 
 async function getNotificationById(notificationId) {
     const notification = await dbGet("SELECT * FROM notifications WHERE id = ?", [notificationId]);
@@ -27,5 +27,5 @@ module.exports = {
     getNotificationsForUser,
     markNotificationAsRead,
     createNotification,
-    deleteNotification
+    deleteNotification,
 };

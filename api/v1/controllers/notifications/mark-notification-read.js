@@ -1,38 +1,22 @@
-const { getNotificationsForUser, getNotificationById } = require("@services/notification-service");
+const { getNotificationById, markNotificationAsRead } = require("@services/notification-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
-    router.get("/notifications/get-user-notifications", isAuthenticated, async (req, res) => {
-        req.infoEvent("notifications.get_user_notifications.attempt", "User is attempting to fetch all their notifications");
-
-        const notifications = await getNotificationsForUser(req.user.id);
-
-        if (!notifications) {
-            throw new AppError("Failed to fetch notifications", { event: "notifications.get_user_notifications.failed" });
-        }
-
-        res.json({
-            success: true,
-            data: { notifications },
-        });
-    });
-
-    router.get("/notifications/get-notification/:id", isAuthenticated, async (req, res) => {
+    router.post("/notifications/mark-notification-read/:id", isAuthenticated, async (req, res) => {
         const notificationId = req.params.id;
 
         if (!notificationId) {
             throw new ValidationError("Notification ID is required", { event: "notifications.get.failed", reason: "Notification ID not provided" });
         }
 
-        req.infoEvent("notifications.get.attempt", "User is attempting to fetch a specific notification", { notificationId });
+        req.infoEvent("notifications.mark_as_read.attempt", "User is attempting to mark a notification as read", { notificationId });
 
         const notification = await getNotificationById(notificationId);
 
         if (!notification) {
-            throw new NotFoundError("Notification not found", { event: "notifications.get.failed", reason: "Notification not found" });
+            throw new NotFoundError("Notification not found", { event: "notifications.mark_as_read.failed", reason: "Notification not found" });
         }
 
         if (notification.user_id !== req.user.id) {
@@ -43,6 +27,11 @@ module.exports = (router) => {
                 notificationId,
             });
         }
+
+        await markNotificationAsRead(notificationId);
+        notification.is_read = true;
+
+        req.infoEvent("notifications.mark_as_read.success", "Notification marked as read successfully");
 
         res.json({
             success: true,

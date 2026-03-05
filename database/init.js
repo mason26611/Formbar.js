@@ -60,10 +60,12 @@ function populateItemRegistry(database) {
     const results = [];
 
     fs.createReadStream(itemsCSVPath)
-        .pipe(csv({
-            mapHeaders: ({ header }) => header.trim()
-        }))
-        .on('data', (data) => {
+        .pipe(
+            csv({
+                mapHeaders: ({ header }) => header.trim(),
+            })
+        )
+        .on("data", (data) => {
             results.push({
                 name: data.name,
                 description: data.desc,
@@ -72,10 +74,10 @@ function populateItemRegistry(database) {
             console.log(`Read item from CSV`);
             console.log(data);
         })
-        .on('end', () => {
+        .on("end", () => {
             console.log(results);
             results.forEach((item) => {
-                const {name, description, stackSize } = item;
+                const { name, description, stackSize } = item;
                 console.log(`Inserting item: ${name}`);
                 database.run("INSERT INTO item_registry (name, description, stack_size) VALUES (?, ?, ?)", [name, description, stackSize], (err) => {
                     if (err) {
@@ -85,7 +87,6 @@ function populateItemRegistry(database) {
             });
         });
 }
-
 
 module.exports = {
     initializeDatabase,
