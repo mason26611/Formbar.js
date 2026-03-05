@@ -3,7 +3,58 @@ const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
-    router.delete("/notifications/delete-notification/:id", isAuthenticated, async (req, res) => {
+    /**
+     * @swagger
+     * /api/v1/notifications/{id}:
+     *   delete:
+     *     summary: Delete a notification by ID
+     *     tags:
+     *       - Notifications
+     *     description: |
+     *       Permanently deletes a notification by its ID. The notification must belong to
+     *       the authenticated user. A 404 is returned if the notification does not exist or
+     *       belongs to a different user (to avoid leaking information about other users'
+     *       notifications).
+     *
+     *       **Required Permission:** Authenticated user
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         description: The ID of the notification to delete
+     *         schema:
+     *           type: string
+     *           example: "42"
+     *     responses:
+     *       200:
+     *         description: Notification deleted successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *       401:
+     *         description: Unauthorized – user is not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       404:
+     *         description: Notification not found or does not belong to the authenticated user
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     */
+    router.delete("/notifications/:id", isAuthenticated, async (req, res) => {
         const notificationId = req.params.id;
 
         req.infoEvent("notifications.delete.attempt", "User is attempting to delete a notification", { notificationId });
