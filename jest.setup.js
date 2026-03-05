@@ -20,6 +20,12 @@ jest.mock("./modules/database", () => ({
 // Mock manager service
 jest.mock("./services/manager-service", () => ({
     getManagerData: jest.fn().mockResolvedValue({ users: {}, classrooms: {} }),
+    getManagerDataPaginated: jest.fn().mockResolvedValue({
+        users: [],
+        totalUsers: 0,
+        classrooms: [],
+        pendingUsers: [],
+    }),
 }));
 
 // Mock web server

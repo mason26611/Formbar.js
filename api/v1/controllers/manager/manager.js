@@ -1,7 +1,24 @@
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { getManagerData } = require("@services/manager-service");
+const { getManagerDataPaginated } = require("@services/manager-service");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
+const ValidationError = require("@errors/validation-error");
+
+const DEFAULT_MANAGER_LIMIT = 24;
+const MAX_MANAGER_LIMIT = 200;
+
+function parseIntegerQueryParam(value, defaultValue) {
+    if (value == null) {
+        return defaultValue;
+    }
+
+    const normalized = String(value).trim();
+    if (!/^-?\d+$/.test(normalized)) {
+        return NaN;
+    }
+
+    return Number.parseInt(normalized, 10);
+}
 
 module.exports = (router) => {
     /**
@@ -46,11 +63,33 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     router.get("/manager", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
-        const user = req.user;
         req.infoEvent("manager.view", "Manager dashboard accessed");
 
+        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_MANAGER_LIMIT);
+        const offset = parseIntegerQueryParam(req.query.offset, 0);
+        const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+        const sortBy = typeof req.query.sortBy === "string" ? req.query.sortBy.trim().toLowerCase() : "name";
+
+        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_MANAGER_LIMIT) {
+            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_MANAGER_LIMIT}.`);
+        }
+
+        if (!Number.isInteger(offset) || offset < 0) {
+            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
+        }
+
+        if (sortBy !== "name" && sortBy !== "permission") {
+            throw new ValidationError("Invalid sortBy. Expected 'name' or 'permission'.");
+        }
+
         // Grab manager data and send it back as a JSON response
-        const { users, classrooms } = await getManagerData();
+        const { users, classrooms, pendingUsers, totalUsers } = await getManagerDataPaginated({
+            limit,
+            offset,
+            search,
+            sortBy,
+        });
+        const hasMore = offset + users.length < totalUsers;
 
         req.infoEvent("manager.data.retrieved", "Manager data retrieved");
         res.status(200).json({
@@ -58,6 +97,13 @@ module.exports = (router) => {
             data: {
                 users,
                 classrooms,
+                pendingUsers,
+                pagination: {
+                    total: totalUsers,
+                    limit,
+                    offset,
+                    hasMore,
+                },
             },
         });
     });

@@ -1,11 +1,28 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { getUserDataFromDb } = require("@services/user-service");
-const { getUserTransactions } = require("@services/digipog-service");
+const { getUserTransactionsPaginated } = require("@services/digipog-service");
 const { classStateStore } = require("@services/classroom-service");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
+const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
+
+const DEFAULT_TRANSACTION_LIMIT = 25;
+const MAX_TRANSACTION_LIMIT = 100;
+
+function parseIntegerQueryParam(value, defaultValue) {
+    if (value == null) {
+        return defaultValue;
+    }
+
+    const normalized = String(value).trim();
+    if (!/^-?\d+$/.test(normalized)) {
+        return NaN;
+    }
+
+    return Number.parseInt(normalized, 10);
+}
 
 module.exports = (router) => {
     /**
@@ -81,8 +98,21 @@ module.exports = (router) => {
 
         req.infoEvent("user.transactions.view.attempt", "Attempting to view user transactions", { targetUserId: userId });
 
+        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_TRANSACTION_LIMIT);
+        const offset = parseIntegerQueryParam(req.query.offset, 0);
+
+        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_TRANSACTION_LIMIT) {
+            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_TRANSACTION_LIMIT}.`);
+        }
+
+        if (!Number.isInteger(offset) || offset < 0) {
+            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
+        }
+
         const userDisplayName = userData.displayName || "Unknown User";
-        const transactions = await getUserTransactions(userId);
+        const { transactions, total } = await getUserTransactionsPaginated(userId, limit, offset);
+        const hasMore = offset + transactions.length < total;
+
         if (!transactions || transactions.length === 0) {
             req.infoEvent("user.transactions.empty", "No transactions found for user");
             res.status(200).json({
@@ -91,12 +121,24 @@ module.exports = (router) => {
                     transactions: [],
                     displayName: userDisplayName,
                     currentUserId: req.user.id,
+                    pagination: {
+                        total,
+                        limit,
+                        offset,
+                        hasMore,
+                    },
                 },
             });
             return;
         }
 
-        req.infoEvent("user.transactions.view.success", "User transactions returned", { targetUserId: userId });
+        req.infoEvent("user.transactions.view.success", "User transactions returned", {
+            targetUserId: userId,
+            returnedCount: transactions.length,
+            totalCount: total,
+            limit,
+            offset,
+        });
 
         res.status(200).json({
             success: true,
@@ -104,6 +146,12 @@ module.exports = (router) => {
                 transactions: transactions,
                 displayName: userDisplayName,
                 currentUserId: req.user.id,
+                pagination: {
+                    total,
+                    limit,
+                    offset,
+                    hasMore,
+                },
             },
         });
     });
