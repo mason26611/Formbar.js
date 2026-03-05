@@ -22,10 +22,15 @@ async function deleteNotification(notificationId) {
     await dbRun("DELETE FROM notifications WHERE id = ?", [notificationId]);
 }
 
+async function emptyInboxForUser(userId) {
+    await dbRun("DELETE FROM notifications WHERE user_id = ?", [userId]);
+}
+
 module.exports = {
     getNotificationById,
     getNotificationsForUser,
     markNotificationAsRead,
     createNotification,
+    emptyInboxForUser,
     deleteNotification,
 };

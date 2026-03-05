@@ -1,12 +1,27 @@
-const { deleteNotification, getNotificationById } = require("@services/notification-service");
+const { deleteNotification, emptyInboxForUser, getNotificationById } = require("@services/notification-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
-    router.delete("/notifications/delete-notification/:id", isAuthenticated, async (req, res) => {
+
+    router.delete("/notifications/", isAuthenticated, async (req, res) => {
+
+        req.infoEvent("notifications.delete.attempt", "User is attempting to empty their inbox");  
+
+        await emptyInboxForUser(req.user.id);
+
+        req.infoEvent("notifications.delete.success", "Inbox emptied successfully");
+
+        res.json({
+            success: true,
+            data: {},
+        });
+    });
+
+    router.delete("/notifications/:id", isAuthenticated, async (req, res) => {
         const notificationId = req.params.id;
 
-        req.infoEvent("notifications.delete.attempt", "User is attempting to delete a notification", { notificationId });
+        req.infoEvent("notifications.delete.attempt", "User is attempting to delete a notification");
 
         const notification = await getNotificationById(notificationId);
 
