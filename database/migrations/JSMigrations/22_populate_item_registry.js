@@ -32,11 +32,7 @@ function readItemsFromCSV() {
 
 module.exports = {
     async run(database) {
-        const table = await dbGet(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'item_registry'",
-            [],
-            database
-        );
+        const table = await dbGet("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'item_registry'", [], database);
         if (!table) {
             throw new Error("ALREADY_DONE");
         }

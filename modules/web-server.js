@@ -33,6 +33,7 @@ function createServer() {
                 { name: "Digipogs", description: "Virtual currency management", "x-order": 10 },
                 { name: "IP Management", description: "IP whitelist/blacklist management", "x-order": 11 },
                 { name: "Manager", description: "Manager/admin functions", "x-order": 12 },
+                { name: "Notifications", description: "User notification management", "x-order": 13 },
             ],
             components: {
                 securitySchemes: {
