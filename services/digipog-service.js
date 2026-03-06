@@ -4,7 +4,7 @@ const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 
-// ─── Rate limiting ────────────────────────────────────────────────────────────
+// Rate limiting
 
 const failedAttempts = new Map();
 
@@ -86,7 +86,7 @@ function recordAttempt(accountId, success) {
     failedAttempts.set(accountId, userAttempts);
 }
 
-// ─── Pool helpers ─────────────────────────────────────────────────────────────
+// Pool helpers
 
 async function getPoolsForUser(userId, database) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId], database);
@@ -150,7 +150,7 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag, database) {
     return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId], database);
 }
 
-// ─── Transactions ─────────────────────────────────────────────────────────────
+// Transactions
 
 async function getUserTransactions(userId) {
     const pools = await dbGetAll("SELECT pool_id FROM digipog_pool_users WHERE user_id = ?", [userId]);
@@ -194,33 +194,59 @@ async function getUserTransactionsPaginated(userId, limit = 25, offset = 0) {
     };
 }
 
-// ─── Award / Transfer ─────────────────────────────────────────────────────────
+// Award / Transfer
 
 async function awardDigipogs(awardData, user) {
     try {
-        const from = user.userId;
-        const amount = Math.ceil(awardData.amount);
-        const reason = awardData.reason || "Awarded";
+        const from = user?.userId ?? user?.id;
+        const amount = Math.ceil(Number(awardData?.amount));
+        const reason = awardData?.reason || "Awarded";
 
-        let to = awardData.to;
+        let to = awardData?.to;
         let deprecatedFormatUsed = false;
         if (typeof to === "string" || typeof to === "number") {
-            // Old API: `to` was a plain user ID — normalize to new object format
+            // Old API: `to` was a plain user ID, normalize to object format
             to = { id: to, type: "user" };
             deprecatedFormatUsed = true;
-        } else if (!to || (!to.id && !to.code)) {
+        } else if (!to && (awardData?.userId || awardData?.studentId)) {
+            // Legacy HTTP payloads sent `userId`/`studentId` directly
+            to = { id: awardData.userId || awardData.studentId, type: "user" };
+            deprecatedFormatUsed = true;
+        }
+
+        if (!to || typeof to !== "object") {
             return { success: false, message: "Missing recipient identifier." };
         }
 
-        if (!from || !to || !amount) {
+        to = { ...to };
+
+        if (!to.id && (to.userId || to.studentId)) {
+            // Legacy object shape: `{ to: { userId } }`
+            to.id = to.userId || to.studentId;
+            if (!to.type) to.type = "user";
+            deprecatedFormatUsed = true;
+        }
+        if (!to.type) {
+            to.type = "user";
+            deprecatedFormatUsed = true;
+        }
+
+        if (!from || Number.isNaN(amount)) {
             return { success: false, message: "Missing required fields." };
         } else if (to.type !== "user" && to.type !== "pool" && to.type !== "class") {
             return { success: false, message: "Invalid recipient type." };
         } else if (amount <= 0) {
             return { success: false, message: "Amount must be greater than zero." };
+        } else if (to.type !== "class" && !to.id) {
+            return { success: false, message: "Missing recipient identifier." };
         }
 
         const accountId = `award-${from}`;
+        const fail = (message) => {
+            recordAttempt(accountId, false);
+            return { success: false, message };
+        };
+
         const rateLimitCheck = checkRateLimit(accountId);
         if (!rateLimitCheck.allowed) {
             return { success: false, message: rateLimitCheck.message, rateLimited: true, waitTime: rateLimitCheck.waitTime };
@@ -228,26 +254,22 @@ async function awardDigipogs(awardData, user) {
 
         const fromUser = await dbGet("SELECT email, permissions FROM users WHERE id = ?", [from]);
         if (!fromUser || !fromUser.email) {
-            recordAttempt(accountId, false);
-            return { success: false, message: "Sender account not found." };
+            return fail("Sender account not found.");
         }
 
         if (to.type === "class") {
             if (to.code) {
                 to.id = await getClassIDFromCode(to.code);
                 if (!to.id) {
-                    recordAttempt(accountId, false);
-                    return { success: false, message: "Invalid class code." };
+                    return fail("Invalid class code.");
                 }
             } else if (!to.id) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Missing class identifier." };
+                return fail("Missing class identifier.");
             }
 
             const classInfo = await dbGet("SELECT c.id, c.owner FROM classroom c WHERE c.id = ?", [to.id]);
             if (!classInfo) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Recipient class not found." };
+                return fail("Recipient class not found.");
             }
 
             let classPermissions = 0;
@@ -259,8 +281,7 @@ async function awardDigipogs(awardData, user) {
             }
 
             if (classPermissions < TEACHER_PERMISSIONS && fromUser.permissions < TEACHER_PERMISSIONS) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Sender does not have permission to award to this class." };
+                return fail("Sender does not have permission to award to this class.");
             }
 
             await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id IN (SELECT studentId FROM classusers WHERE classId = ?) OR id = ?", [
@@ -270,24 +291,20 @@ async function awardDigipogs(awardData, user) {
             ]);
         } else if (to.type === "pool") {
             if (!to.id) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Missing pool identifier." };
+                return fail("Missing pool identifier.");
             }
             if (fromUser.permissions < TEACHER_PERMISSIONS) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Sender does not have permission to award to pools." };
+                return fail("Sender does not have permission to award to pools.");
             }
             const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
             if (!poolInfo) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Recipient pool not found." };
+                return fail("Recipient pool not found.");
             }
             await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [amount, to.id]);
         } else if (to.type === "user") {
             const toUser = await dbGet("SELECT id FROM users WHERE id = ?", [to.id]);
             if (!toUser) {
-                recordAttempt(accountId, false);
-                return { success: false, message: "Recipient account not found." };
+                return fail("Recipient account not found.");
             }
 
             if (fromUser.permissions < TEACHER_PERMISSIONS) {
@@ -297,8 +314,7 @@ async function awardDigipogs(awardData, user) {
                     [to.id, from, TEACHER_PERMISSIONS, from]
                 );
                 if (!hasPermission) {
-                    recordAttempt(accountId, false);
-                    return { success: false, message: "Sender does not have permission to award to this user." };
+                    return fail("Sender does not have permission to award to this user.");
                 }
             }
 
@@ -320,9 +336,12 @@ async function awardDigipogs(awardData, user) {
         }
 
         recordAttempt(accountId, true);
+        const successMessage = deprecatedFormatUsed
+            ? "Digipogs awarded successfully. Warning: Deprecated award format used. See documentation for updated usage."
+            : "Digipogs awarded successfully.";
         return {
             success: true,
-            message: `Digipogs awarded successfully. ${deprecatedFormatUsed ? "Warning: Deprecated award format used. See documentation for updated usage." : ""}`,
+            message: successMessage,
         };
     } catch (err) {
         return { success: false, message: "Database error." };

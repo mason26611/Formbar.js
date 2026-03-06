@@ -9,6 +9,7 @@ const session = require("express-session"); // For storing client login data
 const crypto = require("crypto");
 const fs = require("fs");
 require("dotenv").config(); // For environment variables
+const cors = require("cors");
 
 // If the database does not exist, then prompt the user to initialize it and exit
 if (!fs.existsSync("database/database.db")) {
@@ -38,6 +39,15 @@ const sessionMiddleware = session({
 const errorHandlerMiddleware = require("@middleware/error-handler");
 const requestLoggerMiddleware = require("@middleware/request-logger");
 
+// Trust the first proxy (nginx) so that req.ip returns the real client IP
+// from the X-Forwarded-For header instead of nginx's loopback address.
+// Without this, all requests appear to come from the same IP and rate limiting
+// is applied globally rather than per-user.
+app.set("trust proxy", Number(process.env.TRUST_PROXY) ?? 1);
+
+// Enables CORS if not using nginx or if ENABLE_CORS is set to true. This allows the API to be accessed from other origins, which is useful for development and if the frontend is hosted separately from the backend.
+process.env.ENABLE_CORS == "true" && app.use(cors({ origin: "*" }));
+
 // Apply logger middleware
 // This should always be applied first so that we can log when anything goes wrong
 app.use(requestLoggerMiddleware);
@@ -47,13 +57,14 @@ app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
+
 // Initialize passport for Google OAuth
 app.use(passport.initialize());
 app.use(passport.session());
 
 // For further uses on this use this link: https://socket.io/how-to/use-with-express-session
 // Uses a middleware function to successfully transmit data between the user and server
-// adds session middle ware to socket.io
+// adds session middleware to socket.io
 io.use((socket, next) => {
     sessionMiddleware(socket.request, socket.request.res || {}, next);
 });
@@ -73,10 +84,6 @@ io.use((socket, next) => {
         next(err);
     }
 });
-
-// Handle cors
-const cors = require("cors");
-app.use(cors({ origin: true }));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -168,7 +175,7 @@ function attachLegacyApiDeprecationHeaders(req, res, next) {
     next();
 }
 
-// This is hacky but it works, I suppose.
+// This is hacky, but it works, I suppose.
 function rewriteLegacyApiPaths(req, res, next) {
     req.url = req.url.replace(/^\/me(?=\/|$|\?)/, "/user/me");
     req.url = req.url.replace(/^\/user\/([^/]+)\/ownedClasses(?=\/|$|\?)/, "/user/$1/classes");
