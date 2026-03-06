@@ -26,7 +26,7 @@ function buildManagerUserSearch(search) {
 
     const searchTerm = `%${normalized}%`;
     return {
-        clause: "WHERE LOWER(COALESCE(displayName, email)) LIKE ? OR LOWER(email) LIKE ?",
+        clause: "WHERE INSTR(LOWER(COALESCE(displayName, email)), ?) > 0 OR INSTR(LOWER(email), ?) > 0",
         params: [searchTerm, searchTerm],
     };
 }

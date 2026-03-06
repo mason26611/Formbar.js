@@ -42,13 +42,76 @@ module.exports = (router) => {
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         description: Number of users to return per page
+     *         schema:
+     *           type: integer
+     *           minimum: 1
+     *           maximum: 200
+     *           default: 24
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         description: Number of users to skip before returning results
+     *         schema:
+     *           type: integer
+     *           minimum: 0
+     *           default: 0
+     *       - in: query
+     *         name: search
+     *         required: false
+     *         description: Case-insensitive search term matched against user display name and email
+     *         schema:
+     *           type: string
+     *       - in: query
+     *         name: sortBy
+     *         required: false
+     *         description: Sort key for returned users
+     *         schema:
+     *           type: string
+     *           enum: [name, permission]
+     *           default: name
      *     responses:
      *       200:
      *         description: Manager data retrieved successfully
      *         content:
      *           application/json:
      *             schema:
-     *               $ref: '#/components/schemas/ManagerData'
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     users:
+     *                       type: array
+     *                       items:
+     *                         $ref: '#/components/schemas/User'
+     *                     classrooms:
+     *                       type: array
+     *                       items:
+     *                         $ref: '#/components/schemas/ClassInfo'
+     *                     pendingUsers:
+     *                       type: array
+     *                       items:
+     *                         type: object
+     *                         additionalProperties: true
+     *                     pagination:
+     *                       type: object
+     *                       properties:
+     *                         total:
+     *                           type: integer
+     *                         limit:
+     *                           type: integer
+     *                         offset:
+     *                           type: integer
+     *                         hasMore:
+     *                           type: boolean
      *       401:
      *         description: Not authenticated
      *         content:

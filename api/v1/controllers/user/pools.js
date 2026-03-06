@@ -25,7 +25,7 @@ module.exports = {
     run(router) {
         /**
          * @swagger
-         * /api/v1/user/:id/pools:
+         * /api/v1/user/{id}/pools:
          *   get:
          *     summary: Get user's digipog pools
          *     tags:
@@ -34,6 +34,31 @@ module.exports = {
          *     security:
          *       - bearerAuth: []
          *       - apiKeyAuth: []
+         *     parameters:
+         *       - in: path
+         *         name: id
+         *         required: true
+         *         description: The ID of the user to retrieve pools for
+         *         schema:
+         *           type: integer
+         *           example: 1
+         *       - in: query
+         *         name: limit
+         *         required: false
+         *         description: Number of pools to return per page
+         *         schema:
+         *           type: integer
+         *           minimum: 1
+         *           maximum: 100
+         *           default: 20
+         *       - in: query
+         *         name: offset
+         *         required: false
+         *         description: Number of pools to skip before returning results
+         *         schema:
+         *           type: integer
+         *           minimum: 0
+         *           default: 0
          *     responses:
          *       200:
          *         description: Pools retrieved successfully
@@ -42,17 +67,47 @@ module.exports = {
          *             schema:
          *               type: object
          *               properties:
-         *                 pools:
-         *                   type: string
-         *                   description: JSON stringified array of pool objects
-         *                 ownedPools:
-         *                   type: string
-         *                   description: JSON stringified array of owned pool IDs
-         *                 memberPools:
-         *                   type: string
-         *                   description: JSON stringified array of member pool IDs
-         *                 userId:
-         *                   type: string
+         *                 success:
+         *                   type: boolean
+         *                   example: true
+         *                 data:
+         *                   type: object
+         *                   properties:
+         *                     pools:
+         *                       type: string
+         *                       description: JSON stringified array of pool objects (legacy format)
+         *                     ownedPools:
+         *                       type: string
+         *                       description: JSON stringified array of owned pool IDs (legacy format)
+         *                     memberPools:
+         *                       type: string
+         *                       description: JSON stringified array of member pool IDs (legacy format)
+         *                     poolItems:
+         *                       type: array
+         *                       items:
+         *                         type: object
+         *                         additionalProperties: true
+         *                     ownedPoolIds:
+         *                       type: array
+         *                       items:
+         *                         type: string
+         *                     memberPoolIds:
+         *                       type: array
+         *                       items:
+         *                         type: string
+         *                     userId:
+         *                       type: integer
+         *                     pagination:
+         *                       type: object
+         *                       properties:
+         *                         total:
+         *                           type: integer
+         *                         limit:
+         *                           type: integer
+         *                         offset:
+         *                           type: integer
+         *                         hasMore:
+         *                           type: boolean
          *       500:
          *         description: Server error
          *         content:

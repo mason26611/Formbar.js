@@ -44,6 +44,23 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *           example: "1"
+     *       - in: query
+     *         name: limit
+     *         required: false
+     *         description: Number of transactions to return per page
+     *         schema:
+     *           type: integer
+     *           minimum: 1
+     *           maximum: 100
+     *           default: 25
+     *       - in: query
+     *         name: offset
+     *         required: false
+     *         description: Number of transactions to skip before returning results
+     *         schema:
+     *           type: integer
+     *           minimum: 0
+     *           default: 0
      *     responses:
      *       200:
      *         description: Transactions retrieved successfully
@@ -52,14 +69,32 @@ module.exports = (router) => {
      *             schema:
      *               type: object
      *               properties:
-     *                 transactions:
-     *                   type: array
-     *                   items:
-     *                     type: object
-     *                 displayName:
-     *                   type: string
-     *                 currentUserId:
-     *                   type: string
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     transactions:
+     *                       type: array
+     *                       items:
+     *                         type: object
+     *                         additionalProperties: true
+     *                     displayName:
+     *                       type: string
+     *                     currentUserId:
+     *                       type: integer
+     *                     pagination:
+     *                       type: object
+     *                       properties:
+     *                         total:
+     *                           type: integer
+     *                         limit:
+     *                           type: integer
+     *                         offset:
+     *                           type: integer
+     *                         hasMore:
+     *                           type: boolean
      *       403:
      *         description: Forbidden - insufficient permissions
      *         content:
