@@ -12,12 +12,12 @@ function parseIntegerQueryParam(value, defaultValue) {
         return defaultValue;
     }
 
-    const normalized = String(value).trim();
-    if (!/^-?\d+$/.test(normalized)) {
+    const text = `${value}`.trim();
+    if (!/^-?\d+$/.test(text)) {
         return NaN;
     }
 
-    return Number.parseInt(normalized, 10);
+    return Number.parseInt(text, 10);
 }
 
 module.exports = (router) => {
