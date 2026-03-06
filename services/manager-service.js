@@ -69,10 +69,7 @@ async function getPendingUsers(search = "", sortBy = "name") {
     // Batch query to find emails that already exist in users.
     const emails = candidates.map((u) => u.email);
     const placeholders = emails.map(() => "?").join(", ");
-    const existingRows = await dbGetAll(
-        `SELECT email FROM users WHERE email IN (${placeholders})`,
-        emails
-    );
+    const existingRows = await dbGetAll(`SELECT email FROM users WHERE email IN (${placeholders})`, emails);
     const existingEmailSet = new Set(existingRows.map((row) => row.email));
 
     const pendingUsers = [];

@@ -1,6 +1,7 @@
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
+const cors = require("cors");
 
 // Create the express server and attach socket.io to it
 function createServer() {
@@ -11,6 +12,9 @@ function createServer() {
             origin: "*",
         },
     });
+
+    // Enables CORS if not using nginx or if ENABLE_CORS is set to true. This allows the API to be accessed from other origins, which is useful for development and if the frontend is hosted separately from the backend.
+    process.env.ENABLE_CORS == "true" && app.use(cors({ origin: "*" }));
 
     const swaggerDocOptions = {
         definition: {
@@ -79,6 +83,10 @@ function createServer() {
             });
         specs.paths = sortedPaths;
     }
+
+    app.get(["/docs.json", "/docs/openapi.json"], (req, res) => {
+        res.json(specs);
+    });
 
     app.use(
         "/docs",
