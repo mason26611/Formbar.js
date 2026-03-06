@@ -50,17 +50,34 @@ async function getPendingUsers(search = "", sortBy = "name") {
     const normalizedSearch = String(search || "")
         .trim()
         .toLowerCase();
-    const pendingUsers = [];
 
+    // First, decode all tokens and build candidate pending users.
+    const candidates = [];
     for (const tempUser of tempUsers) {
         const decodedData = jwt.decode(tempUser.token);
         const pendingUser = buildPendingUser(decodedData);
         if (!pendingUser) {
             continue;
         }
+        candidates.push(pendingUser);
+    }
 
-        const existingUser = await dbGet("SELECT 1 FROM users WHERE email = ? LIMIT 1", [pendingUser.email]);
-        if (existingUser) {
+    if (candidates.length === 0) {
+        return [];
+    }
+
+    // Batch query to find emails that already exist in users.
+    const emails = candidates.map((u) => u.email);
+    const placeholders = emails.map(() => "?").join(", ");
+    const existingRows = await dbGetAll(
+        `SELECT email FROM users WHERE email IN (${placeholders})`,
+        emails
+    );
+    const existingEmailSet = new Set(existingRows.map((row) => row.email));
+
+    const pendingUsers = [];
+    for (const pendingUser of candidates) {
+        if (existingEmailSet.has(pendingUser.email)) {
             continue;
         }
 
