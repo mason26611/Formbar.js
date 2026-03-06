@@ -92,6 +92,20 @@ async function getPoolsForUser(userId, database) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId], database);
 }
 
+async function getPoolsForUserPaginated(userId, limit = 20, offset = 0, database) {
+    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM digipog_pool_users WHERE user_id = ?", [userId], database);
+    const pools = await dbGetAll(
+        "SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ? ORDER BY pool_id DESC LIMIT ? OFFSET ?",
+        [userId, limit, offset],
+        database
+    );
+
+    return {
+        pools,
+        total: totalRow ? totalRow.count : 0,
+    };
+}
+
 async function getUsersForPool(poolId, database) {
     return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId], database);
 }
@@ -156,6 +170,28 @@ async function getUserTransactions(userId) {
 
     const transactions = await dbGetAll(query, params);
     return transactions;
+}
+
+async function getUserTransactionsPaginated(userId, limit = 25, offset = 0) {
+    const pools = await dbGetAll("SELECT pool_id FROM digipog_pool_users WHERE user_id = ?", [userId]);
+    const poolIds = pools.map((pool) => pool.pool_id);
+
+    let whereQuery = "WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user')";
+    const params = [userId, userId];
+
+    if (poolIds.length > 0) {
+        const placeholders = poolIds.map(() => "?").join(",");
+        whereQuery += ` OR (from_id IN (${placeholders}) AND from_type = 'pool') OR (to_id IN (${placeholders}) AND to_type = 'pool')`;
+        params.push(...poolIds, ...poolIds);
+    }
+
+    const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM transactions ${whereQuery}`, params);
+    const transactions = await dbGetAll(`SELECT * FROM transactions ${whereQuery} ORDER BY date DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+
+    return {
+        transactions,
+        total: totalRow ? totalRow.count : 0,
+    };
 }
 
 // Award / Transfer
@@ -459,10 +495,12 @@ async function transferDigipogs(transferData) {
 module.exports = {
     // Transactions
     getUserTransactions,
+    getUserTransactionsPaginated,
     awardDigipogs,
     transferDigipogs,
     // Pool helpers
     getPoolsForUser,
+    getPoolsForUserPaginated,
     getUsersForPool,
     isUserInPool,
     isUserOwner,
