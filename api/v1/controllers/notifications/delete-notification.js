@@ -3,10 +3,42 @@ const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
-
+    /**
+     * @swagger
+     * /api/v1/notifications/:
+     *   delete:
+     *     summary: Delete all notifications for the authenticated user
+     *     tags:
+     *       - Notifications
+     *     description: |
+     *       Permanently deletes all notifications belonging to the currently authenticated user.
+     *
+     *       **Required Permission:** Authenticated user
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     responses:
+     *       200:
+     *         description: Inbox emptied successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *       401:
+     *         description: Unauthorized â€“ user is not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     */
     router.delete("/notifications/", isAuthenticated, async (req, res) => {
-
-        req.infoEvent("notifications.delete.attempt", "User is attempting to empty their inbox");  
+        req.infoEvent("notifications.delete.attempt", "User is attempting to empty their inbox");
 
         await emptyInboxForUser(req.user.id);
 
