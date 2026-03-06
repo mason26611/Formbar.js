@@ -1,0 +1,31 @@
+components:
+  schemas:
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the notification
+          example: 42
+        user_id:
+          type: integer
+          description: The ID of the user this notification belongs to
+          example: 1
+        type:
+          type: string
+          description: The type/category of the notification
+          example: "trade_received"
+        data:
+          type: object
+          description: Additional data associated with the notification (structure varies by type)
+          example: { "fromUserId": 5, "itemId": 12 }
+        is_read:
+          type: boolean
+          description: Whether the notification has been read by the user
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of when the notification was created
+          example: "2026-03-05T10:00:00.000Z"
+

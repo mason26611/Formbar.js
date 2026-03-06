@@ -31,11 +31,7 @@ module.exports = async (err, req, res, next) => {
         // is error expected operational error
     } else {
         const event = err.event || "request.error";
-        if (req.warnEvent) {
-            req.warnEvent(event, err.message, err);
-        } else {
-            logEvent(logger, "warn", event, err.message, { error: err });
-        }
+        req.warnEvent(event, err.message, err);
     }
 
     const response = {
