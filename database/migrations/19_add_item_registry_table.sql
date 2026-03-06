@@ -3,6 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS item_registry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL, 
     name TEXT NOT NULL UNIQUE,
     description TEXT,
     stack_size INTEGER NOT NULL DEFAULT 1 CHECK (stack_size >= 0),

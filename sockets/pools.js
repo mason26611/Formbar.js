@@ -23,8 +23,7 @@ module.exports = {
                 }
 
                 // Create the pool
-                const result = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, 0)", [name, description]);
-                const poolId = result.lastID || result;
+                const poolId = await pools.createPool(name, description, socket.request.session.userId);
 
                 // Add the user as the pool owner using the new structure
                 await pools.addUserToPool(poolId, socket.request.session.userId, 1);

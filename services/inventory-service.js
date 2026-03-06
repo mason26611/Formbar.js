@@ -6,6 +6,11 @@ async function getInventory(userId) {
     return inventoryItems;
 }
 
+async function createItem(name, description, stackSize = 1, iconUrl = "", companyId) {
+    const result = await dbRun("INSERT INTO items (name, description, stack_size, image_url, company_id) VALUES (?, ?, ?, ?, ?)", [name, description, stackSize, iconUrl, companyId]);
+    return result.lastID;
+}
+
 async function addItemToInventory(userId, itemId, quantity) {
     // Check if the item already exists in the user's inventory
     const existingItem = await dbGet("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?", [userId, itemId]);
@@ -39,6 +44,7 @@ async function removeItemFromInventory(userId, itemId, quantity) {
 
 module.exports = {
     getInventory,
+    createItem,
     addItemToInventory,
     removeItemFromInventory,
 };

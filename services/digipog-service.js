@@ -88,52 +88,57 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function getPoolsForUser(userId, database) {
-    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId], database);
+async function createPool(poolName, description = "", ownerId) {
+    const result = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [poolName, description, 0]);
+    const poolId = result.lastID;
+    await addUserToPool(poolId, ownerId, 1);
+    return poolId;
 }
 
-async function getUsersForPool(poolId, database) {
-    return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId], database);
+async function getPoolsForUser(userId) {
+    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
 
-async function isUserInPool(userId, poolId, database) {
-    const row = await dbGet("SELECT 1 FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId], database);
+async function getUsersForPool(poolId) {
+    return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
+}
+
+async function isUserInPool(userId, poolId) {
+    const row = await dbGet("SELECT 1 FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!row;
 }
 
-async function isUserOwner(userId, poolId, database) {
-    const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId], database);
+async function isUserOwner(userId, poolId) {
+    const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!(row && row.owner);
 }
 
-async function isPoolOwnedByUser(poolId, userId, database) {
-    return isUserOwner(userId, poolId, database);
+async function isPoolOwnedByUser(poolId, userId) {
+    return isUserOwner(userId, poolId);
 }
 
-async function addUserToPool(poolId, userId, ownerFlag = 0, database) {
+async function addUserToPool(poolId, userId, ownerFlag = 0) {
     return dbRun(
         "INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)",
-
-        [poolId, userId, ownerFlag ? 1 : 0],
-        database
+        [poolId, userId, ownerFlag ? 1 : 0]
     );
 }
 
-async function removeUserFromPool(poolId, userId, database) {
-    if (await isUserOwner(userId, poolId, database)) {
-        const poolUsers = await getUsersForPool(poolId, database);
+async function removeUserFromPool(poolId, userId) {
+    if (await isUserOwner(userId, poolId)) {
+        const poolUsers = await getUsersForPool(poolId);
         const otherOwners = poolUsers.filter((poolUser) => poolUser.user_id !== userId && poolUser.owner);
         if (otherOwners.length === 0) {
-            await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId], database);
-            await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId], database);
+            await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
+            await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
             return;
         }
     }
-    await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ? AND user_id = ?", [poolId, userId], database);
+    await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ? AND user_id = ?", [poolId, userId]);
 }
 
-async function setUserOwnerFlag(poolId, userId, ownerFlag, database) {
-    return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId], database);
+async function setUserOwnerFlag(poolId, userId, ownerFlag) {
+    return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId]);
 }
 
 // Transactions
@@ -462,6 +467,7 @@ module.exports = {
     awardDigipogs,
     transferDigipogs,
     // Pool helpers
+    createPool,
     getPoolsForUser,
     getUsersForPool,
     isUserInPool,
