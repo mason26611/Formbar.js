@@ -1,13 +1,13 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const NotFoundError = require("@modules/errors/NotFoundError");
+const NotFoundError = require("@errors/not-found-error");
 
 async function getInventory(userId) {
     const inventoryItems = await dbGetAll("SELECT item_id, quantity FROM inventory WHERE user_id = ?", [userId]);
     return inventoryItems;
 }
 
-async function createItem(name, description, stackSize = 1, iconUrl = "", companyId) {
-    const result = await dbRun("INSERT INTO items (name, description, stack_size, image_url, company_id) VALUES (?, ?, ?, ?, ?)", [name, description, stackSize, iconUrl, companyId]);
+async function createItem({ name, description, stackSize = 1, iconUrl = "", companyId }) {
+    const result = await dbRun("INSERT INTO item_registry (name, description, stack_size, image_url, company_id) VALUES (?, ?, ?, ?, ?)", [name, description, stackSize, iconUrl, companyId]);
     return result.lastID;
 }
 
