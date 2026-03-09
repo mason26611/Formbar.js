@@ -3,63 +3,6 @@ const pools = require("@services/digipog-service");
 
 module.exports = {
     run(socket) {
-        socket.on("poolCreate", async (data) => {
-            try {
-                const { name, description } = data;
-
-                if (typeof name !== "string" || name.length <= 0 || name.length > 50) {
-                    return socket.emit("poolCreateResponse", { success: false, message: "Invalid pool name." });
-                }
-                if (typeof description !== "string" || description.length > 255) {
-                    return socket.emit("poolCreateResponse", { success: false, message: "Invalid pool description." });
-                }
-
-                // Check how many pools the user already owns
-                const userPools = await pools.getPoolsForUser(socket.request.session.userId);
-                const ownedPools = userPools.filter((p) => p.owner);
-
-                if (ownedPools.length >= 5) {
-                    return socket.emit("poolCreateResponse", { success: false, message: "You can only own up to 5 pools." });
-                }
-
-                // Create the pool
-                const result = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, 0)", [name, description]);
-                const poolId = result.lastID || result;
-
-                // Add the user as the pool owner using the new structure
-                await pools.addUserToPool(poolId, socket.request.session.userId, 1);
-
-                return socket.emit("poolCreateResponse", { success: true, message: "Pool created successfully." });
-            } catch (err) {
-                return socket.emit("poolCreateResponse", { success: false, message: "An error occurred while creating the pool." });
-            }
-        });
-
-        socket.on("poolDelete", async (data) => {
-            try {
-                const { poolId } = data;
-                if (typeof poolId !== "number" || poolId <= 0) {
-                    return socket.emit("poolDeleteResponse", { success: false, message: "Invalid pool ID." });
-                }
-
-                // Check if the user owns this pool
-                const isOwner = await pools.isUserOwner(socket.request.session.userId, poolId);
-                if (!isOwner) {
-                    return socket.emit("poolDeleteResponse", { success: false, message: "You do not own this pool." });
-                }
-
-                // Delete all user associations with this pool
-                await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
-
-                // Delete the pool itself
-                await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
-
-                return socket.emit("poolDeleteResponse", { success: true, message: "Pool deleted successfully." });
-            } catch (err) {
-                return socket.emit("poolDeleteResponse", { success: false, message: "An error occurred while deleting the pool." });
-            }
-        });
-
         socket.on("poolAddMember", async (data) => {
             try {
                 const { poolId, userId } = data;

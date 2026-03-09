@@ -88,8 +88,14 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function getPoolsForUser(userId, database) {
-    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId], database);
+async function createPool(poolData) {}
+
+async function deletePool(poolId) {
+    await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
+}
+
+async function getPoolsForUser(userId) {
+    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
 
 async function getPoolsForUserPaginated(userId, limit = 20, offset = 0, database) {
