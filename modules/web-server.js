@@ -54,6 +54,9 @@ function createServer() {
                         description: "API key associated with your account. Can be retrieved from your user profile.",
                     },
                 },
+                "x-formbar": {
+                    nodeEnv: process.env.NODE_ENV || "production",
+                },
             },
         },
         apis: ["./api/v1/**/*.js", "./docs/components/**/*.yaml"],
