@@ -256,44 +256,137 @@ async function payoutPool({ actingUserId, poolId }, database) {
 // Transactions
 
 async function getUserTransactions(userId) {
-    const pools = await dbGetAll("SELECT pool_id FROM digipog_pool_users WHERE user_id = ?", [userId]);
-    const poolIds = pools.map((pool) => pool.pool_id);
-
-    // Build the query dynamically based on whether there are pools
-    let query = "SELECT * FROM transactions WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user')";
-    let params = [userId, userId];
-
-    if (poolIds.length > 0) {
-        const placeholders = poolIds.map(() => "?").join(",");
-        query += ` OR (from_id IN (${placeholders}) AND from_type = 'pool') OR (to_id IN (${placeholders}) AND to_type = 'pool')`;
-        params.push(...poolIds, ...poolIds);
-    }
-
-    query += " ORDER BY date DESC";
-
-    const transactions = await dbGetAll(query, params);
-    return transactions;
+    const transactions = await dbGetAll(
+        "SELECT * FROM transactions WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user') ORDER BY date DESC",
+        [userId, userId]
+    );
+    return enrichTransactions(transactions);
 }
 
 async function getUserTransactionsPaginated(userId, limit = 25, offset = 0) {
-    const pools = await dbGetAll("SELECT pool_id FROM digipog_pool_users WHERE user_id = ?", [userId]);
-    const poolIds = pools.map((pool) => pool.pool_id);
-
     let whereQuery = "WHERE (from_id = ? AND from_type = 'user') OR (to_id = ? AND to_type = 'user')";
     const params = [userId, userId];
 
-    if (poolIds.length > 0) {
-        const placeholders = poolIds.map(() => "?").join(",");
-        whereQuery += ` OR (from_id IN (${placeholders}) AND from_type = 'pool') OR (to_id IN (${placeholders}) AND to_type = 'pool')`;
-        params.push(...poolIds, ...poolIds);
-    }
-
     const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM transactions ${whereQuery}`, params);
     const transactions = await dbGetAll(`SELECT * FROM transactions ${whereQuery} ORDER BY date DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    const enrichedTransactions = await enrichTransactions(transactions);
 
     return {
-        transactions,
+        transactions: enrichedTransactions,
         total: totalRow ? totalRow.count : 0,
+    };
+}
+
+async function enrichTransactions(transactions) {
+    if (!transactions || transactions.length === 0) {
+        return [];
+    }
+
+    const userIds = new Set();
+    const poolIds = new Set();
+    const classIds = new Set();
+
+    for (const transaction of transactions) {
+        if (transaction.from_id != null) {
+            if (transaction.from_type === "user" || transaction.from_type === "award") {
+                userIds.add(transaction.from_id);
+            } else if (transaction.from_type === "pool") {
+                poolIds.add(transaction.from_id);
+            } else if (transaction.from_type === "class") {
+                classIds.add(transaction.from_id);
+            }
+        }
+
+        if (transaction.to_id != null) {
+            if (transaction.to_type === "user" || transaction.to_type === "award") {
+                userIds.add(transaction.to_id);
+            } else if (transaction.to_type === "pool") {
+                poolIds.add(transaction.to_id);
+            } else if (transaction.to_type === "class") {
+                classIds.add(transaction.to_id);
+            }
+        }
+    }
+
+    const [users, pools, classes] = await Promise.all([
+        fetchUsersByIds(Array.from(userIds)),
+        fetchPoolsByIds(Array.from(poolIds)),
+        fetchClassesByIds(Array.from(classIds)),
+    ]);
+
+    return transactions.map((transaction) => ({
+        amount: transaction.amount,
+        reason: transaction.reason,
+        date: transaction.date,
+        from: buildTransactionParty(transaction.from_id, transaction.from_type, users, pools, classes),
+        to: buildTransactionParty(transaction.to_id, transaction.to_type, users, pools, classes),
+    }));
+}
+
+async function fetchUsersByIds(userIds) {
+    if (userIds.length === 0) return new Map();
+
+    const placeholders = userIds.map(() => "?").join(",");
+    const users = await dbGetAll(`SELECT id, displayName, email FROM users WHERE id IN (${placeholders})`, userIds);
+
+    const userMap = new Map();
+    for (const user of users) {
+        userMap.set(user.id, {
+            id: user.id,
+            username: user.displayName || user.email || "Unknown User",
+        });
+    }
+    return userMap;
+}
+
+async function fetchPoolsByIds(poolIds) {
+    if (poolIds.length === 0) return new Map();
+
+    const placeholders = poolIds.map(() => "?").join(",");
+    const pools = await dbGetAll(`SELECT id, name FROM digipog_pools WHERE id IN (${placeholders})`, poolIds);
+
+    const poolMap = new Map();
+    for (const pool of pools) {
+        poolMap.set(pool.id, {
+            id: pool.id,
+            username: pool.name || "Unknown Pool",
+        });
+    }
+    return poolMap;
+}
+
+async function fetchClassesByIds(classIds) {
+    if (classIds.length === 0) return new Map();
+
+    const placeholders = classIds.map(() => "?").join(",");
+    const classes = await dbGetAll(`SELECT id, name FROM classroom WHERE id IN (${placeholders})`, classIds);
+
+    const classMap = new Map();
+    for (const classInfo of classes) {
+        classMap.set(classInfo.id, {
+            id: classInfo.id,
+            username: classInfo.name || "Unknown Class",
+        });
+    }
+    return classMap;
+}
+
+function buildTransactionParty(id, type, users, pools, classes) {
+    const normalizedType = type || "unknown";
+    let username = null;
+
+    if (normalizedType === "user" || normalizedType === "award") {
+        username = users.get(id)?.username || "Unknown User";
+    } else if (normalizedType === "pool") {
+        username = pools.get(id)?.username || "Unknown Pool";
+    } else if (normalizedType === "class") {
+        username = classes.get(id)?.username || "Unknown Class";
+    }
+
+    return {
+        id,
+        type: normalizedType,
+        username,
     };
 }
 
