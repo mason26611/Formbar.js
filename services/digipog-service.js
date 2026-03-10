@@ -3,6 +3,7 @@ const { TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
+const AppError = require("@errors/app-error");
 
 // Rate limiting
 
@@ -98,10 +99,6 @@ async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
-async function poolExists(poolId) {
-    return (await dbGet("SELECT 1 FROM digipog_pools WHERE id = ?", [poolId])) !== null;
-}
-
 async function getPoolById(poolId) {
     return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId]);
 }
@@ -168,11 +165,11 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag) {
 }
 
 async function addMemberToPool({ actingUserId, poolId, userId }) {
-    if (typeof poolId !== "number" || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId <= 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    if (typeof userId !== "number" || userId <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0) {
         return { success: false, message: "Invalid user ID." };
     }
 
@@ -242,24 +239,31 @@ async function payoutPool({ actingUserId, poolId }) {
 
     const amountPerMember = Math.floor(pool.amount / members.length);
 
-    for (const member of members) {
-        const user = await dbGet("SELECT * FROM users WHERE id = ?", [member.user_id]);
-        if (!user) continue;
+    // Payout each member
+    try {
+        await dbRun("BEGIN TRANSACTION");
+        for (const member of members) {
+            const user = await dbGet("SELECT * FROM users WHERE id = ?", [member.user_id]);
+            if (!user) continue;
 
-        const newBalance = user.digipogs + amountPerMember;
-        await dbRun("UPDATE users SET digipogs = ? WHERE id = ?", [newBalance, member.user_id]);
-        await dbRun("INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)", [
-            pool.id,
-            member.user_id,
-            "pool",
-            "user",
-            amountPerMember,
-            "Pool Payout",
-            Date.now(),
-        ]);
+            await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [amountPerMember, member.user_id]);
+            await dbRun("INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+                pool.id,
+                member.user_id,
+                "pool",
+                "user",
+                amountPerMember,
+                "Pool Payout",
+                Date.now(),
+            ]);
+        }
+
+        await dbRun("UPDATE digipog_pools SET amount = 0 WHERE id = ?", [poolId]);
+        await dbRun("COMMIT");
+    } catch (err) {
+        await dbRun("ROLLBACK");
+        throw AppError("An error occurred while processing the pool payout.", { event: "digipog_pool_payout_error", error: err.message });
     }
-
-    await dbRun("UPDATE digipog_pools SET amount = 0 WHERE id = ?", [poolId]);
 
     return { success: true, message: "Pool payout successful." };
 }

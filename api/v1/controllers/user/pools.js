@@ -26,10 +26,10 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/user/{id}/pools:
      *   get:
-     *     summary: Get user's digipog pools
+     *     summary: Get a user's digipog pools
      *     tags:
      *       - Pools
-     *     description: Returns all digipog pools that the user owns or is a member of
+     *     description: Returns paginated digipog pools that the user owns or is a member of.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -73,29 +73,30 @@ module.exports = (router) => {
      *                   type: object
      *                   properties:
      *                     pools:
-     *                       type: string
-     *                       description: JSON stringified array of pool objects (legacy format)
-     *                     ownedPools:
-     *                       type: string
-     *                       description: JSON stringified array of owned pool IDs (legacy format)
-     *                     memberPools:
-     *                       type: string
-     *                       description: JSON stringified array of member pool IDs (legacy format)
-     *                     poolItems:
      *                       type: array
+     *                       description: Array of pool objects the user owns or is a member of
      *                       items:
      *                         type: object
+     *                         properties:
+     *                           id:
+     *                             type: integer
+     *                           name:
+     *                             type: string
+     *                           description:
+     *                             type: string
+     *                             nullable: true
+     *                           owners:
+     *                             type: array
+     *                             items:
+     *                               type: integer
+     *                           members:
+     *                             type: array
+     *                             items:
+     *                               type: integer
+     *                           created_at:
+     *                             type: string
+     *                             format: date-time
      *                         additionalProperties: true
-     *                     ownedPoolIds:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                     memberPoolIds:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                     userId:
-     *                       type: integer
      *                     pagination:
      *                       type: object
      *                       properties:
@@ -107,6 +108,18 @@ module.exports = (router) => {
      *                           type: integer
      *                         hasMore:
      *                           type: boolean
+     *       400:
+     *         description: Validation error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       403:
+     *         description: Forbidden - user lacks permission to view another user's pools
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ForbiddenError'
      *       500:
      *         description: Server error
      *         content:
@@ -148,10 +161,11 @@ module.exports = (router) => {
             })
         );
 
-        const hasMore = offset + poolObjs.length < total;
+        const filteredPools = poolObjs.filter((pool) => pool !== null);
+        const hasMore = offset + filteredPools.length < total;
 
         req.infoEvent("user.pools.view.success", "User pools returned", {
-            poolCount: poolObjs.length,
+            poolCount: filteredPools.length,
             totalPoolCount: total,
             limit,
             offset,
@@ -160,7 +174,7 @@ module.exports = (router) => {
         res.status(200).json({
             success: true,
             data: {
-                pools: poolObjs,
+                pools: filteredPools,
                 pagination: {
                     total,
                     limit,
