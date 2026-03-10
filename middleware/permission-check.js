@@ -79,7 +79,6 @@ function hasClassPermission(classPermission) {
                 next();
             } else {
                 req.warnEvent(
-                    req,
                     "auth.class_perm_check.forbidden",
                     `User ${email} does not have permissions to access class resource in ${classId}`,
                     {
@@ -129,7 +128,6 @@ function httpPermCheck(event) {
 
         if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
             req.warnEvent(
-                req,
                 "auth.http_perm_check.class_not_loaded",
                 `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`,
                 {
@@ -142,7 +140,6 @@ function httpPermCheck(event) {
 
         if (CLASS_SOCKET_PERMISSIONS[event] && !classStateStore.getClassroom(classId)) {
             req.warnEvent(
-                req,
                 "auth.http_perm_check.class_not_loaded",
                 `HTTP permission check failed: Class ${classId} is not loaded (direct match)`,
                 {

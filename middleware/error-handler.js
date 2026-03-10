@@ -29,8 +29,6 @@ module.exports = async (err, req, res, next) => {
 
         if (process.env.NODE_ENV !== "production") {
             console.error(error);
-            console.log("Flushing logs before exit...");
-            logger.close();
         }
 
         statusCode = 500;

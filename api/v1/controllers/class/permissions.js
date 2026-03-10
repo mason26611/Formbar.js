@@ -1,6 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
@@ -59,7 +60,10 @@ module.exports = (router) => {
      */
     router.get("/class/:id/permissions", async (req, res) => {
         // Get the class key from the request parameters and log the request details
-        let classId = req.params.id;
+        const classId = Number(req.params.id);
+
+        requireQueryParam(classId, "id");
+
         req.infoEvent("class.permissions.view", "Viewing class permissions", { classId });
 
         // Get a clone of the class data
@@ -71,8 +75,7 @@ module.exports = (router) => {
 
         // Get the user from the session
         // If the user is not in the class, return an error
-        const user = req.user;
-        if (!classData.students[user.email]) {
+        if (!classData.students[req.user?.email] && classData.owner !== req.user?.id) {
             throw new ForbiddenError("User is not logged into the selected class", {
                 event: "class.permissions.not_in_class",
                 reason: "user_not_in_class",
