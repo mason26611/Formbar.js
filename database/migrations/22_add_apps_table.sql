@@ -8,5 +8,5 @@ CREATE TABLE IF NOT EXISTS apps (
     api_key TEXT NOT NULL UNIQUE,
     api_secret TEXT NOT NULL,
     name TEXT NOT NULL UNIQUE,
-    description TEXT,
+    description TEXT
 );

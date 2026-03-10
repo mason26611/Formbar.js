@@ -5,7 +5,13 @@ const {createItem} = require("@services/inventory-service");
 const crypto = require("crypto");
 
 async function createApp({name, description, ownerId}) {
-    const shareItemId = await createItem(`${name} Share`, `Share of ${name}`, 100, null);
+    const shareItemId = await createItem({ 
+        name: `${name} Share`, 
+        description: `Share of ${name}`, 
+        stackSize: 100, 
+        iconUrl: null 
+    }
+    );
     const poolId = await createPool(`${name} Developer Pool`, description, ownerId);
 
     const apiKey = crypto.randomBytes(64).toString("hex");
