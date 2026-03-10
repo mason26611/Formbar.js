@@ -3,6 +3,13 @@ jest.mock("./modules/logger.js", () => ({
     logger: {
         log: jest.fn(),
     },
+    getLogger: jest.fn().mockResolvedValue({
+        log: jest.fn(),
+        info: jest.fn(),
+        error: jest.fn(),
+        warn: jest.fn(),
+    }),
+    logEvent: jest.fn(),
 }));
 
 // Prevent tests from using the actual database
@@ -34,5 +41,6 @@ jest.mock("./modules/web-server", () => ({
         in: jest.fn().mockReturnValue({
             fetchSockets: jest.fn().mockResolvedValue([]),
         }),
+        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
     },
 }));

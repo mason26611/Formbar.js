@@ -45,7 +45,7 @@ describe("help", () => {
             reason: "reason",
             time: Date.now(),
         };
-        await deleteHelpTicketHandler(userData.email);
+        await deleteHelpTicketHandler(userData.id);
 
         expect(classData.students[testData.email].help).toBe(false);
     });

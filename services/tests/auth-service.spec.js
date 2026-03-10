@@ -1,0 +1,520 @@
+/**
+ * Unit tests for services/auth-service.js
+ *
+ * Uses an in-memory SQLite database so no real DB file is touched.
+ */
+const { createTestDb } = require("@test-helpers/db");
+
+// ── Database mock ─────────────────────────────────────────────────────────────
+// Must be declared BEFORE jest.mock() (naming starting with 'mock' satisfies
+// Jest's babel-hoisting variable check).
+let mockDatabase;
+
+jest.mock("@modules/database", () => {
+    // Proxy forwards raw sqlite3 method calls to the live mockDatabase.db after
+    // it has been initialised in beforeAll.
+    const dbProxy = new Proxy(
+        {},
+        {
+            get(_, method) {
+                return (...args) => mockDatabase.db[method](...args);
+            },
+        }
+    );
+    return {
+        get database() {
+            return dbProxy;
+        },
+        dbGet: (...args) => mockDatabase.dbGet(...args),
+        dbRun: (...args) => mockDatabase.dbRun(...args),
+        dbGetAll: (...args) => mockDatabase.dbGetAll(...args),
+    };
+});
+
+// ── Config mock (provides RSA keys without hitting the filesystem) ────────────
+jest.mock("@modules/config", () => {
+    const crypto = require("crypto");
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: "spki", format: "pem" },
+        privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    return {
+        settings: { emailEnabled: false },
+        publicKey,
+        privateKey,
+        frontendUrl: "http://localhost:3000",
+        rateLimit: {
+            maxAttempts: 5,
+            lockoutDuration: 900000,
+            minDelayBetweenAttempts: 1000,
+            attemptWindow: 300000,
+        },
+    };
+});
+
+// ── Remaining mocks (no side effects wanted in unit tests) ────────────────────
+jest.mock("@modules/mail", () => ({ sendMail: jest.fn() }));
+
+// ── Service under test ────────────────────────────────────────────────────────
+const {
+    register,
+    login,
+    refreshLogin,
+    verifyToken,
+    hashToken,
+    generateAuthorizationCode,
+    exchangeAuthorizationCodeForToken,
+    revokeOAuthToken,
+    cleanupExpiredAuthorizationCodes,
+} = require("@services/auth-service");
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+beforeAll(async () => {
+    mockDatabase = await createTestDb();
+});
+
+afterEach(async () => {
+    /**
+     * Unit tests for services/auth-service.js
+     *
+     * Uses an in-memory SQLite database so no real DB file is touched.
+     */
+    const { createTestDb } = require("@test-helpers/db");
+
+    // ── Database mock ─────────────────────────────────────────────────────────────
+    // Must be declared BEFORE jest.mock() (naming starting with 'mock' satisfies
+    // Jest's babel-hoisting variable check).
+    let mockDatabase;
+
+    jest.mock("@modules/database", () => {
+        // Proxy forwards raw sqlite3 method calls to the live mockDatabase.db after
+        // it has been initialised in beforeAll.
+        const dbProxy = new Proxy(
+            {},
+            {
+                get(_, method) {
+                    return (...args) => mockDatabase.db[method](...args);
+                },
+            }
+        );
+        return {
+            get database() {
+                return dbProxy;
+            },
+            dbGet: (...args) => mockDatabase.dbGet(...args),
+            dbRun: (...args) => mockDatabase.dbRun(...args),
+            dbGetAll: (...args) => mockDatabase.dbGetAll(...args),
+        };
+    });
+
+    // ── Config mock (provides RSA keys without hitting the filesystem) ────────────
+    jest.mock("@modules/config", () => {
+        const crypto = require("crypto");
+        const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+            modulusLength: 2048,
+            publicKeyEncoding: { type: "spki", format: "pem" },
+            privateKeyEncoding: { type: "pkcs8", format: "pem" },
+        });
+        return {
+            settings: { emailEnabled: false },
+            publicKey,
+            privateKey,
+            frontendUrl: "http://localhost:3000",
+            rateLimit: {
+                maxAttempts: 5,
+                lockoutDuration: 900000,
+                minDelayBetweenAttempts: 1000,
+                attemptWindow: 300000,
+            },
+        };
+    });
+
+    // ── Remaining mocks (no side effects wanted in unit tests) ────────────────────
+    jest.mock("@modules/mail", () => ({ sendMail: jest.fn() }));
+
+    // ── Service under test ────────────────────────────────────────────────────────
+    const {
+        register,
+        login,
+        refreshLogin,
+        verifyToken,
+        hashToken,
+        generateAuthorizationCode,
+        exchangeAuthorizationCodeForToken,
+        revokeOAuthToken,
+        cleanupExpiredAuthorizationCodes,
+    } = require("@services/auth-service");
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────────
+    beforeAll(async () => {
+        mockDatabase = await createTestDb();
+    });
+
+    afterEach(async () => {
+        await mockDatabase.reset();
+    });
+
+    afterAll(async () => {
+        await mockDatabase.close();
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────────────
+    const VALID_EMAIL = "test@example.com";
+    const VALID_PASSWORD = "Pass1234!";
+    const VALID_DISPLAY = "TestUser";
+
+    async function seedUser(overrides = {}) {
+        return register(
+            overrides.email ?? VALID_EMAIL,
+            overrides.password ?? VALID_PASSWORD,
+            overrides.displayName ?? VALID_DISPLAY
+        );
+    }
+
+    // hashToken
+    describe("hashToken()", () => {
+        it("returns a 64-character hex string", () => {
+            const result = hashToken("some-token");
+            expect(result).toMatch(/^[0-9a-f]{64}$/);
+        });
+
+        it("is deterministic for the same input", () => {
+            expect(hashToken("abc")).toBe(hashToken("abc"));
+        });
+
+        it("produces different hashes for different inputs", () => {
+            expect(hashToken("token-a")).not.toBe(hashToken("token-b"));
+        });
+    });
+
+    // register()
+    describe("register()", () => {
+        it("creates the first user with MANAGER_PERMISSIONS (5)", async () => {
+            const result = await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            expect(result.user.permissions).toBe(5);
+        });
+
+        it("creates subsequent users with STUDENT_PERMISSIONS (2)", async () => {
+            await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            const second = await register("second@example.com", VALID_PASSWORD, "SecondUser");
+            expect(second.user.permissions).toBe(2);
+        });
+
+        it("returns accessToken and refreshToken", async () => {
+            const { tokens } = await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            expect(tokens).toHaveProperty("accessToken");
+            expect(tokens).toHaveProperty("refreshToken");
+            expect(typeof tokens.accessToken).toBe("string");
+            expect(typeof tokens.refreshToken).toBe("string");
+        });
+
+        it("returns the new user's data", async () => {
+            const { user } = await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            expect(user.email).toBe(VALID_EMAIL);
+            expect(user.displayName).toBe(VALID_DISPLAY);
+            expect(user).toHaveProperty("id");
+        });
+
+        it("normalises email to lowercase", async () => {
+            const { user } = await register("UPPER@EXAMPLE.COM", VALID_PASSWORD, VALID_DISPLAY);
+            expect(user.email).toBe("upper@example.com");
+        });
+
+        it("stores a hashed (not plaintext) password", async () => {
+            await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            const row = await mockDatabase.dbGet("SELECT password FROM users WHERE email = ?", [VALID_EMAIL]);
+            expect(row.password).not.toBe(VALID_PASSWORD);
+            expect(row.password.startsWith("$2b$")).toBe(true);
+        });
+
+        it("persists a refresh token in the refresh_tokens table", async () => {
+            await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            const rows = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens");
+            expect(rows).toHaveLength(1);
+            expect(rows[0].token_type).toBe("auth");
+        });
+
+        it("throws ValidationError for a password that is too short", async () => {
+            await expect(register(VALID_EMAIL, "abc", VALID_DISPLAY)).rejects.toThrow(/password/i);
+        });
+
+        it("throws ValidationError for a password that is too long (>20 chars)", async () => {
+            await expect(register(VALID_EMAIL, "a".repeat(21), VALID_DISPLAY)).rejects.toThrow(/password/i);
+        });
+
+        it("throws ValidationError for an invalid displayName (too short)", async () => {
+            await expect(register(VALID_EMAIL, VALID_PASSWORD, "ab")).rejects.toThrow(/display name/i);
+        });
+
+        it("throws ValidationError for a displayName that is too long (>20 chars)", async () => {
+            await expect(register(VALID_EMAIL, VALID_PASSWORD, "a".repeat(21))).rejects.toThrow(/display name/i);
+        });
+
+        it("throws ConflictError when email already exists", async () => {
+            await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            await expect(register(VALID_EMAIL, VALID_PASSWORD, "OtherUser")).rejects.toThrow(/already exists/i);
+        });
+
+        it("throws ConflictError when displayName already exists", async () => {
+            await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+            await expect(register("other@example.com", VALID_PASSWORD, VALID_DISPLAY)).rejects.toThrow(/already exists/i);
+        });
+    });
+
+    // login()
+    describe("login()", () => {
+        beforeEach(async () => {
+            await seedUser();
+        });
+
+        it("returns tokens and user on valid credentials", async () => {
+            const result = await login(VALID_EMAIL, VALID_PASSWORD);
+            expect(result).toHaveProperty("tokens");
+            expect(result.tokens).toHaveProperty("accessToken");
+            expect(result.tokens).toHaveProperty("refreshToken");
+            expect(result.user.email).toBe(VALID_EMAIL);
+        });
+
+        it("inserts a refresh token into the database", async () => {
+            const before = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens WHERE token_type = 'auth'");
+            await login(VALID_EMAIL, VALID_PASSWORD);
+            const after = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens WHERE token_type = 'auth'");
+            expect(after.length).toBeGreaterThan(before.length);
+        });
+
+        it("normalises email to lowercase before looking up", async () => {
+            const result = await login("TEST@EXAMPLE.COM", VALID_PASSWORD);
+            expect(result).toHaveProperty("user");
+            expect(result.user.email).toBe(VALID_EMAIL);
+        });
+
+        it("returns an INVALID_CREDENTIALS error for wrong password", async () => {
+            const result = await login(VALID_EMAIL, "wrong-password!");
+            expect(result).toBeInstanceOf(Error);
+            expect(result.code).toBe("INVALID_CREDENTIALS");
+        });
+
+        it("returns an INVALID_CREDENTIALS error for non-existent email", async () => {
+            const result = await login("nobody@example.com", VALID_PASSWORD);
+            expect(result).toBeInstanceOf(Error);
+            expect(result.code).toBe("INVALID_CREDENTIALS");
+        });
+    });
+
+    // verifyToken()
+    describe("verifyToken()", () => {
+        it("returns decoded payload for a valid access token", async () => {
+            const { tokens, user } = await seedUser();
+            const decoded = verifyToken(tokens.accessToken);
+            expect(decoded).toHaveProperty("id", user.id);
+            expect(decoded).toHaveProperty("email", VALID_EMAIL);
+        });
+
+        it("returns an error object for a malformed token", () => {
+            const result = verifyToken("not.a.valid.token");
+            expect(result).toHaveProperty("error");
+        });
+
+        it("returns an error object for an empty string", () => {
+            const result = verifyToken("");
+            expect(result).toHaveProperty("error");
+        });
+    });
+
+    // refreshLogin()
+    describe("refreshLogin()", () => {
+        it("returns a new pair of tokens for a valid refresh token", async () => {
+            const { tokens } = await seedUser();
+            const result = await refreshLogin(tokens.refreshToken);
+            expect(result).toHaveProperty("accessToken");
+            expect(result).toHaveProperty("refreshToken");
+        });
+
+        it("rotates the refresh token (old token is no longer valid)", async () => {
+            const { tokens } = await seedUser();
+            await refreshLogin(tokens.refreshToken);
+            // Using the old refresh token again should fail
+            const second = await refreshLogin(tokens.refreshToken);
+            expect(second).toBeInstanceOf(Error);
+            expect(second.code).toBe("INVALID_CREDENTIALS");
+        });
+
+        it("returns INVALID_CREDENTIALS for a completely invalid token", async () => {
+            const result = await refreshLogin("not-a-jwt");
+            expect(result).toBeInstanceOf(Error);
+            expect(result.code).toBe("INVALID_CREDENTIALS");
+        });
+
+        it("returns INVALID_CREDENTIALS for a token not present in the DB", async () => {
+            // Generate a valid-looking token from the same keys but never stored
+            const { tokens } = await seedUser();
+            // Log out (clear DB) so the token is unknown
+            await mockDatabase.dbRun("DELETE FROM refresh_tokens");
+            const result = await refreshLogin(tokens.refreshToken);
+            expect(result).toBeInstanceOf(Error);
+            expect(result.code).toBe("INVALID_CREDENTIALS");
+        });
+    });
+
+    // generateAuthorizationCode() + exchangeAuthorizationCodeForToken()
+    describe("OAuth authorization code flow", () => {
+        it("generates and exchanges an authorization code successfully", async () => {
+            const { tokens, user } = await seedUser();
+
+            const code = generateAuthorizationCode({
+                client_id: "test-app",
+                redirect_uri: "http://localhost/callback",
+                scope: "openid",
+                authorization: tokens.accessToken,
+            });
+
+            expect(typeof code).toBe("string");
+
+            const tokenResponse = await exchangeAuthorizationCodeForToken({
+                code,
+                redirect_uri: "http://localhost/callback",
+                client_id: "test-app",
+            });
+
+            expect(tokenResponse).toHaveProperty("access_token");
+            expect(tokenResponse).toHaveProperty("refresh_token");
+            expect(tokenResponse.token_type).toBe("Bearer");
+            expect(tokenResponse.expires_in).toBe(900);
+        });
+
+        it("rejects a code that has already been used (single-use enforcement)", async () => {
+            const { tokens } = await seedUser();
+
+            const code = generateAuthorizationCode({
+                client_id: "test-app",
+                redirect_uri: "http://localhost/callback",
+                scope: "openid",
+                authorization: tokens.accessToken,
+            });
+
+            await exchangeAuthorizationCodeForToken({
+                code,
+                redirect_uri: "http://localhost/callback",
+                client_id: "test-app",
+            });
+
+            await expect(
+                exchangeAuthorizationCodeForToken({
+                    code,
+                    redirect_uri: "http://localhost/callback",
+                    client_id: "test-app",
+                })
+            ).rejects.toThrow(/already been used/i);
+        });
+
+        it("rejects a code with a mismatched redirect_uri", async () => {
+            const { tokens } = await seedUser();
+
+            const code = generateAuthorizationCode({
+                client_id: "test-app",
+                redirect_uri: "http://localhost/callback",
+                scope: "openid",
+                authorization: tokens.accessToken,
+            });
+
+            await expect(
+                exchangeAuthorizationCodeForToken({
+                    code,
+                    redirect_uri: "http://localhost/different",
+                    client_id: "test-app",
+                })
+            ).rejects.toThrow(/redirect_uri/i);
+        });
+
+        it("rejects a code with a mismatched client_id", async () => {
+            const { tokens } = await seedUser();
+
+            const code = generateAuthorizationCode({
+                client_id: "test-app",
+                redirect_uri: "http://localhost/callback",
+                scope: "openid",
+                authorization: tokens.accessToken,
+            });
+
+            await expect(
+                exchangeAuthorizationCodeForToken({
+                    code,
+                    redirect_uri: "http://localhost/callback",
+                    client_id: "other-app",
+                })
+            ).rejects.toThrow(/client_id/i);
+        });
+
+        it("throws when authorization token is invalid", () => {
+            expect(() =>
+                generateAuthorizationCode({
+                    client_id: "test-app",
+                    redirect_uri: "http://localhost/callback",
+                    scope: "openid",
+                    authorization: "invalid-token",
+                })
+            ).toThrow();
+        });
+    });
+
+    // revokeOAuthToken()
+    describe("revokeOAuthToken()", () => {
+        it("removes the token from the refresh_tokens table", async () => {
+            const { tokens, user } = await seedUser();
+
+            // Inject an OAuth-type refresh token manually
+            const crypto = require("crypto");
+            const fakeToken = crypto.randomBytes(32).toString("hex");
+            const tokenHash = hashToken(fakeToken);
+            await mockDatabase.dbRun(
+                "INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)",
+                [user.id, tokenHash, Math.floor(Date.now() / 1000) + 3600, "oauth"]
+            );
+
+            const before = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens WHERE token_type = 'oauth'");
+            expect(before).toHaveLength(1);
+
+            await revokeOAuthToken(fakeToken);
+
+            const after = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens WHERE token_type = 'oauth'");
+            expect(after).toHaveLength(0);
+        });
+
+        it("returns true on success", async () => {
+            const result = await revokeOAuthToken("non-existent-token-that-does-not-matter");
+            expect(result).toBe(true);
+        });
+    });
+
+    // cleanupExpiredAuthorizationCodes()
+    describe("cleanupExpiredAuthorizationCodes()", () => {
+        it("deletes expired authorization codes", async () => {
+            const pastTimestamp = Math.floor(Date.now() / 1000) - 3600;
+            await mockDatabase.dbRun(
+                "INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)",
+                ["expired-hash", pastTimestamp, pastTimestamp]
+            );
+
+            const before = await mockDatabase.dbGetAll("SELECT * FROM used_authorization_codes");
+            expect(before).toHaveLength(1);
+
+            await cleanupExpiredAuthorizationCodes();
+
+            const after = await mockDatabase.dbGetAll("SELECT * FROM used_authorization_codes");
+            expect(after).toHaveLength(0);
+        });
+
+        it("keeps non-expired authorization codes", async () => {
+            const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
+            await mockDatabase.dbRun(
+                "INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)",
+                ["valid-hash", Math.floor(Date.now() / 1000), futureTimestamp]
+            );
+
+            await cleanupExpiredAuthorizationCodes();
+
+            const remaining = await mockDatabase.dbGetAll("SELECT * FROM used_authorization_codes");
+            expect(remaining).toHaveLength(1);
+        });
+    });

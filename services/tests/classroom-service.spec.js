@@ -1,0 +1,203 @@
+/**
+ * Unit tests for services/classroom-service.js
+ *
+ * Tests the Classroom class constructor and DB query helpers.
+ * getClassIDFromCode is also tested; it falls back to a DB lookup when the
+ * code is not cached.
+ *
+ * Uses an in-memory SQLite database so no real DB file is touched.
+ */
+const { createTestDb } = require("@test-helpers/db");
+
+let mockDatabase;
+
+jest.mock("@modules/database", () => {
+    // Proxy allows services that destructure `database` to still get a live
+    // reference to the in-memory db instance after beforeAll runs.
+    const dbProxy = new Proxy(
+        {},
+        {
+            get(_, method) {
+                return (...args) => mockDatabase.db[method](...args);
+            },
+        }
+    );
+    return {
+        get database() {
+            return dbProxy;
+        },
+        dbGet: (...args) => mockDatabase.dbGet(...args),
+        dbRun: (...args) => mockDatabase.dbRun(...args),
+        dbGetAll: (...args) => mockDatabase.dbGetAll(...args),
+    };
+});
+
+const { Classroom, classStateStore, getClassroomFromDb, getClassIDFromCode } = require("@services/classroom-service");
+const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
+
+beforeAll(async () => {
+    mockDatabase = await createTestDb();
+});
+
+afterEach(async () => {
+    await mockDatabase.reset();
+    // Clear the in-memory class-code cache between tests
+    const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+    classCodeCacheStore.clear();
+});
+
+afterAll(async () => {
+    await mockDatabase.close();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null, settings = null } = {}) {
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+        name,
+        owner,
+        key,
+        tags,
+        settings ? JSON.stringify(settings) : null,
+    ]);
+    return { id, name, owner, key };
+}
+
+// Classroom constructor
+describe("Classroom constructor", () => {
+    it("stores id, className, owner, and key", () => {
+        const c = new Classroom({ id: 1, className: "Math", owner: 42, key: 9999, permissions: DEFAULT_CLASS_PERMISSIONS });
+        expect(c.id).toBe(1);
+        expect(c.className).toBe("Math");
+        expect(c.owner).toBe(42);
+        expect(c.key).toBe(9999);
+    });
+
+    it("initialises isActive to false", () => {
+        const c = new Classroom({ id: 1, className: "Science", owner: 1, key: 1234 });
+        expect(c.isActive).toBe(false);
+    });
+
+    it("initialises students as an empty object", () => {
+        const c = new Classroom({ id: 1, className: "History", owner: 1, key: 1111 });
+        expect(c.students).toEqual({});
+    });
+
+    it("parses JSON string permissions", () => {
+        const permissions = { controlPoll: 3, votePoll: 2 };
+        const c = new Classroom({ id: 1, className: "Art", owner: 1, key: 2222, permissions: JSON.stringify(permissions) });
+        expect(c.permissions.controlPoll).toBe(3);
+        expect(c.permissions.votePoll).toBe(2);
+    });
+
+    it("falls back to DEFAULT_CLASS_PERMISSIONS when permissions is null", () => {
+        const c = new Classroom({ id: 1, className: "PE", owner: 1, key: 3333, permissions: null });
+        expect(c.permissions).toEqual(DEFAULT_CLASS_PERMISSIONS);
+    });
+
+    it("falls back to DEFAULT_CLASS_PERMISSIONS when permissions JSON is malformed", () => {
+        const c = new Classroom({ id: 1, className: "PE", owner: 1, key: 3333, permissions: "not-json{" });
+        expect(c.permissions).toEqual(DEFAULT_CLASS_PERMISSIONS);
+    });
+
+    it("adds 'Offline' tag when tags do not already include it", () => {
+        const c = new Classroom({ id: 1, className: "Music", owner: 1, key: 4444, tags: ["Active"] });
+        expect(c.tags).toContain("Offline");
+    });
+
+    it("does not duplicate 'Offline' tag when already present", () => {
+        const c = new Classroom({ id: 1, className: "Music", owner: 1, key: 4444, tags: ["Offline"] });
+        const offlineCount = c.tags.filter((t) => t === "Offline").length;
+        expect(offlineCount).toBe(1);
+    });
+
+    it("initialises poll status to false", () => {
+        const c = new Classroom({ id: 1, className: "Geo", owner: 1, key: 5555 });
+        expect(c.poll.status).toBe(false);
+    });
+
+    it("initialises timer as inactive", () => {
+        const c = new Classroom({ id: 1, className: "Chem", owner: 1, key: 6666 });
+        expect(c.timer.active).toBe(false);
+    });
+});
+
+// getClassroomFromDb()
+describe("getClassroomFromDb()", () => {
+    it("returns the classroom row for a valid id", async () => {
+        const seeded = await seedClassroom({ name: "Biology", key: 7777 });
+        const result = await getClassroomFromDb(seeded.id);
+        expect(result).toBeDefined();
+        expect(result.name).toBe("Biology");
+        expect(result.key).toBe(7777);
+    });
+
+    it("returns undefined for a non-existent id", async () => {
+        const result = await getClassroomFromDb(99999);
+        expect(result).toBeUndefined();
+    });
+
+    it("throws an AppError when id is falsy (required param check)", () => {
+        // getClassroomFromDb is synchronous before the DB call; requireInternalParam
+        // throws immediately, not as a rejected promise.
+        expect(() => getClassroomFromDb(null)).toThrow();
+        expect(() => getClassroomFromDb(undefined)).toThrow();
+    });
+});
+
+// getClassIDFromCode()
+describe("getClassIDFromCode()", () => {
+    it("returns the classroom id for a valid class code", async () => {
+        const seeded = await seedClassroom({ key: 8888 });
+        const result = await getClassIDFromCode(8888);
+        expect(result).toBe(seeded.id);
+    });
+
+    it("returns null for a code that does not exist", async () => {
+        const result = await getClassIDFromCode(9999);
+        expect(result).toBeNull();
+    });
+
+    it("caches the result on subsequent calls", async () => {
+        const seeded = await seedClassroom({ key: 1010 });
+        const first = await getClassIDFromCode(1010);
+        // Delete the DB row to prove the second call uses the cache
+        await mockDatabase.dbRun("DELETE FROM classroom WHERE id = ?", [seeded.id]);
+        const second = await getClassIDFromCode(1010);
+        expect(second).toBe(first);
+    });
+});
+
+// classStateStore
+describe("classStateStore", () => {
+    afterEach(() => {
+        // Reset the store state between tests via the internal property
+        // (ClassStateStore has no public clear() method)
+        classStateStore._state = { users: {}, classrooms: {} };
+    });
+
+    it("starts empty", () => {
+        const state = classStateStore.getRawState();
+        expect(Object.keys(state.users)).toHaveLength(0);
+        expect(Object.keys(state.classrooms)).toHaveLength(0);
+    });
+
+    it("stores and retrieves a user by email", () => {
+        const user = { email: "a@test.com", id: 1 };
+        classStateStore.setUser("a@test.com", user);
+        expect(classStateStore.getUser("a@test.com")).toEqual(user);
+    });
+
+    it("stores and retrieves a classroom by id", () => {
+        const classroom = new Classroom({ id: 5, className: "Test", owner: 1, key: 1234 });
+        classStateStore.setClassroom(5, classroom);
+        expect(classStateStore.getClassroom(5)).toBe(classroom);
+    });
+
+    it("returns undefined for an unknown user", () => {
+        expect(classStateStore.getUser("nobody@test.com")).toBeUndefined();
+    });
+
+    it("returns undefined for an unknown classroom", () => {
+        expect(classStateStore.getClassroom(9999)).toBeUndefined();
+    });
+});
