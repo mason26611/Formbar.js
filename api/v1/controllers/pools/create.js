@@ -2,12 +2,11 @@ const { STUDENT_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissio
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireBodyParam } = require("@modules/error-wrapper");
-const { dbRun } = require("@modules/database");
 const digipogService = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
-    router.post("/pool/create", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+    router.post("/pools/create", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
         const { name, description } = req.body;
 
         requireBodyParam(name, "name");
@@ -30,7 +29,7 @@ module.exports = (router) => {
         }
 
         // Create the pool
-        const result = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, 0)", [name, description]);
+        const result = await digipogService.createPool({ name, description });
         const poolId = result.lastID || result;
 
         // Add the user as the pool owner using the new structure

@@ -1,22 +1,31 @@
 const { STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { requireBodyParam } = require("@modules/error-wrapper");
+const { requireBodyParam, requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
 const AppError = require("@errors/app-error");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
-    router.post("/pool/add-member", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
-        const { poolId, userId } = req.body || {};
+    router.post("/pools/:id/add-member", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+        const poolId = Number(req.params.id);
+        let { userId } = req.body || {};
 
-        requireBodyParam(poolId, "poolId");
+        requireQueryParam(poolId, "poolId");
         requireBodyParam(userId, "userId");
+        userId = Number(userId);
 
         req.infoEvent("pool.add_member.attempt", "Attempting to add a user to a pool", {
             poolId,
             userId,
             actingUserId: req.user.id,
         });
+
+        // Check if the pool exists
+        const pool = await digipogService.getPoolById(poolId);
+        if (!pool) {
+            throw new ValidationError("Pool does not exist.", { event: "pool.delete.failed", reason: "pool_not_found" });
+        }
 
         const result = await digipogService.addMemberToPool({
             actingUserId: req.user.id,

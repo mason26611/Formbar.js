@@ -88,27 +88,35 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function createPool(poolData) {}
+async function createPool(poolData) {
+    const { name, description } = poolData;
+    return await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, 0)", [name, description]);
+}
 
 async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
+    await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
-async function getPoolById(poolId, database) {
-    return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId], database);
+async function poolExists(poolId) {
+    return (await dbGet("SELECT 1 FROM digipog_pools WHERE id = ?", [poolId])) !== null;
+}
+
+async function getPoolById(poolId) {
+    return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId]);
 }
 
 async function getPoolsForUser(userId) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
 
-async function getPoolsForUserPaginated(userId, limit = 20, offset = 0, database) {
-    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM digipog_pool_users WHERE user_id = ?", [userId], database);
-    const pools = await dbGetAll(
-        "SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ? ORDER BY pool_id DESC LIMIT ? OFFSET ?",
-        [userId, limit, offset],
-        database
-    );
+async function getPoolsForUserPaginated(userId, limit = 20, offset = 0) {
+    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM digipog_pool_users WHERE user_id = ?", [userId]);
+    const pools = await dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ? ORDER BY pool_id DESC LIMIT ? OFFSET ?", [
+        userId,
+        limit,
+        offset,
+    ]);
 
     return {
         pools,
@@ -116,51 +124,50 @@ async function getPoolsForUserPaginated(userId, limit = 20, offset = 0, database
     };
 }
 
-async function getUsersForPool(poolId, database) {
-    return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId], database);
+async function getUsersForPool(poolId) {
+    return dbGetAll("SELECT user_id, owner FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
-async function isUserInPool(userId, poolId, database) {
-    const row = await dbGet("SELECT 1 FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId], database);
+async function isUserInPool(userId, poolId) {
+    const row = await dbGet("SELECT 1 FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!row;
 }
 
-async function isUserOwner(userId, poolId, database) {
-    const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId], database);
+async function isUserOwner(userId, poolId) {
+    const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!(row && row.owner);
 }
 
-async function isPoolOwnedByUser(poolId, userId, database) {
-    return isUserOwner(userId, poolId, database);
+async function isPoolOwnedByUser(poolId, userId) {
+    return isUserOwner(userId, poolId);
 }
 
-async function addUserToPool(poolId, userId, ownerFlag = 0, database) {
+async function addUserToPool(poolId, userId, ownerFlag = 0) {
     return dbRun(
         "INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)",
 
-        [poolId, userId, ownerFlag ? 1 : 0],
-        database
+        [poolId, userId, ownerFlag ? 1 : 0]
     );
 }
 
-async function removeUserFromPool(poolId, userId, database) {
-    if (await isUserOwner(userId, poolId, database)) {
-        const poolUsers = await getUsersForPool(poolId, database);
+async function removeUserFromPool(poolId, userId) {
+    if (await isUserOwner(userId, poolId)) {
+        const poolUsers = await getUsersForPool(poolId);
         const otherOwners = poolUsers.filter((poolUser) => poolUser.user_id !== userId && poolUser.owner);
         if (otherOwners.length === 0) {
-            await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId], database);
-            await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId], database);
+            await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
+            await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
             return;
         }
     }
-    await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ? AND user_id = ?", [poolId, userId], database);
+    await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ? AND user_id = ?", [poolId, userId]);
 }
 
-async function setUserOwnerFlag(poolId, userId, ownerFlag, database) {
-    return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId], database);
+async function setUserOwnerFlag(poolId, userId, ownerFlag) {
+    return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId]);
 }
 
-async function addMemberToPool({ actingUserId, poolId, userId }, database) {
+async function addMemberToPool({ actingUserId, poolId, userId }) {
     if (typeof poolId !== "number" || poolId <= 0) {
         return { success: false, message: "Invalid pool ID." };
     }
@@ -169,27 +176,27 @@ async function addMemberToPool({ actingUserId, poolId, userId }, database) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    const isOwner = await isUserOwner(actingUserId, poolId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
 
-    const userToAdd = await dbGet("SELECT * FROM users WHERE id = ?", [userId], database);
+    const userToAdd = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
     if (!userToAdd) {
         return { success: false, message: "User not found." };
     }
 
-    const isInPool = await isUserInPool(userId, poolId, database);
+    const isInPool = await isUserInPool(userId, poolId);
     if (isInPool) {
         return { success: false, message: "User is already a member of this pool." };
     }
 
-    await addUserToPool(poolId, userId, 0, database);
+    await addUserToPool(poolId, userId, 0);
 
     return { success: true, message: "User added to pool successfully." };
 }
 
-async function removeMemberFromPool({ actingUserId, poolId, userId }, database) {
+async function removeMemberFromPool({ actingUserId, poolId, userId }) {
     if (typeof poolId !== "number" || poolId <= 0) {
         return { success: false, message: "Invalid pool ID." };
     }
@@ -198,37 +205,37 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }, database) 
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    const isOwner = await isUserOwner(actingUserId, poolId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
 
-    const isInPool = await isUserInPool(userId, poolId, database);
+    const isInPool = await isUserInPool(userId, poolId);
     if (!isInPool) {
         return { success: false, message: "User is not a member of this pool." };
     }
 
-    await removeUserFromPool(poolId, userId, database);
+    await removeUserFromPool(poolId, userId);
 
     return { success: true, message: "User removed from pool successfully." };
 }
 
-async function payoutPool({ actingUserId, poolId }, database) {
+async function payoutPool({ actingUserId, poolId }) {
     if (typeof poolId !== "number" || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    const isOwner = await isUserOwner(actingUserId, poolId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
 
-    const pool = await getPoolById(poolId, database);
+    const pool = await getPoolById(poolId);
     if (!pool) {
         return { success: false, message: "Pool not found." };
     }
 
-    const members = await getUsersForPool(poolId, database);
+    const members = await getUsersForPool(poolId);
     if (members.length === 0) {
         return { success: false, message: "Pool has no members." };
     }
@@ -236,19 +243,23 @@ async function payoutPool({ actingUserId, poolId }, database) {
     const amountPerMember = Math.floor(pool.amount / members.length);
 
     for (const member of members) {
-        const user = await dbGet("SELECT * FROM users WHERE id = ?", [member.user_id], database);
+        const user = await dbGet("SELECT * FROM users WHERE id = ?", [member.user_id]);
         if (!user) continue;
 
         const newBalance = user.digipogs + amountPerMember;
-        await dbRun("UPDATE users SET digipogs = ? WHERE id = ?", [newBalance, member.user_id], database);
-        await dbRun(
-            "INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [pool.id, member.user_id, "pool", "user", amountPerMember, "Pool Payout", Date.now()],
-            database
-        );
+        await dbRun("UPDATE users SET digipogs = ? WHERE id = ?", [newBalance, member.user_id]);
+        await dbRun("INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+            pool.id,
+            member.user_id,
+            "pool",
+            "user",
+            amountPerMember,
+            "Pool Payout",
+            Date.now(),
+        ]);
     }
 
-    await dbRun("UPDATE digipog_pools SET amount = 0 WHERE id = ?", [poolId], database);
+    await dbRun("UPDATE digipog_pools SET amount = 0 WHERE id = ?", [poolId]);
 
     return { success: true, message: "Pool payout successful." };
 }
@@ -694,7 +705,10 @@ module.exports = {
     getUserTransactionsPaginated,
     awardDigipogs,
     transferDigipogs,
+
     // Pool helpers
+    createPool,
+    deletePool,
     getPoolsForUser,
     getPoolsForUserPaginated,
     getUsersForPool,

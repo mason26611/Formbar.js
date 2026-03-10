@@ -1,20 +1,27 @@
 const { STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { requireBodyParam } = require("@modules/error-wrapper");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
 const AppError = require("@errors/app-error");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
-    router.post("/pool/payout", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
-        const { poolId } = req.body || {};
+    router.post("/pools/:id/payout", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+        const poolId = Number(req.params.id);
 
-        requireBodyParam(poolId, "poolId");
+        requireQueryParam(poolId, "poolId");
 
         req.infoEvent("pool.payout.attempt", "Attempting to pay out a pool", {
             poolId,
             actingUserId: req.user.id,
         });
+
+        // Check if the pool exists
+        const pool = await digipogService.getPoolById(poolId);
+        if (!pool) {
+            throw new ValidationError("Pool does not exist.", { event: "pool.delete.failed", reason: "pool_not_found" });
+        }
 
         const result = await digipogService.payoutPool({
             actingUserId: req.user.id,
