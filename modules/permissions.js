@@ -57,12 +57,6 @@ const GLOBAL_SOCKET_PERMISSIONS = {
     transferResponse: STUDENT_PERMISSIONS,
     awardDigipogs: TEACHER_PERMISSIONS,
     awardDigipogsResponse: TEACHER_PERMISSIONS,
-    poolAddMember: STUDENT_PERMISSIONS,
-    poolAddMemberResponse: STUDENT_PERMISSIONS,
-    poolRemoveMember: STUDENT_PERMISSIONS,
-    poolRemoveMemberResponse: STUDENT_PERMISSIONS,
-    poolPayout: STUDENT_PERMISSIONS,
-    poolPayoutResponse: STUDENT_PERMISSIONS,
 };
 
 // This defines socket permissions for the class that define who can use each socket event

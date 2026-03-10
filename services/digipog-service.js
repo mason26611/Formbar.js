@@ -94,6 +94,10 @@ async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
 }
 
+async function getPoolById(poolId, database) {
+    return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId], database);
+}
+
 async function getPoolsForUser(userId) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
@@ -154,6 +158,99 @@ async function removeUserFromPool(poolId, userId, database) {
 
 async function setUserOwnerFlag(poolId, userId, ownerFlag, database) {
     return dbRun("UPDATE digipog_pool_users SET owner = ? WHERE pool_id = ? AND user_id = ?", [ownerFlag ? 1 : 0, poolId, userId], database);
+}
+
+async function addMemberToPool({ actingUserId, poolId, userId }, database) {
+    if (typeof poolId !== "number" || poolId <= 0) {
+        return { success: false, message: "Invalid pool ID." };
+    }
+
+    if (typeof userId !== "number" || userId <= 0) {
+        return { success: false, message: "Invalid user ID." };
+    }
+
+    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    if (!isOwner) {
+        return { success: false, message: "You do not own this pool." };
+    }
+
+    const userToAdd = await dbGet("SELECT * FROM users WHERE id = ?", [userId], database);
+    if (!userToAdd) {
+        return { success: false, message: "User not found." };
+    }
+
+    const isInPool = await isUserInPool(userId, poolId, database);
+    if (isInPool) {
+        return { success: false, message: "User is already a member of this pool." };
+    }
+
+    await addUserToPool(poolId, userId, 0, database);
+
+    return { success: true, message: "User added to pool successfully." };
+}
+
+async function removeMemberFromPool({ actingUserId, poolId, userId }, database) {
+    if (typeof poolId !== "number" || poolId <= 0) {
+        return { success: false, message: "Invalid pool ID." };
+    }
+
+    if (typeof userId !== "number" || userId <= 0) {
+        return { success: false, message: "Invalid user ID." };
+    }
+
+    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    if (!isOwner) {
+        return { success: false, message: "You do not own this pool." };
+    }
+
+    const isInPool = await isUserInPool(userId, poolId, database);
+    if (!isInPool) {
+        return { success: false, message: "User is not a member of this pool." };
+    }
+
+    await removeUserFromPool(poolId, userId, database);
+
+    return { success: true, message: "User removed from pool successfully." };
+}
+
+async function payoutPool({ actingUserId, poolId }, database) {
+    if (typeof poolId !== "number" || poolId < 0) {
+        return { success: false, message: "Invalid pool ID." };
+    }
+
+    const isOwner = await isUserOwner(actingUserId, poolId, database);
+    if (!isOwner) {
+        return { success: false, message: "You do not own this pool." };
+    }
+
+    const pool = await getPoolById(poolId, database);
+    if (!pool) {
+        return { success: false, message: "Pool not found." };
+    }
+
+    const members = await getUsersForPool(poolId, database);
+    if (members.length === 0) {
+        return { success: false, message: "Pool has no members." };
+    }
+
+    const amountPerMember = Math.floor(pool.amount / members.length);
+
+    for (const member of members) {
+        const user = await dbGet("SELECT * FROM users WHERE id = ?", [member.user_id], database);
+        if (!user) continue;
+
+        const newBalance = user.digipogs + amountPerMember;
+        await dbRun("UPDATE users SET digipogs = ? WHERE id = ?", [newBalance, member.user_id], database);
+        await dbRun(
+            "INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [pool.id, member.user_id, "pool", "user", amountPerMember, "Pool Payout", Date.now()],
+            database
+        );
+    }
+
+    await dbRun("UPDATE digipog_pools SET amount = 0 WHERE id = ?", [poolId], database);
+
+    return { success: true, message: "Pool payout successful." };
 }
 
 // Transactions
@@ -508,10 +605,14 @@ module.exports = {
     getPoolsForUser,
     getPoolsForUserPaginated,
     getUsersForPool,
+    getPoolById,
     isUserInPool,
     isUserOwner,
     isPoolOwnedByUser,
     addUserToPool,
     removeUserFromPool,
     setUserOwnerFlag,
+    addMemberToPool,
+    removeMemberFromPool,
+    payoutPool,
 };

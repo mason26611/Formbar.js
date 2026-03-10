@@ -9,6 +9,7 @@ const ValidationError = require("@errors/validation-error");
 module.exports = (router) => {
     router.post("/pool/create", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
         const { name, description } = req.body;
+
         requireBodyParam(name, "name");
         requireBodyParam(description, "description");
 

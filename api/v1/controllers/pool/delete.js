@@ -9,6 +9,7 @@ const ValidationError = require("@errors/validation-error");
 module.exports = (router) => {
     router.post("/pool/delete", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
         const { poolId } = req.body;
+
         requireBodyParam(poolId, "poolId");
 
         if (typeof poolId !== "number" || poolId <= 0) {
