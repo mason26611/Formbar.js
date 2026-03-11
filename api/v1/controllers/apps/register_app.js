@@ -39,13 +39,13 @@ module.exports = (router) => {
             );
         }
 
-        const appId = await createApp({name, description, ownerId: req.user.id});
+        const { appId, apiKey, apiSecret } = await createApp({name, description, ownerId: req.user.id});
 
         req.infoEvent("apps.register.success", "App registered successfully", { appId });
 
         res.json({
             success: true,
-            data: { appId }
+            data: { appId, apiKey, apiSecret }
         });
 
     });
