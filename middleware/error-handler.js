@@ -3,11 +3,7 @@ const { getLogger, logEvent } = require("@modules/logger");
 const process = require("process");
 
 function isRequestParseError(err) {
-    return (
-        err instanceof SyntaxError &&
-        (err.status === 400 || err.statusCode === 400) &&
-        err.type === "entity.parse.failed"
-    );
+    return err instanceof SyntaxError && (err.status === 400 || err.statusCode === 400) && err.type === "entity.parse.failed";
 }
 
 module.exports = async (err, req, res, next) => {

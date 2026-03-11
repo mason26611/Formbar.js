@@ -78,16 +78,12 @@ function hasClassPermission(classPermission) {
             if (user.classPermissions >= requiredPermissionLevel) {
                 next();
             } else {
-                req.warnEvent(
-                    "auth.class_perm_check.forbidden",
-                    `User ${email} does not have permissions to access class resource in ${classId}`,
-                    {
-                        email,
-                        classId,
-                        userClassPermissions: user.classPermissions,
-                        requiredPermissions: requiredPermissionLevel,
-                    }
-                );
+                req.warnEvent("auth.class_perm_check.forbidden", `User ${email} does not have permissions to access class resource in ${classId}`, {
+                    email,
+                    classId,
+                    userClassPermissions: user.classPermissions,
+                    requiredPermissions: requiredPermissionLevel,
+                });
                 throw new ForbiddenError("Unauthorized", { event: "permission.check.failed", reason: "insufficient_class_permissions" });
             }
         } else {
@@ -118,8 +114,11 @@ function httpPermCheck(event) {
             throw new AuthError("User not authenticated");
         }
 
-        // Get classId from req.user (set by isAuthenticated middleware) or from classStateStore
-        const classId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(email)?.classId ?? null;
+        const scopedPathClassId = req.path && (req.path.startsWith("/class/") || req.path.startsWith("/room/")) ? (req.params?.id ?? null) : null;
+
+        // Get classId from req.user (set by isAuthenticated middleware), then
+        // fall back to the class/room path when the request is explicitly scoped.
+        const classId = req.user?.classId ?? req.user?.activeClass ?? scopedPathClassId ?? classStateStore.getUser(email)?.classId ?? null;
 
         if (!classStateStore.getClassroom(classId) && classId != null) {
             req.warnEvent("auth.http_perm_check.class_not_exist", `HTTP permission check failed: Class ${classId} does not exist`, { classId });
@@ -127,26 +126,18 @@ function httpPermCheck(event) {
         }
 
         if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent(
-                "auth.http_perm_check.class_not_loaded",
-                `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`,
-                {
-                    classId,
-                    event,
-                }
-            );
+            req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`, {
+                classId,
+                event,
+            });
             throw new AuthError("Class is not loaded", { event: "permission.check.failed", reason: "class_not_loaded" });
         }
 
         if (CLASS_SOCKET_PERMISSIONS[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent(
-                "auth.http_perm_check.class_not_loaded",
-                `HTTP permission check failed: Class ${classId} is not loaded (direct match)`,
-                {
-                    classId,
-                    event,
-                }
-            );
+            req.warnEvent("auth.http_perm_check.class_not_loaded", `HTTP permission check failed: Class ${classId} is not loaded (direct match)`, {
+                classId,
+                event,
+            });
             throw new AuthError("Class is not loaded");
         }
 

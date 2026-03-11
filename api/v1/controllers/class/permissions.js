@@ -1,4 +1,5 @@
 const { classStateStore } = require("@services/classroom-service");
+const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
@@ -58,7 +59,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/permissions", async (req, res) => {
+    router.get("/class/:id/permissions", isAuthenticated, async (req, res) => {
         // Get the class key from the request parameters and log the request details
         const classId = Number(req.params.id);
 

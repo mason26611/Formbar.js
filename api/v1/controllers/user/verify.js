@@ -1,8 +1,9 @@
-const { dbRun, dbGetAll } = require("@modules/database");
+const { dbRun, dbGetAll, dbGet } = require("@modules/database");
 const { settings, frontendUrl } = require("@modules/config");
 const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { hasPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
+const { classStateStore } = require("@services/classroom-service");
 const userService = require("@services/user-service");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -80,6 +81,28 @@ module.exports = (router) => {
     const verifyUserHandler = async (req, res) => {
         const id = req.params.id;
         req.infoEvent("user.verify.attempt", "Attempting to verify user", { pendingUserId: id });
+
+        const existingUser = await dbGet("SELECT id, email, verified FROM users WHERE id = ?", [id]);
+        if (existingUser) {
+            if (!existingUser.verified) {
+                await dbRun("UPDATE users SET verified = 1 WHERE id = ?", [id]);
+                if (classStateStore.getUser(existingUser.email)) {
+                    classStateStore.updateUser(existingUser.email, { verified: 1 });
+                }
+            }
+
+            req.infoEvent("user.verify.success", "User verified successfully", {
+                userId: existingUser.id,
+                alreadyVerified: !!existingUser.verified,
+            });
+            res.status(200).json({
+                success: true,
+                data: {
+                    ok: true,
+                },
+            });
+            return;
+        }
 
         const tempUsers = await dbGetAll("SELECT * FROM temp_user_creation_data");
         let tempUser;
