@@ -1,9 +1,9 @@
 const { dbGet } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const pools = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
-const { requireQueryParam } = require("@modules/error-wrapper");
 
 const DEFAULT_POOL_LIMIT = 20;
 const MAX_POOL_LIMIT = 100;
@@ -26,10 +26,10 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/user/{id}/pools:
      *   get:
-     *     summary: Get user's digipog pools
+     *     summary: Get a user's digipog pools
      *     tags:
      *       - Pools
-     *     description: Returns all digipog pools that the user owns or is a member of
+     *     description: Returns paginated digipog pools that the user owns or is a member of.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -73,29 +73,30 @@ module.exports = (router) => {
      *                   type: object
      *                   properties:
      *                     pools:
-     *                       type: string
-     *                       description: JSON stringified array of pool objects (legacy format)
-     *                     ownedPools:
-     *                       type: string
-     *                       description: JSON stringified array of owned pool IDs (legacy format)
-     *                     memberPools:
-     *                       type: string
-     *                       description: JSON stringified array of member pool IDs (legacy format)
-     *                     poolItems:
      *                       type: array
+     *                       description: Array of pool objects the user owns or is a member of
      *                       items:
      *                         type: object
+     *                         properties:
+     *                           id:
+     *                             type: integer
+     *                           name:
+     *                             type: string
+     *                           description:
+     *                             type: string
+     *                             nullable: true
+     *                           owners:
+     *                             type: array
+     *                             items:
+     *                               type: integer
+     *                           members:
+     *                             type: array
+     *                             items:
+     *                               type: integer
+     *                           created_at:
+     *                             type: string
+     *                             format: date-time
      *                         additionalProperties: true
-     *                     ownedPoolIds:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                     memberPoolIds:
-     *                       type: array
-     *                       items:
-     *                         type: string
-     *                     userId:
-     *                       type: integer
      *                     pagination:
      *                       type: object
      *                       properties:
@@ -107,6 +108,18 @@ module.exports = (router) => {
      *                           type: integer
      *                         hasMore:
      *                           type: boolean
+     *       400:
+     *         description: Validation error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       403:
+     *         description: Forbidden - user lacks permission to view another user's pools
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ForbiddenError'
      *       500:
      *         description: Server error
      *         content:
@@ -114,7 +127,6 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Handle displaying the pools management page
     router.get("/user/:id/pools", isAuthenticated, isVerified, async (req, res) => {
         const userId = Number(req.params.id);
         requireQueryParam(userId, "id");
@@ -136,8 +148,6 @@ module.exports = (router) => {
         }
 
         const { pools: userPools, total } = await pools.getPoolsForUserPaginated(userId, limit, offset);
-        const ownedPools = userPools.filter((p) => p.owner).map((p) => String(p.pool_id));
-        const memberPools = userPools.filter((p) => !p.owner).map((p) => String(p.pool_id));
         const poolObjs = await Promise.all(
             userPools.map(async (poolData) => {
                 const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
@@ -149,7 +159,8 @@ module.exports = (router) => {
                 return pool;
             })
         );
-        const filteredPools = poolObjs.filter((p) => p);
+
+        const filteredPools = poolObjs.filter((pool) => pool !== null);
         const hasMore = offset + filteredPools.length < total;
 
         req.infoEvent("user.pools.view.success", "User pools returned", {
@@ -158,16 +169,11 @@ module.exports = (router) => {
             limit,
             offset,
         });
+
         res.status(200).json({
             success: true,
             data: {
-                pools: JSON.stringify(filteredPools), // backwards-compatible format
-                ownedPools: JSON.stringify(ownedPools),
-                memberPools: JSON.stringify(memberPools),
-                poolItems: filteredPools,
-                ownedPoolIds: ownedPools,
-                memberPoolIds: memberPools,
-                userId: userId,
+                pools: filteredPools,
                 pagination: {
                     total,
                     limit,
