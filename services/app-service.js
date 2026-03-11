@@ -7,7 +7,7 @@ const crypto = require("crypto");
 
 async function createApp({ name, description, ownerId }) {
 
-    dbRun("BEGIN TRANSACTION");
+    await dbRun("BEGIN TRANSACTION");
 
     try {
 
@@ -30,13 +30,13 @@ async function createApp({ name, description, ownerId }) {
 
         await addItemToInventory(ownerId, shareItemId, 100);
 
-        dbRun("COMMIT");
+        await dbRun("COMMIT");
 
         return appId;
 
     } catch (error) {
 
-        dbRun("ROLLBACK");
+        await dbRun("ROLLBACK");
         throw error;
 
     }
