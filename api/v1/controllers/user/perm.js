@@ -9,7 +9,7 @@ const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper"
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/user/{email}/perm:
+     * /api/v1/user/{id}/perm:
      *   patch:
      *     summary: Change user's global permissions
      *     tags:
