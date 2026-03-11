@@ -4,22 +4,6 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
-    const leaveRoomHandler = async (req, res) => {
-        const classId = Number(req.params.id);
-
-        requireQueryParam(classId, "classId");
-
-        req.infoEvent("room.leave.attempt", "User attempting to leave room", { classId });
-
-        await leaveRoom({ ...req.user, classId });
-
-        req.infoEvent("room.leave.success", "User left room successfully", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    };
-
     /**
      * @swagger
      * /api/v1/room/{id}/leave:
@@ -62,15 +46,19 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.post("/room/:id/leave", isAuthenticated, httpPermCheck("leaveRoom"), leaveRoomHandler);
-
-    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/room/:id/leave instead
     router.post("/room/:id/leave", isAuthenticated, httpPermCheck("leaveRoom"), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use POST /api/v1/room/:id/leave instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use POST /api/v1/room/:id/leave instead. This endpoint will be removed in a future version."'
-        );
-        await leaveRoomHandler(req, res);
+        const classId = Number(req.params.id);
+
+        requireQueryParam(classId, "classId");
+
+        req.infoEvent("room.leave.attempt", "User attempting to leave room", { classId });
+
+        await leaveRoom({ ...req.user, classId });
+
+        req.infoEvent("room.leave.success", "User left room successfully", { classId });
+        res.status(200).json({
+            success: true,
+            data: {},
+        });
     });
 };

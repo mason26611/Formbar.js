@@ -15,14 +15,17 @@ function getClassService() {
     return classService;
 }
 
-async function isUserInRoom(userId, classId) {
-    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
-    return !!result;
+async function deleteRoom(roomId) {
+    requireInternalParam(roomId, "roomId");
+
+    await dbRun("DELETE FROM classroom WHERE id=?", [roomId]);
+    await dbRun("DELETE FROM classusers WHERE classId=?", [roomId]);
 }
 
-function getLinksInRoom(classId) {
-    requireInternalParam(classId, "classId");
-    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+function getRoomById(roomId) {
+    requireInternalParam(roomId, "roomId");
+
+    return dbGet("SELECT * FROM classroom WHERE id=?", [roomId]);
 }
 
 /**
@@ -130,10 +133,22 @@ async function leaveRoom(userData) {
     await emitToUser(email, "reload");
 }
 
+async function isUserInRoom(userId, classId) {
+    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
+    return !!result;
+}
+
+function getLinksInRoom(classId) {
+    requireInternalParam(classId, "classId");
+    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+}
+
 module.exports = {
-    isUserInRoom,
-    getLinksInRoom,
+    deleteRoom,
+    getRoomById,
     joinRoomByCode,
     joinRoom,
     leaveRoom,
+    isUserInRoom,
+    getLinksInRoom,
 };
