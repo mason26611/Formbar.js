@@ -1,0 +1,116 @@
+const { STUDENT_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { hasPermission } = require("@middleware/permission-check");
+const { isAuthenticated } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
+const digipogService = require("@services/digipog-service");
+const AppError = require("@errors/app-error");
+const ValidationError = require("@errors/validation-error");
+const ForbiddenError = require("@errors/forbidden-error");
+
+module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/pools/{id}/payout:
+     *   post:
+     *     summary: Execute a payout for a digipog pool
+     *     tags:
+     *       - Pools
+     *     description: |
+     *       Executes a payout for a digipog pool, distributing the pool's digipogs to its members.
+     *       Only the pool owner or a manager can execute a payout.
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         description: The ID of the pool to pay out
+     *         schema:
+     *           type: integer
+     *           example: 42
+     *     responses:
+     *       200:
+     *         description: Pool payout executed successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   description: Result data from the payout operation
+     *       400:
+     *         description: Validation error (pool not found or payout failed)
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       401:
+     *         description: Unauthorized - user not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Forbidden - user is not the pool owner or a manager
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ForbiddenError'
+     *       500:
+     *         description: Server error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ServerError'
+     */
+    router.post("/pools/:id/payout", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+        const poolId = Number(req.params.id);
+
+        requireQueryParam(poolId, "poolId");
+
+        req.infoEvent("pool.payout.attempt", "Attempting to pay out a pool", {
+            poolId,
+            actingUserId: req.user.id,
+        });
+
+        // Check if the pool exists
+        const pool = await digipogService.getPoolById(poolId);
+        if (!pool) {
+            throw new ValidationError("Pool does not exist.", { event: "pool.payout.failed", reason: "pool_not_found" });
+        }
+
+        // Check if pool owner or manager
+        const isOwner = await digipogService.isUserOwner(req.user.id, poolId);
+        if (!isOwner && req.user.permissions >= MANAGER_PERMISSIONS) {
+            throw new ForbiddenError("You do not own this pool.", { event: "pool.payout.failed", reason: "not_owner" });
+        }
+
+        const result = await digipogService.payoutPool({
+            actingUserId: req.user.id,
+            poolId,
+        });
+
+        if (!result.success) {
+            throw new AppError(result.message, {
+                statusCode: 400,
+                event: "pool.payout.failed",
+                reason: "payout_error",
+            });
+        }
+
+        req.infoEvent("pool.payout.success", "Pool payout completed successfully", {
+            poolId,
+            actingUserId: req.user.id,
+        });
+
+        res.status(200).json({
+            success: true,
+            data: result,
+        });
+    });
+};
