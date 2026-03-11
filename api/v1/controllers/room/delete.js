@@ -16,7 +16,7 @@ module.exports = (router) => {
             throw new ValidationError("Room not found", { statusCode: 404 });
         }
 
-        await roomService.deleteRoom(room);
+        await roomService.deleteRoom(room.id);
 
         req.infoEvent("room.delete.success", "Room deleted successfully", { id });
         res.status(200).json({
