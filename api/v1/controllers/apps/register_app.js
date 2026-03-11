@@ -12,7 +12,7 @@ module.exports = (router) => {
 
         req.infoEvent("apps.register.attempt", "User is attempting to register a new app", {name});
 
-        if (!name || !description) {
+        if (typeof name !== 'string' || !name || typeof description !== 'string' || !description) {
             throw new ValidationError("Name and description are required to register an app.", 
                 {
                     reason: "missing_fields", 
