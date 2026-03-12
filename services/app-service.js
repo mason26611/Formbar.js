@@ -13,7 +13,7 @@ async function createApp({ name, description, ownerId }) {
         const shareItemId = await createItem({
             name: `${name} Share`,
             description: `Share of ${name}`,
-            stackSize: 100,
+            stackSize: SHARES_PER_APP,
             iconUrl: null,
         });
         const poolId = await createPool({ name: `${name} Developer Pool`, description, ownerId });
