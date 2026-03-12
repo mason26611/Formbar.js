@@ -89,7 +89,7 @@ module.exports = (router) => {
         }
 
         await markNotificationAsRead(notificationId);
-        notification.is_read = true;
+        notification.is_read = 1;
 
         req.infoEvent("notifications.mark_as_read.success", "Notification marked as read successfully");
 

@@ -1,7 +1,5 @@
-//
-// Slow Hashing with salt
-//
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 
 // Increases time to log in/verify
 const saltRounds = parseInt(process.env.SALT_ROUNDS, 10) || 10;
@@ -12,7 +10,7 @@ const saltRounds = parseInt(process.env.SALT_ROUNDS, 10) || 10;
  * @param {string} text - The text to be hashed.
  * @returns {Promise<string>} A promise that resolves to the hashed text.
  */
-const hash = (text) => {
+function hash(text) {
     return new Promise((resolve, reject) => {
         // Validate that text is a string
         if (typeof text !== "string") {
@@ -39,7 +37,7 @@ const hash = (text) => {
             });
         });
     });
-};
+}
 
 /**
  * Compares a given text with a hash to check if they match.
@@ -48,7 +46,7 @@ const hash = (text) => {
  * @param {string} hash - The hash to compare against.
  * @returns {Promise<boolean>} A promise that resolves to true if the text matches the hash, otherwise false.
  */
-const compare = (text, hash) => {
+function compare(text, hash) {
     return new Promise((resolve, reject) => {
         // Validate that both text and hash are strings
         if (typeof text !== "string" || typeof hash !== "string") {
@@ -69,9 +67,28 @@ const compare = (text, hash) => {
             resolve(res);
         });
     });
-};
+}
+
+/**
+ * Generates a SHA-256 hex digest for the provided input string.
+ *
+ * @param {string} input - The input to hash.
+ * @returns {string} The SHA-256 hex digest of the input.
+ */
+function sha256(input) {
+    if (typeof input !== "string") {
+        throw new Error("Input to sha256 must be a string");
+    }
+
+    if (input.length === 0) {
+        throw new Error("Input to sha256 must not be empty");
+    }
+
+    return crypto.createHash("sha256").update(input).digest("hex");
+}
 
 module.exports = {
     hash,
     compare,
+    sha256,
 };
