@@ -63,7 +63,7 @@ module.exports = (router) => {
         }
 
         // Check if the user has permissions to delete the room
-        if (room.owner !== req.user.id || req.user.permissions >= MANAGER_PERMISSIONS) {
+        if (room.owner !== req.user.id && req.user.permissions >= MANAGER_PERMISSIONS) {
             throw new ForbiddenError("You do not have permission to delete this room.", { statusCode: 403 });
         }
 
