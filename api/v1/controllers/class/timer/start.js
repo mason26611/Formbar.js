@@ -1,6 +1,4 @@
 const { hasClassPermission } = require("@middleware/permission-check");
-const { isClassActive } = require("@services/class-service");
-const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { CLASS_PERMISSIONS } = require("@modules/permissions");
@@ -34,7 +32,7 @@ module.exports = (router) => {
 
         classService.startTimer({ classId, startTime, endTime, playSound });
 
-        req.infoEvent("class.active.view.success", "Class active status returned", { classId });
+        req.infoEvent("class.timer.start.success", "Timer successfully started", { classId });
         res.status(200).json({
             success: true,
             data: {

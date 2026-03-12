@@ -917,8 +917,8 @@ function startTimer({ classId, duration, playSound }) {
             startTime,
             endTime,
             active: true,
-            playSound
-        }
+            playSound,
+        },
     });
 }
 
@@ -930,7 +930,7 @@ function endTimer(classId) {
         timer: {
             ...classroom.timer,
             active: true,
-        }
+        },
     });
 }
 
@@ -941,10 +941,9 @@ function clearTimer(classId) {
     classStateStore.updateClassroom(classId, {
         timer: {
             active: false,
-        }
+        },
     });
 }
-
 
 module.exports = {
     getUserJoinedClasses,
@@ -975,5 +974,5 @@ module.exports = {
     getTimer,
     startTimer,
     endTimer,
-    clearTimer
+    clearTimer,
 };
