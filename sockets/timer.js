@@ -26,38 +26,38 @@ module.exports = {
         });
 
         // This handles the server side timer
-        socket.on("timer", (startTime, active, sound) => {
-            try {
-                let classData = classStateStore.getClassroom(socket.request.session.classId);
-                startTime = Math.round(startTime);
-
-                classData.timer.startTime = startTime;
-                classData.timer.timeLeft = startTime;
-                classData.timer.active = active;
-                classData.timer.sound = sound;
-                socketUpdates.classUpdate();
-
-                const classId = socket.request.session.classId;
-                if (active) {
-                    // Replace any previous timer interval for the class.
-                    socketStateStore.clearRunningTimer(classId);
-
-                    // Run the function once instantly
-                    socketUpdates.timer(sound, active);
-
-                    // Save a clock in the class data, which will saves when the page is refreshed
-                    const timerHandle = setInterval(() => socketUpdates.timer(sound, active), 1000);
-                    socketStateStore.setRunningTimer(classId, timerHandle);
-                } else {
-                    // If the timer is not active, clear the interval
-                    socketStateStore.clearRunningTimer(classId);
-
-                    socketUpdates.timer(sound, active);
-                }
-            } catch (err) {
-                handleSocketError(err, socket, "timer");
-            }
-        });
+        // socket.on("timer", (startTime, active, sound) => {
+        //     try {
+        //         let classData = classStateStore.getClassroom(socket.request.session.classId);
+        //         startTime = Math.round(startTime);
+        //
+        //         classData.timer.startTime = startTime;
+        //         classData.timer.timeLeft = startTime;
+        //         classData.timer.active = active;
+        //         classData.timer.sound = sound;
+        //         socketUpdates.classUpdate();
+        //
+        //         const classId = socket.request.session.classId;
+        //         if (active) {
+        //             // Replace any previous timer interval for the class.
+        //             socketStateStore.clearRunningTimer(classId);
+        //
+        //             // Run the function once instantly
+        //             socketUpdates.timer(sound, active);
+        //
+        //             // Save a clock in the class data, which will saves when the page is refreshed
+        //             const timerHandle = setInterval(() => socketUpdates.timer(sound, active), 1000);
+        //             socketStateStore.setRunningTimer(classId, timerHandle);
+        //         } else {
+        //             // If the timer is not active, clear the interval
+        //             socketStateStore.clearRunningTimer(classId);
+        //
+        //             socketUpdates.timer(sound, active);
+        //         }
+        //     } catch (err) {
+        //         handleSocketError(err, socket, "timer");
+        //     }
+        // });
 
         socket.on("timerOn", () => {
             try {

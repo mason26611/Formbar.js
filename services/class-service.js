@@ -545,7 +545,7 @@ async function deleteRooms(userId) {
     }
 }
 
-// ─── Kick ────────────────────────────────────────────────────────────────────
+// Kick
 
 /**
  * Kicks a student from a class.
@@ -652,7 +652,7 @@ function broadcastClassUpdate(classId, preferredEmail) {
     return false;
 }
 
-// ─── Break ───────────────────────────────────────────────────────────────────
+// Break
 
 /**
  * Requests a break for a student.
@@ -707,7 +707,7 @@ function endBreak(userData) {
     broadcastClassUpdate(classId, email);
 }
 
-// ─── Help ────────────────────────────────────────────────────────────────────
+// Help
 
 /**
  * Sends a help ticket for a student.
@@ -748,7 +748,7 @@ async function deleteHelpTicket(studentId, userData) {
     return true;
 }
 
-// ─── Tags ────────────────────────────────────────────────────────────────────
+// Tags
 
 /**
  * Sets the allowed tags for a class and normalizes existing student tags.
@@ -826,7 +826,7 @@ async function saveTags(studentId, tags, userSession) {
     await dbRun("UPDATE classusers SET tags = ? WHERE studentId = ? AND classId = ?", [normalized.join(","), studentId, userSession.classId]);
 }
 
-// ─── Class Users ─────────────────────────────────────────────────────────────
+// Class Users
 
 /**
  * Gets the users of a class, merging in-memory session data with DB data.
@@ -896,6 +896,56 @@ async function getClassUsers(user, key) {
     return classUsers;
 }
 
+// Timer
+
+function getTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    return classroom.timer;
+}
+
+function startTimer({ classId, duration, playSound }) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    const startTime = Date.now();
+    const endTime = startTime + duration;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            startTime,
+            endTime,
+            active: true,
+            playSound
+        }
+    });
+}
+
+function endTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            ...classroom.timer,
+            active: true,
+        }
+    });
+}
+
+function clearTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            active: false,
+        }
+    });
+}
+
+
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
@@ -922,4 +972,8 @@ module.exports = {
     setTags,
     saveTags,
     getClassUsers,
+    getTimer,
+    startTimer,
+    endTimer,
+    clearTimer
 };
