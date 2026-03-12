@@ -6,8 +6,13 @@ async function getInventory(userId) {
     return inventoryItems;
 }
 
-async function createItem({ name, description, stackSize = 1, iconUrl = ""}) {
-    const itemId = await dbRun("INSERT INTO item_registry (name, description, stack_size, image_url) VALUES (?, ?, ?, ?)", [name, description, stackSize, iconUrl]);
+async function createItem({ name, description, stackSize = 1, iconUrl = "" }) {
+    const itemId = await dbRun("INSERT INTO item_registry (name, description, stack_size, image_url) VALUES (?, ?, ?, ?)", [
+        name,
+        description,
+        stackSize,
+        iconUrl,
+    ]);
     return itemId;
 }
 

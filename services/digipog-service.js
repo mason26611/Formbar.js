@@ -89,20 +89,19 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function createPool(poolName, description = "", ownerId) {
+async function createPool({ poolName, description = "", ownerId }) {
     const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [poolName, description, 0]);
     await addUserToPool(poolId, ownerId, 1);
     return poolId;
 }
 
-async function getPoolsForUser(userId) {
-    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
-}
-
-
 async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
     await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
+}
+
+async function getPoolsForUser(userId) {
+    return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
 }
 
 async function getPoolById(poolId) {
@@ -142,10 +141,7 @@ async function isPoolOwnedByUser(poolId, userId) {
 }
 
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
-    return dbRun(
-        "INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)",
-        [poolId, userId, ownerFlag ? 1 : 0]
-    );
+    return dbRun("INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, userId, ownerFlag ? 1 : 0]);
 }
 
 async function removeUserFromPool(poolId, userId) {
