@@ -89,8 +89,8 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function createPool({ poolName, description = "", ownerId }) {
-    const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [poolName, description, 0]);
+async function createPool({ name, description = "", ownerId }) {
+    const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, description, 0]);
     await addUserToPool(poolId, ownerId, 1);
     return poolId;
 }

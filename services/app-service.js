@@ -16,7 +16,7 @@ async function createApp({ name, description, ownerId }) {
             stackSize: 100,
             iconUrl: null,
         });
-        const poolId = await createPool({ poolName: `${name} Developer Pool`, description, ownerId });
+        const poolId = await createPool({ name: `${name} Developer Pool`, description, ownerId });
 
         const apiKey = crypto.randomBytes(64).toString("hex");
         const apiSecret = crypto.randomBytes(256).toString("hex");
