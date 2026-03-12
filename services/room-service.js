@@ -18,8 +18,19 @@ function getClassService() {
 async function deleteRoom(roomId) {
     requireInternalParam(roomId, "roomId");
 
-    await dbRun("DELETE FROM classroom WHERE id=?", [roomId]);
-    await dbRun("DELETE FROM classusers WHERE classId=?", [roomId]);
+    await dbRun("BEGIN TRANSACTION");
+    try {
+        await dbRun("DELETE FROM classroom WHERE id=?", [roomId]);
+        await dbRun("DELETE FROM classusers WHERE classId=?", [roomId]);
+        await dbRun("COMMIT");
+    } catch (err) {
+        try {
+            await dbRun("ROLLBACK");
+        } catch (rollbackErr) {
+            // Intentionally ignore rollback errors to avoid masking the original error
+        }
+        throw err;
+    }
 }
 
 function getRoomById(roomId) {
