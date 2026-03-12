@@ -52,8 +52,8 @@ module.exports = (router) => {
      *                   type: object
      *                   properties:
      *                     appId:
-     *                       type: string
-     *                       example: "ab12cd34ef56"
+     *                       type: integer
+     *                       example: 1
      *                     apiKey:
      *                       type: string
      *                       description: The newly generated API key for the app
