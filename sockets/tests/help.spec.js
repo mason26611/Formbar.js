@@ -10,7 +10,6 @@ describe("help", () => {
     beforeEach(() => {
         socket = createSocket();
 
-        // Run the socket handler
         helpRun(socket, socketUpdates);
         helpHandler = socket.on.mock.calls.find((call) => call[0] === "help")[1];
         deleteHelpTicketHandler = socket.on.mock.calls.find((call) => call[0] === "deleteTicket")[1];
@@ -45,7 +44,7 @@ describe("help", () => {
             reason: "reason",
             time: Date.now(),
         };
-        await deleteHelpTicketHandler(userData.email);
+        await deleteHelpTicketHandler(userData.id);
 
         expect(classData.students[testData.email].help).toBe(false);
     });

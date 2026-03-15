@@ -12,7 +12,6 @@ describe("break", () => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
 
-        // Run the socket handler
         breakRun(socket, socketUpdates);
         requestBreakHandler = socket.on.mock.calls.find((call) => call[0] === "requestBreak")[1];
         approveBreakHandler = socket.on.mock.calls.find((call) => call[0] === "approveBreak")[1];

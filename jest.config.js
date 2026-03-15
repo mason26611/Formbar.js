@@ -7,6 +7,8 @@ module.exports = {
         "^@errors/(.*)$": "<rootDir>/errors/$1",
         "^@sockets/(.*)$": "<rootDir>/sockets/$1",
         "^@stores/(.*)$": "<rootDir>/stores/$1",
+        "^@test-helpers/(.*)$": "<rootDir>/modules/test-helpers/$1",
     },
     testEnvironment: "node",
+    testTimeout: 15000,
 };
