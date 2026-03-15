@@ -1,43 +1,45 @@
-const { hasClassPermission } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
+const { classStateStore } = require("@services/classroom-service");
 
 module.exports = (router) => {
-    router.post("/class/:id/timer/start", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.CONTROL_POLLS), async (req, res) => {
+    router.post("/class/:id/timer/start", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
-        const { startTime, endTime, sound: playSound } = req.body;
+        let { duration, sound } = req.body;
         requireQueryParam(classId, "id");
 
-        if (!startTime || !endTime) {
-            throw new ValidationError("Start and end times are required.");
+        if (!duration) {
+            throw new ValidationError("Duration is required.");
         }
 
-        if (!Number.isInteger(startTime) && !Number.isInteger(endTime)) {
-            throw new ForbiddenError("Start and end times must be integers.");
+        duration = Number(duration);
+
+        if (!Number.isInteger(duration)) {
+            throw new ForbiddenError("Duration must be an integer.");
         }
 
-        if (startTime > endTime) {
-            throw new ForbiddenError("Start time must be before end time.");
-        }
-
-        if (playSound && typeof playSound !== "boolean") {
+        if (sound && typeof sound !== "boolean") {
             throw new ForbiddenError("Sound must be a boolean.");
         }
 
         req.infoEvent("class.timer.start.attempt", "Attempting to start a timer", { classId });
 
-        classService.startTimer({ classId, startTime, endTime, playSound });
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classroom) {
+            throw new ForbiddenError("Classroom is not currently loaded.");
+        }
+
+        classService.startTimer({ classId, duration, sound });
 
         req.infoEvent("class.timer.start.success", "Timer successfully started", { classId });
         res.status(200).json({
             success: true,
-            data: {
-                isActive,
-            },
+            data: {},
         });
     });
 };

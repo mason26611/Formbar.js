@@ -51,7 +51,7 @@ async function cleanRefreshTokens() {
 async function isAuthenticated(req, res, next) {
     // Check if an API key is provided
     // If it is, then authenticate via an API key. Otherwise, check via an access token.
-    const apiKeyHeader = req.headers.api || req.params.api || req.body.api;
+    const apiKeyHeader = req.headers.api || req.query.api || req.body.api;
     const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
     if (apiKey) {
         let apiUser = null;

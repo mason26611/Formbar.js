@@ -1,11 +1,11 @@
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const classService = require("@services/class-service");
 
 module.exports = (router) => {
-    router.post("/class/:id/timer/clear", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.CONTROL_POLLS), async (req, res) => {
+    router.post("/class/:id/timer/clear", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");
 

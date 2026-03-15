@@ -518,6 +518,10 @@ async function leaveClass(userData, classId) {
  */
 function isClassActive(classId) {
     const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) {
+        return false;
+    }
+
     return classroom.isActive;
 }
 
@@ -905,7 +909,7 @@ function getTimer(classId) {
     return classroom.timer;
 }
 
-function startTimer({ classId, duration, playSound }) {
+function startTimer({ classId, duration, sound }) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
 
@@ -917,7 +921,7 @@ function startTimer({ classId, duration, playSound }) {
             startTime,
             endTime,
             active: true,
-            playSound,
+            sound: sound || false,
         },
     });
 }
@@ -929,7 +933,7 @@ function endTimer(classId) {
     classStateStore.updateClassroom(classId, {
         timer: {
             ...classroom.timer,
-            active: true,
+            active: false,
         },
     });
 }
@@ -940,7 +944,10 @@ function clearTimer(classId) {
 
     classStateStore.updateClassroom(classId, {
         timer: {
+            startTime: 0,
+            endTime: 0,
             active: false,
+            sound: false,
         },
     });
 }
