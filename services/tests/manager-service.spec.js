@@ -100,10 +100,7 @@ describe("getManagerData()", () => {
     it("merges pending (temp) users into the users list", async () => {
         // Create a fake JWT that looks like a pending user token
         const pendingEmail = "pending@example.com";
-        const fakeToken = jwt.sign(
-            { email: pendingEmail, displayName: "PendingUser", permissions: 2, newSecret: "secret123" },
-            "test-secret"
-        );
+        const fakeToken = jwt.sign({ email: pendingEmail, displayName: "PendingUser", permissions: 2, newSecret: "secret123" }, "test-secret");
         await mockDatabase.dbRun("INSERT INTO temp_user_creation_data (token) VALUES (?)", [fakeToken]);
 
         const result = await getManagerData();

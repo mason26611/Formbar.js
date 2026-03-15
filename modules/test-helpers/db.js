@@ -145,14 +145,10 @@ async function createTestDb() {
 
         // Reset SQLite auto-increment counters by deleting rows in sqlite_sequence
         await new Promise((resolve, reject) => {
-            db.run(
-                `DELETE FROM sqlite_sequence WHERE name IN (${CLEARABLE_TABLES.map(() => "?").join(",")})`,
-                CLEARABLE_TABLES,
-                (err) => {
-                    if (err) return reject(err);
-                    resolve();
-                }
-            );
+            db.run(`DELETE FROM sqlite_sequence WHERE name IN (${CLEARABLE_TABLES.map(() => "?").join(",")})`, CLEARABLE_TABLES, (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
         });
     }
 

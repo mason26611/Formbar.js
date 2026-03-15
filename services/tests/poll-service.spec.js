@@ -326,7 +326,10 @@ describe("getPreviousPolls", () => {
     });
 
     it("parses responses JSON string into an object", async () => {
-        const responses = [{ answer: "A", weight: 1 }, { answer: "B", weight: 2 }];
+        const responses = [
+            { answer: "A", weight: 1 },
+            { answer: "B", weight: 2 },
+        ];
         await seedPollHistory(1, "Pick one", responses);
 
         const polls = await getPreviousPolls(1);
@@ -433,11 +436,7 @@ describe("getCurrentPoll", () => {
     }
 
     it("returns poll data when classroom exists and user is a student", async () => {
-        setupClassroom(
-            1,
-            { status: true, prompt: "Thumbs?", responses: [{ answer: "Up" }] },
-            { "student@test.com": makeStudent() }
-        );
+        setupClassroom(1, { status: true, prompt: "Thumbs?", responses: [{ answer: "Up" }] }, { "student@test.com": makeStudent() });
 
         const result = await getCurrentPoll(1, userData);
 
@@ -446,12 +445,16 @@ describe("getCurrentPoll", () => {
     });
 
     it("includes totalStudents count", async () => {
-        setupClassroom(1, { status: true }, {
-            "s1@test.com": makeStudent(),
-            "s2@test.com": makeStudent(),
-            "s3@test.com": makeStudent(),
-            "student@test.com": makeStudent(),
-        });
+        setupClassroom(
+            1,
+            { status: true },
+            {
+                "s1@test.com": makeStudent(),
+                "s2@test.com": makeStudent(),
+                "s3@test.com": makeStudent(),
+                "student@test.com": makeStudent(),
+            }
+        );
 
         const result = await getCurrentPoll(1, userData);
 
@@ -476,11 +479,7 @@ describe("getCurrentPoll", () => {
     });
 
     it("returns a deep clone of the poll (not a reference)", async () => {
-        setupClassroom(
-            1,
-            { status: true, prompt: "Q", responses: [{ answer: "A" }] },
-            { "student@test.com": makeStudent() }
-        );
+        setupClassroom(1, { status: true, prompt: "Q", responses: [{ answer: "A" }] }, { "student@test.com": makeStudent() });
 
         const result = await getCurrentPoll(1, userData);
         result.prompt = "MODIFIED";

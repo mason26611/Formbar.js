@@ -104,6 +104,7 @@ jest.mock("@services/student-service", () => ({
 }));
 
 const fs = require("fs");
+const realReadFileSync = fs.readFileSync;
 const bcrypt = require("bcrypt");
 const { hash } = require("@modules/crypto");
 const { sendMail } = require("@modules/mail");
@@ -135,21 +136,33 @@ const {
     deleteUser,
 } = require("@services/user-service");
 
+function mockTemplateFileReads() {
+    fs.readFileSync.mockImplementation((filePath, ...args) => {
+        const normalizedPath = String(filePath).replace(/\\/g, "/");
+        if (normalizedPath.endsWith("email-templates/password-reset.hbs")) return "{{resetUrl}}";
+        if (normalizedPath.endsWith("email-templates/pin-reset.hbs")) return "{{resetUrl}}";
+        if (normalizedPath.endsWith("email-templates/verify-email.hbs")) return "{{verifyUrl}}";
+        return realReadFileSync.call(fs, filePath, ...args);
+    });
+}
+
 beforeAll(async () => {
     mockDatabase = await createTestDb();
     // Spy AFTER createTestDb so test-schema.sql is read with the real fs
-    jest.spyOn(fs, "readFileSync").mockReturnValue("{{resetUrl}}{{verifyUrl}}");
+    jest.spyOn(fs, "readFileSync");
+    mockTemplateFileReads();
 });
 
 afterEach(async () => {
     await mockDatabase.reset();
     jest.clearAllMocks();
-    fs.readFileSync.mockReturnValue("{{resetUrl}}{{verifyUrl}}");
+    mockTemplateFileReads();
     for (const k of Object.keys(classStateStore._classrooms)) delete classStateStore._classrooms[k];
     for (const k of Object.keys(classStateStore._users)) delete classStateStore._users[k];
 });
 
 afterAll(async () => {
+    fs.readFileSync.mockRestore();
     await mockDatabase.close();
 });
 

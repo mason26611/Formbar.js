@@ -91,18 +91,20 @@ async function seedUser(overrides = {}) {
 }
 
 async function seedPool(name = "Test Pool", amount = 0) {
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)",
-        [name, "desc", amount]
-    );
+    const id = await mockDatabase.dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, "desc", amount]);
     return { id, name, amount };
 }
 
 async function seedTransaction(from_id, to_id, from_type, to_type, amount, reason = "test") {
-    await mockDatabase.dbRun(
-        "INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [from_id, to_id, from_type, to_type, amount, reason, Date.now()]
-    );
+    await mockDatabase.dbRun("INSERT INTO transactions (from_id, to_id, from_type, to_type, amount, reason, date) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        from_id,
+        to_id,
+        from_type,
+        to_type,
+        amount,
+        reason,
+        Date.now(),
+    ]);
 }
 
 beforeAll(async () => {
@@ -489,10 +491,7 @@ describe("payoutPool()", () => {
 
         await payoutPool({ actingUserId: owner.id, poolId });
 
-        const txns = await mockDatabase.dbGetAll(
-            "SELECT * FROM transactions WHERE from_id = ? AND from_type = 'pool'",
-            [poolId]
-        );
+        const txns = await mockDatabase.dbGetAll("SELECT * FROM transactions WHERE from_id = ? AND from_type = 'pool'", [poolId]);
         expect(txns).toHaveLength(1);
         expect(txns[0].to_id).toBe(owner.id);
         expect(txns[0].amount).toBe(50);
@@ -601,10 +600,13 @@ describe("getUserTransactionsPaginated()", () => {
 
     it("enriches class-type transactions", async () => {
         const user = await seedUser();
-        await mockDatabase.dbRun(
-            "INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)",
-            ["TestClass", user.id, "key123", "[]", "{}"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+            "TestClass",
+            user.id,
+            "key123",
+            "[]",
+            "{}",
+        ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'TestClass'");
         await seedTransaction(user.id, classRow.id, "user", "class", 10, "class-award");
 
@@ -622,20 +624,23 @@ describe("awardDigipogs()", () => {
         const student = await seedUser({ digipogs: 0 });
 
         // Put them in same class so teacher has permission
-        await mockDatabase.dbRun(
-            "INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)",
-            ["C1", teacher.id, "k1", "[]", "{}"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+            "C1",
+            teacher.id,
+            "k1",
+            "[]",
+            "{}",
+        ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun(
-            "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-            [classRow.id, student.id, 2, 0, "student"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+            classRow.id,
+            student.id,
+            2,
+            0,
+            "student",
+        ]);
 
-        const result = await awardDigipogs(
-            { to: { id: student.id, type: "user" }, amount: 10, reason: "Good job" },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: student.id, type: "user" }, amount: 10, reason: "Good job" }, { id: teacher.id });
         expect(result.success).toBe(true);
         expect(result.message).toMatch(/awarded successfully/);
 
@@ -652,29 +657,20 @@ describe("awardDigipogs()", () => {
 
     it("returns error for invalid recipient type", async () => {
         const teacher = await seedUser({ permissions: 4 });
-        const result = await awardDigipogs(
-            { to: { id: 1, type: "invalid" }, amount: 10 },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: 1, type: "invalid" }, amount: 10 }, { id: teacher.id });
         expect(result.success).toBe(false);
         expect(result.message).toMatch(/Invalid recipient type/);
     });
 
     it("returns error for amount <= 0", async () => {
         const teacher = await seedUser({ permissions: 4 });
-        const result = await awardDigipogs(
-            { to: { id: 1, type: "user" }, amount: 0 },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: 1, type: "user" }, amount: 0 }, { id: teacher.id });
         expect(result.success).toBe(false);
         expect(result.message).toMatch(/greater than zero/);
     });
 
     it("returns error when sender account not found", async () => {
-        const result = await awardDigipogs(
-            { to: { id: 1, type: "user" }, amount: 5 },
-            { id: 99999 }
-        );
+        const result = await awardDigipogs({ to: { id: 1, type: "user" }, amount: 5 }, { id: 99999 });
         expect(result.success).toBe(false);
         expect(result.message).toMatch(/Sender account not found/);
     });
@@ -683,10 +679,7 @@ describe("awardDigipogs()", () => {
         const teacher = await seedUser({ permissions: 4 });
         const pool = await seedPool("Award Target", 0);
 
-        const result = await awardDigipogs(
-            { to: { id: pool.id, type: "pool" }, amount: 20, reason: "bonus" },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: pool.id, type: "pool" }, amount: 20, reason: "bonus" }, { id: teacher.id });
         expect(result.success).toBe(true);
 
         const row = await mockDatabase.dbGet("SELECT amount FROM digipog_pools WHERE id = ?", [pool.id]);
@@ -697,20 +690,14 @@ describe("awardDigipogs()", () => {
         const student = await seedUser({ permissions: 2 });
         const pool = await seedPool("Blocked", 0);
 
-        const result = await awardDigipogs(
-            { to: { id: pool.id, type: "pool" }, amount: 5 },
-            { id: student.id }
-        );
+        const result = await awardDigipogs({ to: { id: pool.id, type: "pool" }, amount: 5 }, { id: student.id });
         expect(result.success).toBe(false);
         expect(result.message).toMatch(/permission.*pool/i);
     });
 
     it("rejects when recipient user not found", async () => {
         const teacher = await seedUser({ permissions: 4 });
-        const result = await awardDigipogs(
-            { to: { id: 99999, type: "user" }, amount: 5 },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: 99999, type: "user" }, amount: 5 }, { id: teacher.id });
         expect(result.success).toBe(false);
         expect(result.message).toMatch(/Recipient account not found/);
     });
@@ -719,20 +706,23 @@ describe("awardDigipogs()", () => {
         const teacher = await seedUser({ permissions: 4 });
         const student = await seedUser({ digipogs: 0 });
 
-        await mockDatabase.dbRun(
-            "INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)",
-            ["C2", teacher.id, "k2", "[]", "{}"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+            "C2",
+            teacher.id,
+            "k2",
+            "[]",
+            "{}",
+        ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun(
-            "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-            [classRow.id, student.id, 2, 0, "student"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+            classRow.id,
+            student.id,
+            2,
+            0,
+            "student",
+        ]);
 
-        const result = await awardDigipogs(
-            { to: student.id, amount: 5 },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: student.id, amount: 5 }, { id: teacher.id });
         expect(result.success).toBe(true);
         expect(result.message).toMatch(/Deprecated/);
     });
@@ -747,20 +737,23 @@ describe("awardDigipogs()", () => {
         const teacher = await seedUser({ permissions: 4, digipogs: 0 });
         const student = await seedUser({ digipogs: 0 });
 
-        await mockDatabase.dbRun(
-            "INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)",
-            ["AwardClass", teacher.id, "kc", "[]", "{}"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+            "AwardClass",
+            teacher.id,
+            "kc",
+            "[]",
+            "{}",
+        ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'AwardClass'");
-        await mockDatabase.dbRun(
-            "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-            [classRow.id, student.id, 2, 0, "student"]
-        );
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+            classRow.id,
+            student.id,
+            2,
+            0,
+            "student",
+        ]);
 
-        const result = await awardDigipogs(
-            { to: { id: classRow.id, type: "class" }, amount: 7 },
-            { id: teacher.id }
-        );
+        const result = await awardDigipogs({ to: { id: classRow.id, type: "class" }, amount: 7 }, { id: teacher.id });
         expect(result.success).toBe(true);
 
         const studentRow = await mockDatabase.dbGet("SELECT digipogs FROM users WHERE id = ?", [student.id]);
@@ -1013,19 +1006,14 @@ describe("transferDigipogs()", () => {
             reason: "test-txn",
         });
 
-        const txns = await mockDatabase.dbGetAll(
-            "SELECT * FROM transactions WHERE from_id = ? AND from_type = 'user'",
-            [sender.id]
-        );
+        const txns = await mockDatabase.dbGetAll("SELECT * FROM transactions WHERE from_id = ? AND from_type = 'user'", [sender.id]);
         expect(txns).toHaveLength(1);
         expect(txns[0].amount).toBe(10);
         expect(txns[0].reason).toBe("test-txn");
     });
 
     it("deposits tax into dev pool (id=0) when it exists", async () => {
-        await mockDatabase.dbRun(
-            "INSERT INTO digipog_pools (id, name, description, amount) VALUES (0, 'Dev Pool', 'tax', 0)"
-        );
+        await mockDatabase.dbRun("INSERT INTO digipog_pools (id, name, description, amount) VALUES (0, 'Dev Pool', 'tax', 0)");
         const sender = await seedUser({ digipogs: 100, pin: hashedPin });
         const receiver = await seedUser({ digipogs: 0 });
 

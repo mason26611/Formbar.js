@@ -94,9 +94,7 @@ describe("createApp()", () => {
     it("calls createItem with share item name", async () => {
         await createApp(APP_INPUT);
 
-        expect(createItem).toHaveBeenCalledWith(
-            expect.objectContaining({ name: "TestApp Share" })
-        );
+        expect(createItem).toHaveBeenCalledWith(expect.objectContaining({ name: "TestApp Share" }));
     });
 
     it("calls addItemToInventory with ownerId and shareItemId", async () => {

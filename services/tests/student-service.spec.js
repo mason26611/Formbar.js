@@ -44,13 +44,7 @@ jest.mock("@services/classroom-service", () => ({
     Classroom: jest.fn(),
 }));
 
-const {
-    Student,
-    createStudentFromUserData,
-    getStudentsInClass,
-    getIdFromEmail,
-    getEmailFromId,
-} = require("@services/student-service");
+const { Student, createStudentFromUserData, getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { classStateStore } = require("@services/classroom-service");
 
 beforeAll(async () => {
@@ -92,10 +86,13 @@ async function seedUser(overrides = {}) {
 async function seedClassUser(classId, studentId, overrides = {}) {
     const defaults = { permissions: 2, digiPogs: 0, role: null };
     const cu = { ...defaults, ...overrides };
-    await mockDatabase.dbRun(
-        "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-        [classId, studentId, cu.permissions, cu.digiPogs, cu.role]
-    );
+    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+        classId,
+        studentId,
+        cu.permissions,
+        cu.digiPogs,
+        cu.role,
+    ]);
 }
 
 describe("Student class", () => {
@@ -121,10 +118,7 @@ describe("Student class", () => {
     });
 
     it("uses provided values when all arguments are given", () => {
-        const s = new Student(
-            "x@y.com", 42, 5, "apiKey",
-            ["poll1"], ["poll2"], ["tag1", "tag2"], "Alice", true
-        );
+        const s = new Student("x@y.com", 42, 5, "apiKey", ["poll1"], ["poll2"], ["tag1", "tag2"], "Alice", true);
         expect(s.email).toBe("x@y.com");
         expect(s.id).toBe(42);
         expect(s.permissions).toBe(5);
@@ -140,8 +134,11 @@ describe("Student class", () => {
 describe("createStudentFromUserData()", () => {
     it("creates student with correct email, id, and permissions", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 7, permissions: 3,
-            API: "k", displayName: "U",
+            email: "u@test.com",
+            id: 7,
+            permissions: 3,
+            API: "k",
+            displayName: "U",
         });
         expect(s.email).toBe("u@test.com");
         expect(s.id).toBe(7);
@@ -151,21 +148,28 @@ describe("createStudentFromUserData()", () => {
 
     it("sets activeClass from userData", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, activeClass: 99,
+            email: "u@test.com",
+            id: 1,
+            activeClass: 99,
         });
         expect(s.activeClass).toBe(99);
     });
 
     it("sets classPermissions from userData", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, classPermissions: 4,
+            email: "u@test.com",
+            id: 1,
+            classPermissions: 4,
         });
         expect(s.classPermissions).toBe(4);
     });
 
     it("sets role and classRole from userData", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, role: "teacher", classRole: "helper",
+            email: "u@test.com",
+            id: 1,
+            role: "teacher",
+            classRole: "helper",
         });
         expect(s.role).toBe("teacher");
         expect(s.classRole).toBe("helper");
@@ -173,28 +177,35 @@ describe("createStudentFromUserData()", () => {
 
     it("normalizes tags from comma-separated string", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, tags: " math , science , ",
+            email: "u@test.com",
+            id: 1,
+            tags: " math , science , ",
         });
         expect(s.tags).toEqual(["math", "science"]);
     });
 
     it("normalizes tags from array", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, tags: [" art ", "music"],
+            email: "u@test.com",
+            id: 1,
+            tags: [" art ", "music"],
         });
         expect(s.tags).toEqual(["art", "music"]);
     });
 
     it("normalizes null tags to empty array", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, tags: null,
+            email: "u@test.com",
+            id: 1,
+            tags: null,
         });
         expect(s.tags).toEqual([]);
     });
 
     it("parses ownedPolls from JSON string", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1,
+            email: "u@test.com",
+            id: 1,
             ownedPolls: JSON.stringify(["p1", "p2"]),
         });
         expect(s.ownedPolls).toEqual(["p1", "p2"]);
@@ -202,7 +213,8 @@ describe("createStudentFromUserData()", () => {
 
     it("parses sharedPolls from JSON string", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1,
+            email: "u@test.com",
+            id: 1,
             sharedPolls: JSON.stringify(["s1"]),
         });
         expect(s.sharedPolls).toEqual(["s1"]);
@@ -210,36 +222,41 @@ describe("createStudentFromUserData()", () => {
 
     it("passes through ownedPolls when already an array", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, ownedPolls: ["a"],
+            email: "u@test.com",
+            id: 1,
+            ownedPolls: ["a"],
         });
         expect(s.ownedPolls).toEqual(["a"]);
     });
 
     it("returns empty array for invalid JSON in ownedPolls", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, ownedPolls: "not-json",
+            email: "u@test.com",
+            id: 1,
+            ownedPolls: "not-json",
         });
         expect(s.ownedPolls).toEqual([]);
     });
 
     it("sets isGuest from options.isGuest", () => {
-        const s = createStudentFromUserData(
-            { email: "u@test.com", id: 1 },
-            { isGuest: true }
-        );
+        const s = createStudentFromUserData({ email: "u@test.com", id: 1 }, { isGuest: true });
         expect(s.isGuest).toBe(true);
     });
 
     it("falls back to userData.isGuest when options.isGuest is not set", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, isGuest: true,
+            email: "u@test.com",
+            id: 1,
+            isGuest: true,
         });
         expect(s.isGuest).toBe(true);
     });
 
     it("copies verified property when present", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, verified: 1,
+            email: "u@test.com",
+            id: 1,
+            verified: 1,
         });
         expect(s.verified).toBe(1);
     });
@@ -251,7 +268,8 @@ describe("createStudentFromUserData()", () => {
 
     it("merges pollRes when provided", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1,
+            email: "u@test.com",
+            id: 1,
             pollRes: { buttonRes: "A", textRes: "yes" },
         });
         expect(s.pollRes).toEqual({ buttonRes: "A", textRes: "yes", time: null });
@@ -259,7 +277,10 @@ describe("createStudentFromUserData()", () => {
 
     it("sets help and break from userData", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, help: true, break: true,
+            email: "u@test.com",
+            id: 1,
+            help: true,
+            break: true,
         });
         expect(s.help).toBe(true);
         expect(s.break).toBe(true);
@@ -267,7 +288,9 @@ describe("createStudentFromUserData()", () => {
 
     it("sets pogMeter from userData", () => {
         const s = createStudentFromUserData({
-            email: "u@test.com", id: 1, pogMeter: 42,
+            email: "u@test.com",
+            id: 1,
+            pogMeter: 42,
         });
         expect(s.pogMeter).toBe(42);
     });

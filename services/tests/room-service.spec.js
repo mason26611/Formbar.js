@@ -54,7 +54,16 @@ jest.mock("../../sockets/init", () => ({
     userSocketUpdates: new Map(),
 }));
 
-const { deleteRoom, getRoomById, roomOwnerCheck, joinRoomByCode, joinRoom, leaveRoom, isUserInRoom, getLinksInRoom } = require("@services/room-service");
+const {
+    deleteRoom,
+    getRoomById,
+    roomOwnerCheck,
+    joinRoomByCode,
+    joinRoom,
+    leaveRoom,
+    isUserInRoom,
+    getLinksInRoom,
+} = require("@services/room-service");
 const { emitToUser, advancedEmitToClass } = require("@services/socket-updates-service");
 const { classStateStore } = require("@services/classroom-service");
 const classService = require("@services/class-service");
@@ -66,20 +75,26 @@ const NotFoundError = require("@errors/not-found-error");
 async function seedClassroom(overrides = {}) {
     const defaults = { name: "Test Class", owner: 1, key: "ABC123", tags: null, settings: null };
     const c = { ...defaults, ...overrides };
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)",
-        [c.name, c.owner, c.key, c.tags, c.settings]
-    );
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
+        c.name,
+        c.owner,
+        c.key,
+        c.tags,
+        c.settings,
+    ]);
     return { id, ...c };
 }
 
 async function seedClassUser(classId, studentId, overrides = {}) {
     const defaults = { permissions: null, digiPogs: 0, role: "student" };
     const u = { ...defaults, ...overrides };
-    await mockDatabase.dbRun(
-        "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-        [classId, studentId, u.permissions, u.digiPogs, u.role]
-    );
+    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+        classId,
+        studentId,
+        u.permissions,
+        u.digiPogs,
+        u.role,
+    ]);
 }
 
 async function seedLink(classId, name, url) {

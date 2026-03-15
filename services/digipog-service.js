@@ -21,7 +21,10 @@ function cleanupOldAttempts() {
     }
 }
 
-setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+if (typeof cleanupInterval.unref === "function") {
+    cleanupInterval.unref();
+}
 
 function checkRateLimit(accountId) {
     const now = Date.now();

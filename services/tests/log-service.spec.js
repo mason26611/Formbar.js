@@ -36,9 +36,7 @@ describe("getAllLogs()", () => {
 
     it("excludes empty .log files", async () => {
         fs.promises.readdir.mockResolvedValue(["app.log", "empty.log"]);
-        fs.promises.stat
-            .mockResolvedValueOnce({ size: 200 })
-            .mockResolvedValueOnce({ size: 0 });
+        fs.promises.stat.mockResolvedValueOnce({ size: 200 }).mockResolvedValueOnce({ size: 0 });
 
         const result = await getAllLogs();
 

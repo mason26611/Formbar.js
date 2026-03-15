@@ -73,11 +73,7 @@ const VALID_PASSWORD = "Pass1234!";
 const VALID_DISPLAY = "TestUser";
 
 async function seedUser(overrides = {}) {
-    return register(
-        overrides.email ?? VALID_EMAIL,
-        overrides.password ?? VALID_PASSWORD,
-        overrides.displayName ?? VALID_DISPLAY
-    );
+    return register(overrides.email ?? VALID_EMAIL, overrides.password ?? VALID_PASSWORD, overrides.displayName ?? VALID_DISPLAY);
 }
 
 describe("sha256()", () => {
@@ -368,10 +364,12 @@ describe("revokeOAuthToken()", () => {
         const crypto = require("crypto");
         const fakeToken = crypto.randomBytes(32).toString("hex");
         const tokenHash = sha256(fakeToken);
-        await mockDatabase.dbRun(
-            "INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)",
-            [user.id, tokenHash, Math.floor(Date.now() / 1000) + 3600, "oauth"]
-        );
+        await mockDatabase.dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
+            user.id,
+            tokenHash,
+            Math.floor(Date.now() / 1000) + 3600,
+            "oauth",
+        ]);
 
         const before = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens WHERE token_type = 'oauth'");
         expect(before).toHaveLength(1);
@@ -391,10 +389,11 @@ describe("revokeOAuthToken()", () => {
 describe("cleanupExpiredAuthorizationCodes()", () => {
     it("deletes expired authorization codes", async () => {
         const pastTimestamp = Math.floor(Date.now() / 1000) - 3600;
-        await mockDatabase.dbRun(
-            "INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)",
-            ["expired-hash", pastTimestamp, pastTimestamp]
-        );
+        await mockDatabase.dbRun("INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)", [
+            "expired-hash",
+            pastTimestamp,
+            pastTimestamp,
+        ]);
 
         const before = await mockDatabase.dbGetAll("SELECT * FROM used_authorization_codes");
         expect(before).toHaveLength(1);
@@ -407,10 +406,11 @@ describe("cleanupExpiredAuthorizationCodes()", () => {
 
     it("keeps non-expired authorization codes", async () => {
         const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
-        await mockDatabase.dbRun(
-            "INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)",
-            ["valid-hash", Math.floor(Date.now() / 1000), futureTimestamp]
-        );
+        await mockDatabase.dbRun("INSERT INTO used_authorization_codes (code_hash, used_at, expires_at) VALUES (?, ?, ?)", [
+            "valid-hash",
+            Math.floor(Date.now() / 1000),
+            futureTimestamp,
+        ]);
 
         await cleanupExpiredAuthorizationCodes();
 
