@@ -115,7 +115,7 @@ function getClassRoleName(classUser) {
 }
 
 /**
- * Returns all possible scope strings (for Manager bypass).
+ * Returns all possible global scope strings (for Manager bypass).
  * @returns {string[]}
  */
 function getAllScopes() {
@@ -130,7 +130,7 @@ function getAllScopes() {
             }
         }
     }
-    collect(SCOPES);
+    collect(SCOPES.GLOBAL);
     return scopes;
 }
 

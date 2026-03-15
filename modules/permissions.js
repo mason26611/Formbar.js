@@ -121,9 +121,7 @@ const GLOBAL_SOCKET_PERMISSIONS = {
     joinClass: GUEST_PERMISSIONS,
     joinRoom: GUEST_PERMISSIONS,
     getActiveClass: GUEST_PERMISSIONS,
-    refreshPin: STUDENT_PERMISSIONS,
     transferDigipogs: STUDENT_PERMISSIONS,
-    transferResponse: STUDENT_PERMISSIONS,
     awardDigipogs: TEACHER_PERMISSIONS,
     awardDigipogsResponse: TEACHER_PERMISSIONS,
 };
@@ -192,9 +190,7 @@ const SOCKET_EVENT_SCOPE_MAP = {
     joinClass: null,
     joinRoom: null,
     getActiveClass: null,
-    refreshPin: null,
     transferDigipogs: null,
-    transferResponse: null,
     awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
     awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,
 

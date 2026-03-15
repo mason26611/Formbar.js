@@ -1,7 +1,7 @@
 const { dbGet } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
-const { hasScope } = require("@middleware/permission-check");
+const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
@@ -60,56 +60,61 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id/classes", isAuthenticated, hasScope(SCOPES.GLOBAL.CLASS.CREATE), async (req, res) => {
-        const userId = req.params.id;
-        req.infoEvent("user.classes.view.attempt", "Attempting to view user classes", { targetUserId: userId });
-        const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
-        if (!user) {
-            throw new NotFoundError("User not found");
-        }
+    router.get(
+        "/user/:id/classes",
+        isAuthenticated,
+        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "Not authorized to view this user's classes."),
+        async (req, res) => {
+            const userId = req.params.id;
+            req.infoEvent("user.classes.view.attempt", "Attempting to view user classes", { targetUserId: userId });
+            const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
+            if (!user) {
+                throw new NotFoundError("User not found");
+            }
 
-        // Get owned classes
-        const ownedClasses = await getUserOwnedClasses(user.email, req.user);
+            // Get owned classes
+            const ownedClasses = await getUserOwnedClasses(user.email, req.user);
 
-        // Get joined classes (with permissions != 0)
-        let joinedClasses = await getUserJoinedClasses(userId);
-        joinedClasses = joinedClasses.filter((classroom) => classroom.permissions !== 0);
+            // Get joined classes (with permissions != 0)
+            let joinedClasses = await getUserJoinedClasses(userId);
+            joinedClasses = joinedClasses.filter((classroom) => classroom.permissions !== 0);
 
-        // Create a map to track classes and combine data
-        const classesMap = new Map();
+            // Create a map to track classes and combine data
+            const classesMap = new Map();
 
-        // Add owned classes first (these are definitely owned)
-        for (const ownedClass of ownedClasses) {
-            classesMap.set(ownedClass.id, {
-                id: ownedClass.id,
-                name: ownedClass.name,
-                key: ownedClass.key,
-                owner: ownedClass.owner,
-                isOwner: true,
-                permissions: 5, // Owner permissions
-                tags: ownedClass.tags,
-            });
-        }
-
-        // Add joined classes (mark as not owned unless already in map as owned)
-        for (const joinedClass of joinedClasses) {
-            if (!classesMap.has(joinedClass.id)) {
-                classesMap.set(joinedClass.id, {
-                    id: joinedClass.id,
-                    name: joinedClass.name,
-                    isOwner: false,
-                    permissions: joinedClass.permissions,
+            // Add owned classes first (these are definitely owned)
+            for (const ownedClass of ownedClasses) {
+                classesMap.set(ownedClass.id, {
+                    id: ownedClass.id,
+                    name: ownedClass.name,
+                    key: ownedClass.key,
+                    owner: ownedClass.owner,
+                    isOwner: true,
+                    permissions: 5, // Owner permissions
+                    tags: ownedClass.tags,
                 });
             }
+
+            // Add joined classes (mark as not owned unless already in map as owned)
+            for (const joinedClass of joinedClasses) {
+                if (!classesMap.has(joinedClass.id)) {
+                    classesMap.set(joinedClass.id, {
+                        id: joinedClass.id,
+                        name: joinedClass.name,
+                        isOwner: false,
+                        permissions: joinedClass.permissions,
+                    });
+                }
+            }
+
+            // Convert map to array
+            const allClasses = Array.from(classesMap.values());
+
+            req.infoEvent("user.classes.view.success", "User classes returned", { targetUserId: userId, classCount: allClasses.length });
+            res.status(200).json({
+                success: true,
+                data: allClasses,
+            });
         }
-
-        // Convert map to array
-        const allClasses = Array.from(classesMap.values());
-
-        req.infoEvent("user.classes.view.success", "User classes returned", { targetUserId: userId, classCount: allClasses.length });
-        res.status(200).json({
-            success: true,
-            data: allClasses,
-        });
-    });
+    );
 };

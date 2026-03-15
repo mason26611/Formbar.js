@@ -66,7 +66,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // List IPs
-    router.get("/ip/:type", isAuthenticated, isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
+    router.get("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const ipMode = req.params.type;
         req.infoEvent("ip.list.view.attempt", "Attempting to view IP access list", { listType: ipMode });
         if (ipMode !== "whitelist" && ipMode !== "blacklist") {

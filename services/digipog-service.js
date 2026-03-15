@@ -142,7 +142,8 @@ async function isPoolOwnedByUser(poolId, userId) {
 
 /**
  * Middleware-compatible ownership check for pools.
- * Returns a function (req) => Promise<boolean> suitable for isOwnerOrHasScope middleware.
+ * @param {Object} req - Express request object
+ * @returns {Promise<boolean>} Whether the requesting user owns the pool
  */
 function poolOwnerCheck(req) {
     return isUserOwner(req.user.id, Number(req.params.id));

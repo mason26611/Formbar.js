@@ -181,7 +181,6 @@ async function getStudentsInClass(classId) {
         const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
         student.classPermissions = classUserRow.permissions;
-        student.classRole = classUserRow.role || null;
         students[email] = student;
     }
 
