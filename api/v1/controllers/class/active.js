@@ -1,8 +1,6 @@
-const { httpPermCheck } = require("@middleware/permission-check");
+const { isClassMember } = require("@middleware/permission-check");
 const { isClassActive } = require("@services/class-service");
-const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
-const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     /**
@@ -14,15 +12,7 @@ module.exports = (router) => {
      *       - Class
      *     description: |
      *       Returns whether a class session is currently active.
-     *
-     *       **Required Permission:** Must be a member of the class (Class-specific `manageClass` permission for verification)
-     *
-     *       **Permission Levels:**
-     *       - 1: Guest
-     *       - 2: Student
-     *       - 3: Moderator
-     *       - 4: Teacher
-     *       - 5: Manager
+     *       Any authenticated user who is a member of the classroom can check.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -51,19 +41,15 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      *       403:
-     *         description: Unauthorized - not a member of this class
+     *         description: Not a member of this class
      *         content:
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/class/:id/active", isAuthenticated, httpPermCheck("isClassActive"), async (req, res) => {
+    router.get("/class/:id/active", isAuthenticated, isClassMember(), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.active.view.attempt", "Attempting to view class active status", { classId });
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to view the status of this class.");
-        }
 
         const isActive = isClassActive(classId);
         req.infoEvent("class.active.view.success", "Class active status returned", { classId, isActive });

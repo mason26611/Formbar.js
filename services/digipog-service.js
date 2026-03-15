@@ -21,7 +21,10 @@ function cleanupOldAttempts() {
     }
 }
 
-setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+if (typeof cleanupInterval.unref === "function") {
+    cleanupInterval.unref();
+}
 
 function checkRateLimit(accountId) {
     const now = Date.now();
@@ -89,9 +92,10 @@ function recordAttempt(accountId, success) {
 
 // Pool helpers
 
-async function createPool(poolData) {
-    const { name, description } = poolData;
-    return await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, 0)", [name, description]);
+async function createPool({ name, description = "", ownerId }) {
+    const poolId = await dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, description, 0]);
+    await addUserToPool(poolId, ownerId, 1);
+    return poolId;
 }
 
 async function deletePool(poolId) {
@@ -99,12 +103,12 @@ async function deletePool(poolId) {
     await dbRun("DELETE FROM digipog_pool_users WHERE pool_id = ?", [poolId]);
 }
 
-async function getPoolById(poolId) {
-    return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId]);
-}
-
 async function getPoolsForUser(userId) {
     return dbGetAll("SELECT pool_id, owner FROM digipog_pool_users WHERE user_id = ?", [userId]);
+}
+
+async function getPoolById(poolId) {
+    return dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolId]);
 }
 
 async function getPoolsForUserPaginated(userId, limit = 20, offset = 0) {
@@ -139,12 +143,17 @@ async function isPoolOwnedByUser(poolId, userId) {
     return isUserOwner(userId, poolId);
 }
 
-async function addUserToPool(poolId, userId, ownerFlag = 0) {
-    return dbRun(
-        "INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)",
+/**
+ * Middleware-compatible ownership check for pools.
+ * @param {Object} req - Express request object
+ * @returns {Promise<boolean>} Whether the requesting user owns the pool
+ */
+function poolOwnerCheck(req) {
+    return isUserOwner(req.user.id, Number(req.params.id));
+}
 
-        [poolId, userId, ownerFlag ? 1 : 0]
-    );
+async function addUserToPool(poolId, userId, ownerFlag = 0) {
+    return dbRun("INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, userId, ownerFlag ? 1 : 0]);
 }
 
 async function removeUserFromPool(poolId, userId) {
@@ -720,6 +729,7 @@ module.exports = {
     isUserInPool,
     isUserOwner,
     isPoolOwnedByUser,
+    poolOwnerCheck,
     addUserToPool,
     removeUserFromPool,
     setUserOwnerFlag,

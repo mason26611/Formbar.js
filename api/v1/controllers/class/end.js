@@ -1,7 +1,7 @@
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { endClass } = require("@services/class-service");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 
 module.exports = (router) => {
@@ -53,7 +53,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/end", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
+    router.post("/class/:id/end", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.END), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.end.attempt", "Ending class session", { classId });
 

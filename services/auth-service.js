@@ -3,6 +3,8 @@ const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
 const { MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { sha256 } = require("@modules/crypto");
+const { resolveUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -11,16 +13,6 @@ const ConflictError = require("@errors/conflict-error");
 
 const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()\-_=+{}\[\]<>,.:;'"~?\/|\\]{5,20}$/;
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
-
-/**
- * Generates a SHA-256 hash of the given token.
- * This is used to store tokens securely without storing the actual token value.
- * @param {string} token - The token to hash
- * @returns {string} The SHA-256 hash in hex format
- */
-function hashToken(token) {
-    return crypto.createHash("sha256").update(token).digest("hex");
-}
 
 /**
  * Registers a new user with email and password
@@ -87,7 +79,7 @@ async function register(email, password, displayName) {
     // Generate tokens
     const tokens = generateAuthTokens(userData);
     const decodedRefreshToken = jwt.decode(tokens.refreshToken);
-    const tokenHash = hashToken(tokens.refreshToken);
+    const tokenHash = sha256(tokens.refreshToken);
     await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
         userData.id,
         tokenHash,
@@ -127,7 +119,7 @@ async function login(email, password) {
     if (passwordMatches) {
         const tokens = generateAuthTokens(userData);
         const decodedRefreshToken = jwt.decode(tokens.refreshToken);
-        const tokenHash = hashToken(tokens.refreshToken);
+        const tokenHash = sha256(tokens.refreshToken);
 
         // Each refresh token includes a random `jti` so tokens generated in the
         // same second will have different hashes and won't collide.
@@ -163,7 +155,7 @@ async function refreshLogin(refreshToken) {
         return invalidCredentials();
     }
 
-    const tokenHash = hashToken(refreshToken);
+    const tokenHash = sha256(refreshToken);
     const dbRefreshToken = await dbGet("SELECT * FROM refresh_tokens WHERE token_hash = ? AND token_type = 'auth'", [tokenHash]);
     if (!dbRefreshToken) {
         return invalidCredentials();
@@ -180,7 +172,7 @@ async function refreshLogin(refreshToken) {
 
     // Delete the old refresh token and insert the new one to avoid UNIQUE constraint issues
     // This handles cases where a user might have multiple refresh tokens in the database
-    const newTokenHash = hashToken(authTokens.refreshToken);
+    const newTokenHash = sha256(authTokens.refreshToken);
     await dbRun("DELETE FROM refresh_tokens WHERE token_hash = ?", [tokenHash]);
     await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
         dbRefreshToken.user_id,
@@ -321,7 +313,7 @@ async function googleOAuth(email, displayName) {
     const decodedRefreshToken = jwt.decode(tokens.refreshToken);
 
     // Store refresh token (replace if exists for this user's auth tokens only)
-    const tokenHash = hashToken(tokens.refreshToken);
+    const tokenHash = sha256(tokens.refreshToken);
     await dbRun("DELETE FROM refresh_tokens WHERE user_id = ? AND token_type = 'auth'", [userData.id]);
     await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
         userData.id,
@@ -385,7 +377,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Check if the authorization code has already been used (single-use per RFC 6749 Section 10.5)
-    const codeHash = hashToken(code);
+    const codeHash = sha256(code);
     const usedCode = await dbGet("SELECT * FROM used_authorization_codes WHERE code_hash = ?", [codeHash]);
     if (usedCode) {
         throw new AppError("Authorization code has already been used.", { statusCode: 400 });
@@ -407,7 +399,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]);
+    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [authorizationCodeData.sub]);
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -423,7 +415,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     const decodedRefreshToken = jwt.decode(refreshToken);
 
     // Persist the OAuth refresh token to the database (store hash, not cleartext)
-    const refreshTokenHash = hashToken(refreshToken);
+    const refreshTokenHash = sha256(refreshToken);
     await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
         authorizationCodeData.sub,
         refreshTokenHash,
@@ -436,6 +428,9 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: refreshToken,
+        permissions: user.permissions,
+        role: getUserRoleName(user),
+        scopes: resolveUserScopes(user),
     };
 }
 
@@ -455,14 +450,14 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Verify the refresh token exists in the database as an OAuth token (compare hashes)
-    const tokenHash = hashToken(refresh_token);
+    const tokenHash = sha256(refresh_token);
     const dbRefreshToken = await dbGet("SELECT * FROM refresh_tokens WHERE token_hash = ? AND token_type = 'oauth'", [tokenHash]);
     if (!dbRefreshToken) {
         throw new AppError("Refresh token not found or has been revoked.", { statusCode: 401 });
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, display_name AS displayName FROM users WHERE id = ?", [refreshTokenData.id]);
+    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -478,7 +473,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     const decodedRefreshToken = jwt.decode(newRefreshToken);
 
     // Rotate the refresh token: delete old, insert new (store hash, not cleartext)
-    const newTokenHash = hashToken(newRefreshToken);
+    const newTokenHash = sha256(newRefreshToken);
     await dbRun("DELETE FROM refresh_tokens WHERE token_hash = ?", [tokenHash]);
     await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
         refreshTokenData.id,
@@ -492,6 +487,9 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: newRefreshToken,
+        permissions: user.permissions,
+        role: getUserRoleName(user),
+        scopes: resolveUserScopes(user),
     };
 }
 
@@ -505,7 +503,7 @@ async function revokeOAuthToken(token) {
     requireInternalParam(token, "token");
 
     // Delete the token from the database (only OAuth tokens, compare by hash)
-    const tokenHash = hashToken(token);
+    const tokenHash = sha256(token);
     await dbRun("DELETE FROM refresh_tokens WHERE token_hash = ? AND token_type = 'oauth'", [tokenHash]);
     return true;
 }
@@ -532,6 +530,5 @@ module.exports = {
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
-    hashToken,
     generateLegacyOAuthToken,
 };

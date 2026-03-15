@@ -1,0 +1,240 @@
+-- Test database schema - represents the fully-migrated current state of all tables.
+-- Used exclusively by the test suite via an in-memory SQLite database.
+
+-- Users table (final state: includes pin column, no username column)
+CREATE TABLE IF NOT EXISTS "users" (
+    "id"          INTEGER NOT NULL UNIQUE,
+    "email"       TEXT    NOT NULL UNIQUE,
+    "password"    TEXT,
+    "permissions" INTEGER,
+    "API"         TEXT    NOT NULL UNIQUE,
+    "secret"      TEXT    NOT NULL UNIQUE,
+    "tags"        TEXT,
+    "digipogs"    INTEGER NOT NULL DEFAULT 0,
+    "pin"         TEXT    DEFAULT NULL,
+    "displayName" TEXT,
+    "verified"    INTEGER NOT NULL DEFAULT 0,
+    "role"        TEXT    DEFAULT NULL,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);
+
+-- Refresh tokens (final state: uses token_hash, has token_type)
+CREATE TABLE IF NOT EXISTS "refresh_tokens" (
+    "user_id"       INTEGER NOT NULL,
+    "token_hash"    TEXT    NOT NULL UNIQUE,
+    "exp"           INTEGER NOT NULL,
+    "token_type"    TEXT    NOT NULL DEFAULT 'auth'
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_type ON refresh_tokens (token_type);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_type ON refresh_tokens (user_id, token_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_token_hash_unique ON refresh_tokens (token_hash);
+
+-- Classroom (final state: no permissions column, settings as JSON text)
+CREATE TABLE IF NOT EXISTS "classroom" (
+    "id"       INTEGER NOT NULL UNIQUE,
+    "name"     TEXT    NOT NULL,
+    "owner"    INTEGER NOT NULL,
+    "key"      INTEGER NOT NULL,
+    "tags"     TEXT,
+    "settings" TEXT,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Class permissions (added in migration 05)
+CREATE TABLE IF NOT EXISTS "class_permissions" (
+    "classId"        INTEGER NOT NULL UNIQUE,
+    "manageClass"    INTEGER NOT NULL DEFAULT 4,
+    "manageStudents" INTEGER NOT NULL DEFAULT 4,
+    "controlPoll"    INTEGER NOT NULL DEFAULT 3,
+    "votePoll"       INTEGER NOT NULL DEFAULT 2,
+    "seePoll"        INTEGER NOT NULL DEFAULT 1,
+    "breakHelp"      INTEGER NOT NULL DEFAULT 3,
+    "auxiliary"      INTEGER NOT NULL DEFAULT 3,
+    "links"          INTEGER NOT NULL DEFAULT 3,
+    "userDefaults"   INTEGER NOT NULL DEFAULT 1
+);
+
+-- Class users
+CREATE TABLE IF NOT EXISTS "classusers" (
+    "classId"     INTEGER NOT NULL,
+    "studentId"   INTEGER NOT NULL,
+    "permissions" INTEGER,
+    "digiPogs"    INTEGER,
+    "role"        TEXT    DEFAULT NULL
+);
+
+-- Named roles
+CREATE TABLE IF NOT EXISTS "roles" (
+    "name"          TEXT NOT NULL UNIQUE,
+    "global_scopes" TEXT NOT NULL DEFAULT '[]',
+    "class_scopes"  TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY ("name")
+);
+
+-- User-to-role mapping
+CREATE TABLE IF NOT EXISTS "user_roles" (
+    "user_id" INTEGER NOT NULL,
+    "role"    TEXT    NOT NULL,
+    PRIMARY KEY ("user_id"),
+    FOREIGN KEY ("role") REFERENCES "roles" ("name")
+);
+
+-- Custom polls (final state: includes allowVoteChanges and allowMultipleResponses)
+CREATE TABLE IF NOT EXISTS "custom_polls" (
+    "id"                     INTEGER NOT NULL UNIQUE,
+    "owner"                  TEXT,
+    "name"                   TEXT,
+    "prompt"                 TEXT,
+    "answers"                TEXT    NOT NULL,
+    "textRes"                INTEGER NOT NULL DEFAULT 0 CHECK ("textRes" IN (0, 1)),
+    "blind"                  INTEGER NOT NULL DEFAULT 0 CHECK ("blind" IN (0, 1)),
+    "allowVoteChanges"       INTEGER NOT NULL DEFAULT 1 CHECK ("allowVoteChanges" IN (0, 1)),
+    "allowMultipleResponses" INTEGER NOT NULL DEFAULT 0 CHECK ("allowMultipleResponses" IN (0, 1)),
+    "weight"                 INTEGER NOT NULL DEFAULT 1,
+    "public"                 INTEGER NOT NULL DEFAULT 0 CHECK ("public" IN (0, 1)),
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Default poll types
+INSERT INTO "custom_polls" ("id","owner","name","prompt","answers","textRes","blind","allowVoteChanges","allowMultipleResponses","weight","public")
+VALUES (1, NULL, 'TUTD', 'Thumbs?', '[{"answer":"Up","weight":0.9,"color":"#00FF00"},{"answer":"Wiggle","weight":1,"color":"#00FFFF"},{"answer":"Down","weight":1.1,"color":"#FF0000"}]', 0, 0, 1, 0, 1, 1);
+INSERT INTO "custom_polls" ("id","owner","name","prompt","answers","textRes","blind","allowVoteChanges","allowMultipleResponses","weight","public")
+VALUES (2, NULL, 'True/False', 'True or False', '[{"answer":"True","weight":1,"color":"#00FF00"},{"answer":"False","weight":1,"color":"#FF0000"}]', 0, 0, 1, 0, 1, 1);
+INSERT INTO "custom_polls" ("id","owner","name","prompt","answers","textRes","blind","allowVoteChanges","allowMultipleResponses","weight","public")
+VALUES (3, NULL, 'Done/Ready?', 'Done/Ready?', '[{"answer":"Yes","weight":1,"color":"#00FF00"}]', 0, 0, 1, 0, 1, 1);
+INSERT INTO "custom_polls" ("id","owner","name","prompt","answers","textRes","blind","allowVoteChanges","allowMultipleResponses","weight","public")
+VALUES (4, NULL, 'Multiple Choice', 'Multiple Choice', '[{"answer":"A","weight":1,"color":"#FF0000"},{"answer":"B","weight":1,"color":"#0000FF"},{"answer":"C","weight":1,"color":"#FFFF00"},{"answer":"D","weight":1,"color":"#00FF00"}]', 0, 0, 1, 0, 1, 1);
+
+-- Poll answers
+CREATE TABLE IF NOT EXISTS "poll_answers" (
+    "pollId"         INTEGER NOT NULL,
+    "userId"         INTEGER NOT NULL,
+    "buttonResponse" TEXT,
+    "textResponse"   TEXT
+);
+
+-- Poll history
+CREATE TABLE IF NOT EXISTS "poll_history" (
+    "id"    INTEGER NOT NULL UNIQUE,
+    "class" INTEGER NOT NULL,
+    "data"  TEXT    NOT NULL,
+    "date"  TEXT    NOT NULL,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Shared polls
+CREATE TABLE IF NOT EXISTS "shared_polls" (
+    "pollId" INTEGER NOT NULL,
+    "userId" INTEGER NOT NULL
+);
+
+-- Class polls
+CREATE TABLE IF NOT EXISTS "class_polls" (
+    "pollId"  INTEGER NOT NULL,
+    "classId" INTEGER NOT NULL
+);
+
+-- Temp user creation data
+CREATE TABLE IF NOT EXISTS "temp_user_creation_data" (
+    "token"  TEXT NOT NULL UNIQUE,
+    "secret" TEXT UNIQUE
+);
+
+-- Used authorization codes (migration 13)
+CREATE TABLE IF NOT EXISTS "used_authorization_codes" (
+    "code_hash"  TEXT    NOT NULL UNIQUE,
+    "used_at"    INTEGER NOT NULL,
+    "expires_at" INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_used_auth_codes_expires ON used_authorization_codes (expires_at);
+
+-- IP access list (migration 09)
+CREATE TABLE IF NOT EXISTS "ip_access_list" (
+    "id"           INTEGER NOT NULL UNIQUE,
+    "ip"           TEXT    NOT NULL,
+    "is_whitelist" INTEGER NOT NULL CHECK ("is_whitelist" IN (0, 1)),
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Links (migration 02)
+CREATE TABLE IF NOT EXISTS "links" (
+    "id"      INTEGER NOT NULL UNIQUE,
+    "name"    TEXT    NOT NULL,
+    "url"     TEXT    NOT NULL,
+    "classId" INTEGER NOT NULL,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Digipog pools (migration 03)
+CREATE TABLE IF NOT EXISTS "digipog_pools" (
+    "id"          INTEGER NOT NULL UNIQUE,
+    "name"        TEXT    NOT NULL,
+    "description" TEXT    NOT NULL DEFAULT 'None',
+    "amount"      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Digipog pool users (final state after migration 08_restructure_digipog_pool_users)
+CREATE TABLE IF NOT EXISTS "digipog_pool_users" (
+    "pool_id" INTEGER NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "owner"   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("pool_id", "user_id")
+);
+
+-- Transactions (final state after migration 14_restructure_transactions)
+CREATE TABLE IF NOT EXISTS "transactions" (
+    "from_id"   INTEGER NOT NULL,
+    "to_id"     INTEGER NOT NULL,
+    "from_type" TEXT    NOT NULL,
+    "to_type"   TEXT    NOT NULL,
+    "amount"    INTEGER NOT NULL,
+    "reason"    TEXT    NOT NULL DEFAULT 'None',
+    "date"      TEXT    NOT NULL
+);
+
+-- Notifications (migration 21)
+CREATE TABLE IF NOT EXISTS "notifications" (
+    "id"         INTEGER NOT NULL,
+    "user_id"    INTEGER NOT NULL,
+    "type"       TEXT    NOT NULL,
+    "data"       TEXT,
+    "is_read"    INTEGER NOT NULL DEFAULT 0 CHECK ("is_read" IN (0, 1)),
+    "created_at" TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+
+-- Inventory (migration 18)
+CREATE TABLE IF NOT EXISTS "inventory" (
+    "id"       INTEGER NOT NULL,
+    "user_id"  INTEGER NOT NULL,
+    "item_id"  INTEGER NOT NULL,
+    "quantity" INTEGER NOT NULL DEFAULT 1 CHECK ("quantity" > 0),
+    UNIQUE ("user_id", "item_id"),
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Item registry (migration 19)
+CREATE TABLE IF NOT EXISTS "item_registry" (
+    "id"          INTEGER NOT NULL,
+    "name"        TEXT    NOT NULL UNIQUE,
+    "description" TEXT,
+    "stack_size"  INTEGER NOT NULL DEFAULT 1 CHECK ("stack_size" >= 0),
+    "image_url"   TEXT,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);
+
+-- Trades (migration 20)
+CREATE TABLE IF NOT EXISTS "trades" (
+    "id"              INTEGER NOT NULL,
+    "from_user"       INTEGER NOT NULL,
+    "to_user"         INTEGER NOT NULL,
+    "offered_items"   TEXT    NOT NULL,
+    "requested_items" TEXT    NOT NULL,
+    "status"          TEXT    NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'accepted', 'rejected')),
+    "created_at"      TEXT    NOT NULL,
+    "updated_at"      TEXT    NOT NULL,
+    PRIMARY KEY ("id" AUTOINCREMENT)
+);

@@ -15,14 +15,28 @@ function getClassService() {
     return classService;
 }
 
-async function isUserInRoom(userId, classId) {
-    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
-    return !!result;
+async function deleteRoom(roomId) {
+    requireInternalParam(roomId, "roomId");
+
+    await dbRun("BEGIN TRANSACTION");
+    try {
+        await dbRun("DELETE FROM classroom WHERE id=?", [roomId]);
+        await dbRun("DELETE FROM classusers WHERE classId=?", [roomId]);
+        await dbRun("COMMIT");
+    } catch (err) {
+        try {
+            await dbRun("ROLLBACK");
+        } catch (rollbackErr) {
+            // Intentionally ignore rollback errors to avoid masking the original error
+        }
+        throw err;
+    }
 }
 
-function getLinksInRoom(classId) {
-    requireInternalParam(classId, "classId");
-    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+function getRoomById(roomId) {
+    requireInternalParam(roomId, "roomId");
+
+    return dbGet("SELECT * FROM classroom WHERE id=?", [roomId]);
 }
 
 /**
@@ -130,10 +144,38 @@ async function leaveRoom(userData) {
     await emitToUser(email, "reload");
 }
 
+async function isUserInRoom(userId, classId) {
+    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
+    return !!result;
+}
+
+function getLinksInRoom(classId) {
+    requireInternalParam(classId, "classId");
+    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+}
+
+/**
+ * Middleware-compatible ownership check for rooms.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Also caches the room on req._room for use by the handler.
+ */
+async function roomOwnerCheck(req) {
+    const room = await getRoomById(Number(req.params.id));
+    if (!room) {
+        const NotFoundError = require("@errors/not-found-error");
+        throw new NotFoundError("Room not found");
+    }
+    req._room = room;
+    return room.owner === req.user.id;
+}
+
 module.exports = {
-    isUserInRoom,
-    getLinksInRoom,
+    deleteRoom,
+    getRoomById,
+    roomOwnerCheck,
     joinRoomByCode,
     joinRoom,
     leaveRoom,
+    isUserInRoom,
+    getLinksInRoom,
 };

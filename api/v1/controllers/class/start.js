@@ -1,7 +1,7 @@
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { startClass } = require("@services/class-service");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 
 module.exports = (router) => {
     /**
@@ -52,7 +52,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/start", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
+    router.post("/class/:id/start", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.START), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.start.attempt", "Starting class session", { classId });
 

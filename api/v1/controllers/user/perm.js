@@ -1,10 +1,10 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbRun } = require("@modules/database");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const ValidationError = require("@errors/validation-error");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
     /**
@@ -62,7 +62,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.patch("/user/:id/perm", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.patch("/user/:id/perm", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
         const id = Number(req.params.id);
         let { perm } = req.body || {};
 

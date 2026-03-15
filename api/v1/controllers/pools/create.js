@@ -1,5 +1,6 @@
-const { STUDENT_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
+const { userHasScope } = require("@modules/scope-resolver");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireBodyParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
@@ -83,7 +84,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/pools/create", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+    router.post("/pools/create", isAuthenticated, hasScope(SCOPES.GLOBAL.POOLS.MANAGE), async (req, res) => {
         const { name, description } = req.body;
 
         requireBodyParam(name, "name");
@@ -101,16 +102,13 @@ module.exports = (router) => {
         // If the user is a manager, they can create as many pools as they want
         const userPools = await digipogService.getPoolsForUser(req.user.id);
         const ownedPools = userPools.filter((pool) => pool.owner);
-        if (ownedPools.length >= 5 && req.user.permissions !== MANAGER_PERMISSIONS) {
+        if (ownedPools.length >= 5 && !userHasScope(req.user, SCOPES.GLOBAL.SYSTEM.ADMIN)) {
             throw new ValidationError("You can only own up to 5 pools.", { event: "pool.create.failed", reason: "max_pools" });
         }
 
         // Create the pool
-        const result = await digipogService.createPool({ name, description });
+        const result = await digipogService.createPool({ name, description, ownerId: req.user.id });
         const poolId = result.lastID || result;
-
-        // Add the user as the pool owner using the new structure
-        await digipogService.addUserToPool(poolId, req.user.id, 1);
 
         res.status(200).send({
             success: true,

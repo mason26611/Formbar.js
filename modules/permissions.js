@@ -6,17 +6,87 @@ const STUDENT_PERMISSIONS = 2;
 const GUEST_PERMISSIONS = 1;
 const BANNED_PERMISSIONS = 0;
 
-// Permission level needed to access each page along with if it's a class-related page or not
-const PAGE_PERMISSIONS = {
-    student: { permissions: GUEST_PERMISSIONS, classPage: true },
-    links: { permissions: GUEST_PERMISSIONS, classPage: true },
-    createclass: { permissions: TEACHER_PERMISSIONS, classPage: false },
-    selectclass: { permissions: GUEST_PERMISSIONS, classPage: false },
-    manager: { permissions: MANAGER_PERMISSIONS, classPage: false },
-    logs: { permissions: MANAGER_PERMISSIONS, classPage: false },
-    profile: { permissions: STUDENT_PERMISSIONS, classPage: false },
-    pools: { permissions: STUDENT_PERMISSIONS, classPage: false },
-    transactions: { permissions: STUDENT_PERMISSIONS, classPage: false },
+const SCOPES = {
+    GLOBAL: {
+        CLASS: {
+            CREATE: "global.class.create",
+            DELETE: "global.class.delete",
+        },
+        USERS: {
+            MANAGE: "global.users.manage",
+        },
+        DIGIPOGS: {
+            AWARD: "global.digipogs.award",
+            TRANSFER: "global.digipogs.transfer",
+        },
+        POOLS: {
+            MANAGE: "global.pools.manage",
+        },
+        SYSTEM: {
+            ADMIN: "global.system.admin",
+        },
+    },
+
+    CLASS: {
+        POLL: {
+            READ: "class.poll.read",
+            VOTE: "class.poll.vote",
+            CREATE: "class.poll.create",
+            END: "class.poll.end",
+            DELETE: "class.poll.delete",
+            SHARE: "class.poll.share",
+        },
+
+        STUDENTS: {
+            READ: "class.students.read",
+            KICK: "class.students.kick",
+            BAN: "class.students.ban",
+            PERM_CHANGE: "class.students.perm_change",
+        },
+
+        SESSION: {
+            START: "class.session.start",
+            END: "class.session.end",
+            RENAME: "class.session.rename",
+            SETTINGS: "class.session.settings",
+            REGENERATE_CODE: "class.session.regenerate_code",
+        },
+
+        BREAK: {
+            REQUEST: "class.break.request",
+            APPROVE: "class.break.approve",
+        },
+
+        HELP: {
+            REQUEST: "class.help.request",
+            APPROVE: "class.help.approve",
+        },
+
+        TIMER: {
+            CONTROL: "class.timer.control",
+        },
+
+        AUXILIARY: {
+            CONTROL: "class.auxiliary.control",
+        },
+
+        GAMES: {
+            ACCESS: "class.games.access",
+        },
+
+        TAGS: {
+            MANAGE: "class.tags.manage",
+        },
+
+        DIGIPOGS: {
+            AWARD: "class.digipogs.award",
+        },
+
+        LINKS: {
+            READ: "class.links.read",
+            MANAGE: "class.links.manage",
+        },
+    },
 };
 
 const CLASS_PERMISSIONS = {
@@ -52,9 +122,7 @@ const GLOBAL_SOCKET_PERMISSIONS = {
     joinClass: GUEST_PERMISSIONS,
     joinRoom: GUEST_PERMISSIONS,
     getActiveClass: GUEST_PERMISSIONS,
-    refreshPin: STUDENT_PERMISSIONS,
     transferDigipogs: STUDENT_PERMISSIONS,
-    transferResponse: STUDENT_PERMISSIONS,
     awardDigipogs: TEACHER_PERMISSIONS,
     awardDigipogsResponse: TEACHER_PERMISSIONS,
 };
@@ -65,7 +133,6 @@ const CLASS_SOCKET_PERMISSIONS = {
     pollResp: STUDENT_PERMISSIONS,
     requestBreak: STUDENT_PERMISSIONS,
     endBreak: STUDENT_PERMISSIONS,
-    vbTimer: GUEST_PERMISSIONS,
     leaveClass: GUEST_PERMISSIONS,
     leaveRoom: GUEST_PERMISSIONS,
     classUpdate: GUEST_PERMISSIONS,
@@ -111,8 +178,71 @@ const CLASS_SOCKET_PERMISSION_MAPPER = {
     awardDigipogs: "userDefaults",
 };
 
+// Maps socket event names to scope strings for the new permission system.
+// Global events use global.* scopes; class events use class.* scopes.
+const SOCKET_EVENT_SCOPE_MAP = {
+    // Global socket events
+    deleteClass: SCOPES.GLOBAL.CLASS.DELETE,
+    getOwnedClasses: SCOPES.GLOBAL.CLASS.CREATE,
+    logout: null, // No scope required
+    saveTags: SCOPES.CLASS.TAGS.MANAGE,
+    setTags: SCOPES.CLASS.TAGS.MANAGE,
+    joinClass: null,
+    joinRoom: null,
+    getActiveClass: null,
+    transferDigipogs: SCOPES.GLOBAL.DIGIPOGS.TRANSFER,
+    awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
+    awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,
+
+    // Class socket events
+    help: SCOPES.CLASS.HELP.REQUEST,
+    pollResp: SCOPES.CLASS.POLL.VOTE,
+    requestBreak: SCOPES.CLASS.BREAK.REQUEST,
+    endBreak: SCOPES.CLASS.BREAK.REQUEST,
+    leaveClass: null,
+    leaveRoom: null,
+    classUpdate: null,
+    setClassSetting: SCOPES.CLASS.SESSION.SETTINGS,
+    setClassPermissionSetting: SCOPES.GLOBAL.SYSTEM.ADMIN,
+    classPoll: SCOPES.CLASS.POLL.CREATE,
+    updatePoll: SCOPES.CLASS.POLL.CREATE,
+    timer: SCOPES.CLASS.TIMER.CONTROL,
+    timerOn: SCOPES.CLASS.TIMER.CONTROL,
+    getPreviousPolls: SCOPES.CLASS.POLL.READ,
+    updateExcludedRespondents: SCOPES.CLASS.STUDENTS.READ,
+
+    // Mapped class socket events (previously via CLASS_SOCKET_PERMISSION_MAPPER)
+    startPoll: SCOPES.CLASS.POLL.CREATE,
+    customPollUpdate: SCOPES.CLASS.POLL.CREATE,
+    savePoll: SCOPES.CLASS.POLL.CREATE,
+    deletePoll: SCOPES.CLASS.POLL.DELETE,
+    setPublicPoll: SCOPES.CLASS.POLL.SHARE,
+    sharePollToUser: SCOPES.CLASS.POLL.SHARE,
+    removeUserPollShare: SCOPES.CLASS.POLL.SHARE,
+    getPollShareIds: SCOPES.CLASS.POLL.SHARE,
+    sharePollToClass: SCOPES.CLASS.POLL.SHARE,
+    removeClassPollShare: SCOPES.CLASS.POLL.SHARE,
+    classPermChange: SCOPES.CLASS.STUDENTS.PERM_CHANGE,
+    classKickStudent: SCOPES.CLASS.STUDENTS.KICK,
+    classKickStudents: SCOPES.CLASS.STUDENTS.KICK,
+    classRemoveFromSession: SCOPES.CLASS.STUDENTS.KICK,
+    approveBreak: SCOPES.CLASS.BREAK.APPROVE,
+    deleteTicket: SCOPES.CLASS.BREAK.APPROVE,
+    startClass: SCOPES.CLASS.SESSION.START,
+    endClass: SCOPES.CLASS.SESSION.END,
+    isClassActive: SCOPES.CLASS.SESSION.SETTINGS,
+    regenerateClassCode: SCOPES.CLASS.SESSION.REGENERATE_CODE,
+    changeClassName: SCOPES.CLASS.SESSION.RENAME,
+    classBannedUsersUpdate: SCOPES.CLASS.STUDENTS.BAN,
+    classBanUser: SCOPES.CLASS.STUDENTS.BAN,
+    classUnbanUser: SCOPES.CLASS.STUDENTS.BAN,
+};
+
 module.exports = {
-    // Permissions
+    SCOPES,
+    SOCKET_EVENT_SCOPE_MAP,
+
+    // Permissions (legacy — kept for backward compatibility)
     MANAGER_PERMISSIONS,
     TEACHER_PERMISSIONS,
     MOD_PERMISSIONS,
@@ -120,12 +250,11 @@ module.exports = {
     GUEST_PERMISSIONS,
     BANNED_PERMISSIONS,
 
-    // Page permissions
-    PAGE_PERMISSIONS,
+    // Page permissions (legacy)
     CLASS_PERMISSIONS,
     DEFAULT_CLASS_PERMISSIONS,
 
-    // Socket permissions
+    // Socket permissions (legacy)
     GLOBAL_SOCKET_PERMISSIONS,
     CLASS_SOCKET_PERMISSIONS,
     CLASS_SOCKET_PERMISSION_MAPPER,
