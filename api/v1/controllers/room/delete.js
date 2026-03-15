@@ -1,9 +1,9 @@
 const { isAuthenticated } = require("@middleware/authentication");
+const { isOwnerOrHasScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
 const roomService = require("@services/room-service");
 const NotFoundError = require("@errors/not-found-error");
-const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     /**
@@ -50,29 +50,29 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/room/:id", isAuthenticated, async (req, res) => {
-        const id = Number(req.params.id);
+    router.delete(
+        "/room/:id",
+        isAuthenticated,
+        isOwnerOrHasScope(roomService.roomOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not have permission to delete this room."),
+        async (req, res) => {
+            const id = Number(req.params.id);
 
-        requireQueryParam(id, "id");
+            requireQueryParam(id, "id");
 
-        req.infoEvent("room.delete.attempt", "User attempting to delete room", { id });
+            req.infoEvent("room.delete.attempt", "User attempting to delete room", { id });
 
-        const room = await roomService.getRoomById(id);
-        if (!room) {
-            throw new NotFoundError("Room not found");
+            const room = req._room || (await roomService.getRoomById(id));
+            if (!room) {
+                throw new NotFoundError("Room not found");
+            }
+
+            await roomService.deleteRoom(room.id);
+
+            req.infoEvent("room.delete.success", "Room deleted successfully", { id });
+            res.status(200).json({
+                success: true,
+                data: {},
+            });
         }
-
-        // Check if the user has permissions to delete the room
-        if (room.owner !== req.user.id && req.user.permissions >= MANAGER_PERMISSIONS) {
-            throw new ForbiddenError("You do not have permission to delete this room.", { statusCode: 403 });
-        }
-
-        await roomService.deleteRoom(room.id);
-
-        req.infoEvent("room.delete.success", "Room deleted successfully", { id });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    });
+    );
 };

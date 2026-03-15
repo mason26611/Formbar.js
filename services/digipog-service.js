@@ -21,7 +21,10 @@ function cleanupOldAttempts() {
     }
 }
 
-setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+if (typeof cleanupInterval.unref === "function") {
+    cleanupInterval.unref();
+}
 
 function checkRateLimit(accountId) {
     const now = Date.now();
@@ -138,6 +141,15 @@ async function isUserOwner(userId, poolId) {
 
 async function isPoolOwnedByUser(poolId, userId) {
     return isUserOwner(userId, poolId);
+}
+
+/**
+ * Middleware-compatible ownership check for pools.
+ * @param {Object} req - Express request object
+ * @returns {Promise<boolean>} Whether the requesting user owns the pool
+ */
+function poolOwnerCheck(req) {
+    return isUserOwner(req.user.id, Number(req.params.id));
 }
 
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
@@ -717,6 +729,7 @@ module.exports = {
     isUserInPool,
     isUserOwner,
     isPoolOwnedByUser,
+    poolOwnerCheck,
     addUserToPool,
     removeUserFromPool,
     setUserOwnerFlag,

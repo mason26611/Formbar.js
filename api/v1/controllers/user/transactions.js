@@ -1,9 +1,8 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { getUserDataFromDb } = require("@services/user-service");
 const { getUserTransactionsPaginated } = require("@services/digipog-service");
-const { classStateStore } = require("@services/classroom-service");
-const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
@@ -114,46 +113,68 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.get("/user/:id/transactions", isAuthenticated, isVerified, async (req, res) => {
-        const userId = Number(req.params.id);
-        requireQueryParam(userId, "id");
+    router.get(
+        "/user/:id/transactions",
+        isAuthenticated,
+        isVerified,
+        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view these transactions."),
+        async (req, res) => {
+            const userId = Number(req.params.id);
+            requireQueryParam(userId, "id");
 
-        // Check if the user has permission to view these transactions (either their own or they are a manager)
-        if (req.user.id !== userId && classStateStore.getUser(req.user.email)?.permissions < MANAGER_PERMISSIONS) {
-            throw new ForbiddenError("You do not have permission to view these transactions.", {
-                event: "user.transactions.view.failed",
-                reason: "forbidden",
+            const userData = await getUserDataFromDb(userId);
+            if (!userData) {
+                throw new NotFoundError("User not found.", { event: "user.transactions.view.failed", reason: "user_not_in_database" });
+            }
+
+            req.infoEvent("user.transactions.view.attempt", "Attempting to view user transactions", { targetUserId: userId });
+
+            const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_TRANSACTION_LIMIT);
+            const offset = parseIntegerQueryParam(req.query.offset, 0);
+
+            if (!Number.isInteger(limit) || limit < 1 || limit > MAX_TRANSACTION_LIMIT) {
+                throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_TRANSACTION_LIMIT}.`);
+            }
+
+            if (!Number.isInteger(offset) || offset < 0) {
+                throw new ValidationError("Invalid offset. Expected a non-negative integer.");
+            }
+
+            const userDisplayName = userData.displayName || "Unknown User";
+            const { transactions, total } = await getUserTransactionsPaginated(userId, limit, offset);
+            const hasMore = offset + transactions.length < total;
+
+            if (!transactions || transactions.length === 0) {
+                req.infoEvent("user.transactions.empty", "No transactions found for user");
+                res.status(200).json({
+                    success: true,
+                    data: {
+                        transactions: [],
+                        displayName: userDisplayName,
+                        currentUserId: req.user.id,
+                        pagination: {
+                            total,
+                            limit,
+                            offset,
+                            hasMore,
+                        },
+                    },
+                });
+                return;
+            }
+
+            req.infoEvent("user.transactions.view.success", "User transactions returned", {
+                targetUserId: userId,
+                returnedCount: transactions.length,
+                totalCount: total,
+                limit,
+                offset,
             });
-        }
 
-        const userData = await getUserDataFromDb(userId);
-        if (!userData) {
-            throw new NotFoundError("User not found.", { event: "user.transactions.view.failed", reason: "user_not_in_database" });
-        }
-
-        req.infoEvent("user.transactions.view.attempt", "Attempting to view user transactions", { targetUserId: userId });
-
-        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_TRANSACTION_LIMIT);
-        const offset = parseIntegerQueryParam(req.query.offset, 0);
-
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_TRANSACTION_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_TRANSACTION_LIMIT}.`);
-        }
-
-        if (!Number.isInteger(offset) || offset < 0) {
-            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-        }
-
-        const userDisplayName = userData.displayName || "Unknown User";
-        const { transactions, total } = await getUserTransactionsPaginated(userId, limit, offset);
-        const hasMore = offset + transactions.length < total;
-
-        if (!transactions || transactions.length === 0) {
-            req.infoEvent("user.transactions.empty", "No transactions found for user");
             res.status(200).json({
                 success: true,
                 data: {
-                    transactions: [],
+                    transactions: transactions,
                     displayName: userDisplayName,
                     currentUserId: req.user.id,
                     pagination: {
@@ -164,30 +185,6 @@ module.exports = (router) => {
                     },
                 },
             });
-            return;
         }
-
-        req.infoEvent("user.transactions.view.success", "User transactions returned", {
-            targetUserId: userId,
-            returnedCount: transactions.length,
-            totalCount: total,
-            limit,
-            offset,
-        });
-
-        res.status(200).json({
-            success: true,
-            data: {
-                transactions: transactions,
-                displayName: userDisplayName,
-                currentUserId: req.user.id,
-                pagination: {
-                    total,
-                    limit,
-                    offset,
-                    hasMore,
-                },
-            },
-        });
-    });
+    );
 };

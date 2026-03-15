@@ -1,5 +1,5 @@
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { hasClassPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasClassScope } = require("@middleware/permission-check");
 const { dbRun } = require("@modules/database");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
@@ -63,7 +63,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/room/:id/links/add", isAuthenticated, hasClassPermission(TEACHER_PERMISSIONS), async (req, res) => {
+    router.post("/room/:id/links/add", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
         const classId = req.params.id;
         const { name, url } = req.body;
         req.infoEvent("room.links.add.attempt", "Attempting to add room link", { classId, linkName: name });

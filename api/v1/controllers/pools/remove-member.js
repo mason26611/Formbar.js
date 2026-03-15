@@ -1,5 +1,5 @@
-const { STUDENT_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope, isOwnerOrHasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireBodyParam, requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
@@ -79,55 +79,55 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/pools/:id/remove-member", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
-        const poolId = Number(req.params.id);
-        let { userId } = req.body || {};
+    router.post(
+        "/pools/:id/remove-member",
+        isAuthenticated,
+        hasScope(SCOPES.GLOBAL.POOLS.MANAGE),
+        isOwnerOrHasScope(digipogService.poolOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not own this pool."),
+        async (req, res) => {
+            const poolId = Number(req.params.id);
+            let { userId } = req.body || {};
 
-        requireQueryParam(poolId, "poolId");
-        requireBodyParam(userId, "userId");
-        userId = Number(userId);
+            requireQueryParam(poolId, "poolId");
+            requireBodyParam(userId, "userId");
+            userId = Number(userId);
 
-        req.infoEvent("pool.remove_member.attempt", "Attempting to remove a user from a pool", {
-            poolId,
-            userId,
-            actingUserId: req.user.id,
-        });
+            req.infoEvent("pool.remove_member.attempt", "Attempting to remove a user from a pool", {
+                poolId,
+                userId,
+                actingUserId: req.user.id,
+            });
 
-        // Check if the pool exists
-        const pool = await digipogService.getPoolById(poolId);
-        if (!pool) {
-            throw new ValidationError("Pool does not exist.", { event: "pool.remove_member.failed", reason: "pool_not_found" });
-        }
+            // Check if the pool exists
+            const pool = await digipogService.getPoolById(poolId);
+            if (!pool) {
+                throw new ValidationError("Pool does not exist.", { event: "pool.remove_member.failed", reason: "pool_not_found" });
+            }
 
-        // Check if the user owns this pool or is a manager
-        const isOwner = await digipogService.isUserOwner(req.user.id, poolId);
-        if (!isOwner && req.user.permissions >= MANAGER_PERMISSIONS) {
-            throw new ValidationError("You do not own this pool.", { event: "pool.remove_member.failed", reason: "not_owner" });
-        }
+            const result = await digipogService.removeMemberFromPool({
+                actingUserId: req.user.id,
+                poolId,
+                userId,
+            });
 
-        const result = await digipogService.removeMemberFromPool({
-            actingUserId: req.user.id,
-            poolId,
-            userId,
-        });
+            if (!result.success) {
+                throw new AppError(result.message, {
+                    statusCode: 400,
+                    event: "pool.remove_member.failed",
+                    reason: "remove_member_error",
+                });
+            }
 
-        if (!result.success) {
-            throw new AppError(result.message, {
-                statusCode: 400,
-                event: "pool.remove_member.failed",
-                reason: "remove_member_error",
+            req.infoEvent("pool.remove_member.success", "User removed from pool successfully", {
+                poolId,
+                userId,
+                actingUserId: req.user.id,
+            });
+
+            res.status(200).json({
+                success: true,
+                data: result,
             });
         }
-
-        req.infoEvent("pool.remove_member.success", "User removed from pool successfully", {
-            poolId,
-            userId,
-            actingUserId: req.user.id,
-        });
-
-        res.status(200).json({
-            success: true,
-            data: result,
-        });
-    });
+    );
 };

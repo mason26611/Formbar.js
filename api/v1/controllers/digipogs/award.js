@@ -1,5 +1,5 @@
-const { hasClassPermission } = require("@middleware/permission-check");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { awardDigipogs } = require("@services/digipog-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
@@ -16,14 +16,7 @@ module.exports = (router) => {
      *     description: |
      *       Awards digipogs to a user.
      *
-     *       **Required Permission:** Class-specific `MANAGE_CLASS` permission (typically Teacher or Manager) OR global permission level >= 4 (Teacher or above)
-     *
-     *       **Permission Levels (global):**
-     *       - 1: Guest
-     *       - 2: Student
-     *       - 3: Moderator
-     *       - 4: Teacher
-     *       - 5: Manager
+     *       **Required Scope:** `class.digipogs.award` (granted to Teacher and Manager roles)
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -91,7 +84,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/digipogs/award", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
+    router.post("/digipogs/award", isAuthenticated, hasClassScope(SCOPES.CLASS.DIGIPOGS.AWARD), async (req, res) => {
         const { amount, to, userId, studentId } = req.body || {};
 
         if (amount === undefined || amount === null) {

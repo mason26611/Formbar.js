@@ -4,6 +4,7 @@ const { privateKey, publicKey } = require("@modules/config");
 const { MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
+const { resolveUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -398,7 +399,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]);
+    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [authorizationCodeData.sub]);
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -427,6 +428,9 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: refreshToken,
+        permissions: user.permissions,
+        role: getUserRoleName(user),
+        scopes: resolveUserScopes(user),
     };
 }
 
@@ -453,7 +457,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, display_name AS displayName FROM users WHERE id = ?", [refreshTokenData.id]);
+    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -483,6 +487,9 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: newRefreshToken,
+        permissions: user.permissions,
+        role: getUserRoleName(user),
+        scopes: resolveUserScopes(user),
     };
 }
 
