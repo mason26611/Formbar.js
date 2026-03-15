@@ -1,8 +1,3 @@
-/**
- * Unit tests for services/auth-service.js
- *
- * Uses an in-memory SQLite database so no real DB file is touched.
- */
 const { createTestDb } = require("@test-helpers/db");
 
 let mockDatabase;

@@ -1,12 +1,3 @@
-/**
- * Unit tests for services/inventory-service.js
- *
- * Uses an in-memory SQLite database so no real DB file is touched.
- *
- * Note: inventory-service.js previously imported NotFoundError from an
- * incorrect path (@modules/errors/NotFoundError). That has been corrected to
- * @errors/not-found-error.
- */
 const { createTestDb } = require("@test-helpers/db");
 
 let mockDatabase;

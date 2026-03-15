@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     "pin"         TEXT    DEFAULT NULL,
     "displayName" TEXT,
     "verified"    INTEGER NOT NULL DEFAULT 0,
+    "role"        TEXT    DEFAULT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);
@@ -59,7 +60,24 @@ CREATE TABLE IF NOT EXISTS "classusers" (
     "classId"     INTEGER NOT NULL,
     "studentId"   INTEGER NOT NULL,
     "permissions" INTEGER,
-    "digiPogs"    INTEGER
+    "digiPogs"    INTEGER,
+    "role"        TEXT    DEFAULT NULL
+);
+
+-- Named roles
+CREATE TABLE IF NOT EXISTS "roles" (
+    "name"          TEXT NOT NULL UNIQUE,
+    "global_scopes" TEXT NOT NULL DEFAULT '[]',
+    "class_scopes"  TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY ("name")
+);
+
+-- User-to-role mapping
+CREATE TABLE IF NOT EXISTS "user_roles" (
+    "user_id" INTEGER NOT NULL,
+    "role"    TEXT    NOT NULL,
+    PRIMARY KEY ("user_id"),
+    FOREIGN KEY ("role") REFERENCES "roles" ("name")
 );
 
 -- Custom polls (final state: includes allowVoteChanges and allowMultipleResponses)
