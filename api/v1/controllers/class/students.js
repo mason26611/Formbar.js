@@ -1,7 +1,7 @@
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
-const { CLASS_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -62,7 +62,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/students", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.MANAGE_CLASS), async (req, res) => {
+    router.get("/class/:id/students", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.READ), async (req, res) => {
         // Get the class key from the request parameters and log the request details
         const classId = req.params.id;
         req.infoEvent("class.students.view", "Viewing class students", { classId });

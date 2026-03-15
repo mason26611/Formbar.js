@@ -1,7 +1,7 @@
 const { dbGetAll } = require("@modules/database");
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -69,7 +69,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/banned", isAuthenticated, hasClassPermission(TEACHER_PERMISSIONS), async (req, res) => {
+    router.get("/class/:id/banned", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.banned.view", "Viewing banned users for class", { classId });
 

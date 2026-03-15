@@ -11,7 +11,7 @@ module.exports = {
             const tableInfo = await dbGetAll("PRAGMA table_info(poll_answers)", [], database);
             const hasClassId = tableInfo.some((col) => col.name === "classId");
             if (hasClassId) {
-                throw new Error("ALREADY_DONE");
+                return;
             }
 
             await dbRun("BEGIN TRANSACTION", [], database);
@@ -133,7 +133,7 @@ module.exports = {
             } catch (rollbackErr) {
                 // Transaction may not be active
             }
-            throw new Error("ALREADY_DONE");
+            throw err;
         }
     },
 };
