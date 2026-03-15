@@ -143,7 +143,7 @@ function createStudentFromUserData(userData, options = {}) {
 async function getStudentsInClass(classId) {
     // Grab students associated with the class
     const studentIdsAndPermissions = await new Promise((resolve, reject) => {
-        database.all("SELECT studentId, permissions, role FROM classusers WHERE classId = ?", [classId], (err, rows) => {
+        database.all("SELECT studentId, permissions FROM classusers WHERE classId = ?", [classId], (err, rows) => {
             if (err) {
                 return reject(err);
             }
@@ -151,7 +151,6 @@ async function getStudentsInClass(classId) {
             const studentIdsAndPermissions = rows.map((row) => ({
                 id: row.studentId,
                 permissions: row.permissions,
-                role: row.role || null,
             }));
 
             resolve(studentIdsAndPermissions);

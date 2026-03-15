@@ -1,119 +1,9 @@
-const {
-    CLASS_SOCKET_PERMISSION_MAPPER,
-    GLOBAL_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    SOCKET_EVENT_SCOPE_MAP,
-} = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
-const { camelCaseToNormal } = require("@modules/util");
 const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
-
-// For users who do not have teacher/manager permissions, then they can only access these endpoints when it's
-// only affecting themselves.
-const endpointWhitelistMap = ["getOwnedClasses", "getActiveClass"];
-
-/**
- * Middleware to check if a user has the required global permission.
- * @param {string|number} permission - The required permission level for the user.
- * @returns {Function} Express middleware function.
- * @deprecated Use hasScope() instead for new endpoints.
- */
-function hasPermission(permission) {
-    return function (req, res, next) {
-        if (!req.user || !req.user.email) {
-            req.warnEvent("auth.perm_check.not_authenticated", "Permission check failed: User is not authenticated");
-            throw new AuthError("User is not authenticated");
-        }
-
-        const user = classStateStore.getUser(req.user.email);
-        if (!user) {
-            req.warnEvent("auth.perm_check.user_not_found", `User not found for permission check: ${req.user.email}`, { email: req.user.email });
-            throw new AuthError("User not found", { event: "permission.check.failed", reason: "user_not_found" });
-        }
-
-        if (user.permissions >= permission) {
-            next();
-        } else {
-            req.warnEvent("auth.perm_check.forbidden", `User ${req.user.email} does not have permissions to access this resource`, {
-                email: req.user.email,
-                userPermissions: user.permissions,
-                requiredPermissions: permission,
-            });
-            throw new ForbiddenError("You do not have permission to access this resource.", {
-                event: "permission.check.failed",
-                reason: "insufficient_permissions",
-            });
-        }
-    };
-}
-
-/**
- * Middleware to check if a user has the required class permission.
- * @param {string|number} classPermission - The required permission level for the class.
- * @returns {Function} Express middleware function.
- * @deprecated Use hasClassScope() instead for new endpoints.
- */
-function hasClassPermission(classPermission) {
-    return async function (req, res, next) {
-        const classId = req.params.id ?? req.user.activeClass;
-        if (!classId) {
-            throw new NotFoundError("You're not currently in a classroom.", { event: "permission.check.failed", reason: "class_not_found" });
-        }
-
-        if (req.params.id && req.user.activeClass && String(req.params.id) !== String(req.user.activeClass)) {
-            throw new ForbiddenError("Class ID mismatch.", {
-                event: "permission.check.failed",
-                reason: "class_id_mismatch",
-            });
-        }
-
-        const classroom = classStateStore.getClassroom(classId);
-        const email = req.user.email;
-        if (!email) {
-            req.warnEvent("auth.class_perm_check.not_authenticated", "Class permission check failed: User is not authenticated");
-            throw new AuthError("User not authenticated");
-        }
-
-        // If classroom is active in memory, check from memory
-        if (classroom) {
-            const user = classroom.students[email];
-            if (!user) {
-                req.warnEvent("auth.class_perm_check.user_not_in_class", `User ${email} not found in class ${classId}`, { email, classId });
-                throw new AuthError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
-            }
-
-            // Retrieve the permission level from the classroom's permissions
-            const requiredPermissionLevel = typeof classPermission === "string" ? classroom.permissions[classPermission] : classPermission;
-
-            if (user.classPermissions >= requiredPermissionLevel) {
-                next();
-            } else {
-                req.warnEvent(
-                    req,
-                    "auth.class_perm_check.forbidden",
-                    `User ${email} does not have permissions to access class resource in ${classId}`,
-                    {
-                        email,
-                        classId,
-                        userClassPermissions: user.classPermissions,
-                        requiredPermissions: requiredPermissionLevel,
-                    }
-                );
-                throw new ForbiddenError("Unauthorized", { event: "permission.check.failed", reason: "insufficient_class_permissions" });
-            }
-        } else {
-            req.warnEvent("auth.class_perm_check.class_not_active", `Class permission check failed: Class ${classId} is not active`, {
-                classId,
-            });
-            throw new ForbiddenError("This class is not currently active.", { event: "permission.check.failed", reason: "class_not_active" });
-        }
-    };
-}
 
 /**
  * Middleware to check if a user has a specific global scope.
@@ -152,7 +42,7 @@ function hasScope(scope) {
 
 /**
  * Middleware to check if a user has a specific class-scoped permission.
- * Enforces that req.params.id matches the user's active class.
+ * Resolves class ID from req.params.id, req.user.classId, or req.user.activeClass.
  * @param {string} scope - e.g. 'class.poll.create'
  * @returns {Function} Express middleware function.
  */
@@ -163,7 +53,7 @@ function hasClassScope(scope) {
             throw new AuthError("User is not authenticated");
         }
 
-        const classId = req.params.id;
+        const classId = req.params.id || req.user.classId || req.user.activeClass;
         if (!classId) {
             throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
         }
@@ -198,143 +88,122 @@ function hasClassScope(scope) {
 }
 
 /**
- * Permission check for HTTP requests
- * This is used for using the same socket permissions for socket APIs for HTTP APIs.
- * @param {string} event
- * @returns {Promise<boolean>}
- * @deprecated Use hasScope()/hasClassScope() instead for new endpoints.
+ * Middleware: allows access if the user is targeting themselves (req.params.id === req.user.id)
+ * or if the user has the specified scope (e.g. manager/admin).
+ * @param {string} scope - The scope required if the user is not targeting themselves.
+ * @param {string} [message] - Optional custom error message.
+ * @returns {Function} Express middleware function.
  */
-function httpPermCheck(event) {
+function isSelfOrHasScope(scope, message) {
+    return function (req, res, next) {
+        if (!req.user || !req.user.email) {
+            throw new AuthError("User is not authenticated");
+        }
+
+        const targetId = Number(req.params.id);
+        if (req.user.id === targetId) {
+            return next();
+        }
+
+        const user = classStateStore.getUser(req.user.email) || req.user;
+        if (userHasScope(user, scope)) {
+            return next();
+        }
+
+        req.warnEvent("auth.self_or_scope.forbidden", `User ${req.user.email} is not target and lacks scope ${scope}`, {
+            email: req.user.email,
+            targetId,
+            requiredScope: scope,
+        });
+        throw new ForbiddenError(message || "You do not have permission to access this resource.", {
+            event: "permission.check.failed",
+            reason: "not_self_and_insufficient_scope",
+            scope,
+        });
+    };
+}
+
+/**
+ * Middleware: allows access if the user owns the resource or has the specified scope.
+ * The ownerCheck function receives (req) and must return a boolean (or promise of boolean).
+ * @param {Function} ownerCheck - Async function (req) => boolean indicating ownership.
+ * @param {string} scope - The scope required if the user is not the owner.
+ * @param {string} [message] - Optional custom error message.
+ * @returns {Function} Express middleware function.
+ */
+function isOwnerOrHasScope(ownerCheck, scope, message) {
     return async function (req, res, next) {
-        // Allow digipogs endpoints without permission checks (public API)
-        if (req.path && req.path.startsWith("/digipogs/")) {
+        if (!req.user || !req.user.email) {
+            throw new AuthError("User is not authenticated");
+        }
+
+        const isOwner = await ownerCheck(req);
+        if (isOwner) {
             return next();
         }
 
-        const email = req.user.email;
-        if (!email) {
-            req.warnEvent("auth.http_perm_check.not_authenticated", "HTTP permission check failed: User is not authenticated");
-            throw new AuthError("User not authenticated");
-        }
-
-        // Get classId from req.user (set by isAuthenticated middleware) or from classStateStore
-        const classId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(email)?.classId ?? null;
-
-        if (req.params.id && classId && String(req.params.id) !== String(classId)) {
-            throw new ForbiddenError("Class ID mismatch.", {
-                event: "permission.check.failed",
-                reason: "class_id_mismatch",
-            });
-        }
-
-        if (!classStateStore.getClassroom(classId) && classId != null) {
-            req.warnEvent("auth.http_perm_check.class_not_exist", `HTTP permission check failed: Class ${classId} does not exist`, { classId });
-            throw new AuthError("Class does not exist", { event: "permission.check.failed", reason: "class_not_exist" });
-        }
-
-        if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent(
-                req,
-                "auth.http_perm_check.class_not_loaded",
-                `HTTP permission check failed: Class ${classId} is not loaded (mapper match)`,
-                {
-                    classId,
-                    event,
-                }
-            );
-            throw new AuthError("Class is not loaded", { event: "permission.check.failed", reason: "class_not_loaded" });
-        }
-
-        if (CLASS_SOCKET_PERMISSIONS[event] && !classStateStore.getClassroom(classId)) {
-            req.warnEvent(
-                req,
-                "auth.http_perm_check.class_not_loaded",
-                `HTTP permission check failed: Class ${classId} is not loaded (direct match)`,
-                {
-                    classId,
-                    event,
-                }
-            );
-            throw new AuthError("Class is not loaded");
-        }
-
-        let userData = classStateStore.getUser(email);
-        if (!userData) {
-            // Get the user data from the database
-            userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
-            if (!userData) {
-                req.warnEvent("auth.http_perm_check.user_not_found", `User not found for HTTP permission check: ${email}`, { email });
-                throw new AuthError("User not found");
-            }
-            userData.classPermissions = await dbGet("SELECT permissions FROM classUsers WHERE studentId=? AND classId=?", [userData.id, classId]);
-        }
-
-        // Try scope-based check first (via SOCKET_EVENT_SCOPE_MAP)
-        const requiredScope = SOCKET_EVENT_SCOPE_MAP[event];
-        if (requiredScope !== undefined) {
-            // null scope means no permission required
-            if (requiredScope === null) {
-                return next();
-            }
-
-            // Global scope check
-            if (requiredScope.startsWith("global.")) {
-                if (userHasScope(userData, requiredScope)) {
-                    return next();
-                }
-            }
-
-            // Class scope check
-            if (requiredScope.startsWith("class.") && classId) {
-                const classroom = classStateStore.getClassroom(classId);
-                const classUser = classroom?.students[email];
-                if (classUser && classUserHasScope(classUser, classroom, requiredScope)) {
-                    return next();
-                }
-            }
-        }
-
-        // Legacy fallback: numeric permission checks
-        if (GLOBAL_SOCKET_PERMISSIONS[event] && userData.permissions >= GLOBAL_SOCKET_PERMISSIONS[event]) {
+        const user = classStateStore.getUser(req.user.email) || req.user;
+        if (userHasScope(user, scope)) {
             return next();
-        } else if (CLASS_SOCKET_PERMISSIONS[event] && userData.classPermissions >= CLASS_SOCKET_PERMISSIONS[event]) {
-            return next();
-        } else if (
-            CLASS_SOCKET_PERMISSION_MAPPER[event] &&
-            classStateStore.getClassroom(classId)?.permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]] &&
-            userData.classPermissions >= classStateStore.getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]]
-        ) {
-            return next();
-        } else if (!PASSIVE_SOCKETS.includes(event)) {
-            if (endpointWhitelistMap.includes(event)) {
-                const id = req.params.id;
-                const user = await dbGet("SELECT * FROM users WHERE email = ?", [email]);
-                if (user && user.id == id) {
-                    return next();
-                }
-            }
-
-            req.warnEvent("auth.http_perm_check.forbidden", `User ${email} does not have permissions for event ${event}`, {
-                email,
-                event,
-                userPermissions: userData.permissions,
-                userClassPermissions: userData.classPermissions,
-                classId,
-            });
-            throw new AuthError(`You do not have permission to use ${camelCaseToNormal(event)}.`, {
-                event: "permission.check.failed",
-                reason: "insufficient_permissions",
-            });
         }
 
-        return next();
+        req.warnEvent("auth.owner_or_scope.forbidden", `User ${req.user.email} is not owner and lacks scope ${scope}`, {
+            email: req.user.email,
+            requiredScope: scope,
+        });
+        throw new ForbiddenError(message || "You do not have permission to access this resource.", {
+            event: "permission.check.failed",
+            reason: "not_owner_and_insufficient_scope",
+            scope,
+        });
+    };
+}
+
+/**
+ * Middleware: checks if the user is a member of the class (enrolled in classusers or the class owner).
+ * Resolves class ID from req.params.id, req.user.classId, or req.user.activeClass.
+ * Does NOT require the class to be active in memory — checks the database.
+ * @returns {Function} Express middleware function.
+ */
+function isClassMember() {
+    return async function (req, res, next) {
+        if (!req.user || !req.user.id) {
+            throw new AuthError("User is not authenticated");
+        }
+
+        const classId = req.params.id || req.user.classId || req.user.activeClass;
+        if (!classId) {
+            throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
+        }
+
+        // Check in-memory first (fast path)
+        const classroom = classStateStore.getClassroom(classId);
+        if (classroom && classroom.students[req.user.email]) {
+            return next();
+        }
+
+        // Fall back to database check
+        const membership = await dbGet("SELECT 1 FROM classusers WHERE studentId=? AND classId=?", [req.user.id, classId]);
+        if (membership) {
+            return next();
+        }
+
+        const ownership = await dbGet("SELECT 1 FROM classroom WHERE id=? AND owner=?", [classId, req.user.id]);
+        if (ownership) {
+            return next();
+        }
+
+        throw new ForbiddenError("You are not a member of this class.", {
+            event: "permission.check.failed",
+            reason: "not_class_member",
+        });
     };
 }
 
 module.exports = {
-    hasPermission,
-    hasClassPermission,
     hasScope,
     hasClassScope,
-    httpPermCheck,
+    isSelfOrHasScope,
+    isOwnerOrHasScope,
+    isClassMember,
 };

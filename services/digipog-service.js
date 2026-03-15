@@ -140,6 +140,14 @@ async function isPoolOwnedByUser(poolId, userId) {
     return isUserOwner(userId, poolId);
 }
 
+/**
+ * Middleware-compatible ownership check for pools.
+ * Returns a function (req) => Promise<boolean> suitable for isOwnerOrHasScope middleware.
+ */
+function poolOwnerCheck(req) {
+    return isUserOwner(req.user.id, Number(req.params.id));
+}
+
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
     return dbRun("INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, userId, ownerFlag ? 1 : 0]);
 }
@@ -717,6 +725,7 @@ module.exports = {
     isUserInPool,
     isUserOwner,
     isPoolOwnedByUser,
+    poolOwnerCheck,
     addUserToPool,
     removeUserFromPool,
     setUserOwnerFlag,

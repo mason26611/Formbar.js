@@ -154,9 +154,25 @@ function getLinksInRoom(classId) {
     return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
 }
 
+/**
+ * Middleware-compatible ownership check for rooms.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Also caches the room on req._room for use by the handler.
+ */
+async function roomOwnerCheck(req) {
+    const room = await getRoomById(Number(req.params.id));
+    if (!room) {
+        const NotFoundError = require("@errors/not-found-error");
+        throw new NotFoundError("Room not found");
+    }
+    req._room = room;
+    return room.owner === req.user.id;
+}
+
 module.exports = {
     deleteRoom,
     getRoomById,
+    roomOwnerCheck,
     joinRoomByCode,
     joinRoom,
     leaveRoom,

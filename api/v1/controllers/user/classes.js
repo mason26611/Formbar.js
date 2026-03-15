@@ -1,7 +1,8 @@
 const { dbGet } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
-const { httpPermCheck } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -59,7 +60,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id/classes", isAuthenticated, httpPermCheck("getOwnedClasses"), async (req, res) => {
+    router.get("/user/:id/classes", isAuthenticated, hasScope(SCOPES.GLOBAL.CLASS.CREATE), async (req, res) => {
         const userId = req.params.id;
         req.infoEvent("user.classes.view.attempt", "Attempting to view user classes", { targetUserId: userId });
         const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);

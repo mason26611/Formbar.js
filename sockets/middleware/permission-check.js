@@ -68,9 +68,13 @@ module.exports = {
                             return next();
                         }
                     }
+
+                    // Scope is mapped but user doesn't have it — deny access
+                    socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    return;
                 }
 
-                // Legacy fallback: numeric permission checks
+                // Legacy fallback for unmapped events
                 if (GLOBAL_SOCKET_PERMISSIONS[event] && userData.permissions >= GLOBAL_SOCKET_PERMISSIONS[event]) {
                     next();
                 } else if (CLASS_SOCKET_PERMISSIONS[event] && userData.classPermissions >= CLASS_SOCKET_PERMISSIONS[event]) {

@@ -1,4 +1,3 @@
-const { httpPermCheck } = require("@middleware/permission-check");
 const { leaveRoom } = require("@services/room-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
@@ -46,7 +45,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.post("/room/:id/leave", isAuthenticated, httpPermCheck("leaveRoom"), async (req, res) => {
+    router.post("/room/:id/leave", isAuthenticated, async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "classId");

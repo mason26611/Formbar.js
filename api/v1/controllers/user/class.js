@@ -1,4 +1,3 @@
-const { httpPermCheck } = require("@middleware/permission-check");
 const { classStateStore, getClassroomFromDb } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
@@ -51,7 +50,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/user/:id/class", isAuthenticated, httpPermCheck("getActiveClass"), async (req, res) => {
+    router.get("/user/:id/class", isAuthenticated, async (req, res) => {
         const userId = req.params.id;
         requireQueryParam(userId, "id");
         req.infoEvent("user.class.view.attempt", "Attempting to view user active class", { targetUserId: userId });

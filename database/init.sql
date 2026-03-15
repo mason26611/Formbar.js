@@ -157,9 +157,10 @@ CREATE TABLE IF NOT EXISTS "user_roles"
 (
     "userId"  INTEGER NOT NULL,
     "roleId"  INTEGER NOT NULL,
-    "classId" INTEGER,
-    PRIMARY KEY ("userId", "roleId", COALESCE("classId", -1))
+    "classId" INTEGER
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
 
 INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Banned', NULL, '[]');
 INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Guest', NULL, '["class.poll.read","class.digipogs.award"]');
