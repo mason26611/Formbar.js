@@ -47,7 +47,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 async function seedNotification(userId = 1, type = "test", data = { msg: "hello" }) {
     await createNotification(userId, type, data);
     const [row] = await mockDatabase.dbGetAll("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 1", [userId]);

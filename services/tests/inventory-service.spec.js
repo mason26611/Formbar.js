@@ -44,11 +44,9 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 const USER_ID = 1;
 const ITEM_ID = 10;
 
-// getInventory()
 describe("getInventory()", () => {
     it("returns an empty array when the user has no items", async () => {
         const result = await getInventory(USER_ID);
@@ -77,7 +75,6 @@ describe("getInventory()", () => {
     });
 });
 
-// addItemToInventory()
 describe("addItemToInventory()", () => {
     it("inserts a new row when the item does not exist", async () => {
         await addItemToInventory(USER_ID, ITEM_ID, 3);
@@ -104,7 +101,6 @@ describe("addItemToInventory()", () => {
     });
 });
 
-// removeItemFromInventory()
 describe("removeItemFromInventory()", () => {
     it("decrements the quantity when more than 'quantity' remain", async () => {
         await addItemToInventory(USER_ID, ITEM_ID, 10);

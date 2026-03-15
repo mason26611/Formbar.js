@@ -67,7 +67,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 const crypto = require("crypto");
 
 async function seedUser(email = "owner@example.com", displayName = "Owner") {
@@ -84,7 +83,6 @@ async function seedClassroom({ name = "Test Class", ownerId = 1, key = 1234 } = 
     return { id, name, ownerId, key };
 }
 
-// validateClassroomName()
 describe("validateClassroomName()", () => {
     it("returns { valid: true } for a normal classroom name", () => {
         expect(validateClassroomName("Intro to CS")).toEqual({ valid: true });
@@ -133,7 +131,6 @@ describe("validateClassroomName()", () => {
     });
 });
 
-// getClassCode()
 describe("getClassCode()", () => {
     it("returns the class code for a valid class id", async () => {
         const { id, key } = await seedClassroom({ key: 5678 });
@@ -147,7 +144,6 @@ describe("getClassCode()", () => {
     });
 });
 
-// getClassIdByCode()
 describe("getClassIdByCode()", () => {
     it("returns the class id for a valid code", async () => {
         const { id } = await seedClassroom({ key: 4321 });
@@ -161,7 +157,6 @@ describe("getClassIdByCode()", () => {
     });
 });
 
-// getUserJoinedClasses()
 describe("getUserJoinedClasses()", () => {
     it("returns an empty array when the user has not joined any classes", async () => {
         const result = await getUserJoinedClasses(999);
@@ -188,7 +183,6 @@ describe("getUserJoinedClasses()", () => {
     });
 });
 
-// getClassLinks()
 describe("getClassLinks()", () => {
     it("returns an empty array when the class has no links", async () => {
         const { id } = await seedClassroom();
@@ -217,7 +211,6 @@ describe("getClassLinks()", () => {
     });
 });
 
-// createClass()
 describe("createClass()", () => {
     it("creates a classroom row in the database", async () => {
         const owner = await seedUser();

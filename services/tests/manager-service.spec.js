@@ -47,7 +47,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 let userCounter = 0;
 async function seedUser(overrides = {}) {
     userCounter++;

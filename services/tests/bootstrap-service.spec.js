@@ -40,7 +40,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ensureFormbarDeveloperPool()
 describe("ensureFormbarDeveloperPool()", () => {
     it("creates the Formbar Developer Pool (id=0) when it does not exist", async () => {
         const before = await mockDatabase.dbGet("SELECT * FROM digipog_pools WHERE id = 0");

@@ -13,7 +13,6 @@ describe("deletePoll", () => {
         socket = createSocket();
         socketUpdates = createSocketUpdates();
 
-        // Run the socket handler
         pollRemovalRun(socket, socketUpdates);
         deletePollHandler = socket.on.mock.calls.find((call) => call[0] === "deletePoll")[1];
     });

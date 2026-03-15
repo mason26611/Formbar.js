@@ -12,8 +12,6 @@ const { createTestDb } = require("@test-helpers/db");
 let mockDatabase;
 
 jest.mock("@modules/database", () => {
-    // Proxy allows services that destructure `database` to still get a live
-    // reference to the in-memory db instance after beforeAll runs.
     const dbProxy = new Proxy(
         {},
         {
@@ -50,7 +48,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null, settings = null } = {}) {
     const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
         name,
@@ -62,7 +59,6 @@ async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags 
     return { id, name, owner, key };
 }
 
-// Classroom constructor
 describe("Classroom constructor", () => {
     it("stores id, className, owner, and key", () => {
         const c = new Classroom({ id: 1, className: "Math", owner: 42, key: 9999, permissions: DEFAULT_CLASS_PERMISSIONS });
@@ -121,7 +117,6 @@ describe("Classroom constructor", () => {
     });
 });
 
-// getClassroomFromDb()
 describe("getClassroomFromDb()", () => {
     it("returns the classroom row for a valid id", async () => {
         const seeded = await seedClassroom({ name: "Biology", key: 7777 });
@@ -144,7 +139,6 @@ describe("getClassroomFromDb()", () => {
     });
 });
 
-// getClassIDFromCode()
 describe("getClassIDFromCode()", () => {
     it("returns the classroom id for a valid class code", async () => {
         const seeded = await seedClassroom({ key: 8888 });
@@ -167,11 +161,8 @@ describe("getClassIDFromCode()", () => {
     });
 });
 
-// classStateStore
 describe("classStateStore", () => {
     afterEach(() => {
-        // Reset the store state between tests via the internal property
-        // (ClassStateStore has no public clear() method)
         classStateStore._state = { users: {}, classrooms: {} };
     });
 
