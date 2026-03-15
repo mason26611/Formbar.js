@@ -77,18 +77,22 @@ module.exports = (router) => {
         let { duration, sound } = req.body;
         requireQueryParam(classId, "id");
 
-        if (!duration) {
+        if (duration === undefined || duration === null) {
             throw new ValidationError("Duration is required.");
         }
 
         duration = Number(duration);
 
         if (!Number.isInteger(duration)) {
-            throw new ForbiddenError("Duration must be an integer.");
+            throw new ValidationError("Duration must be an integer.");
         }
 
-        if (sound && typeof sound !== "boolean") {
-            throw new ForbiddenError("Sound must be a boolean.");
+        if (duration <= 0) {
+            throw new ValidationError("Duration must be greater than 0.");
+        }
+
+        if (typeof sound !== "undefined" && typeof sound !== "boolean") {
+            throw new ValidationError("Sound must be a boolean.");
         }
 
         req.infoEvent("class.timer.start.attempt", "Attempting to start a timer", { classId });
