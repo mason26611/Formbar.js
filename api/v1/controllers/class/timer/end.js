@@ -6,6 +6,53 @@ const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
 
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/class/{id}/timer/end:
+     *   post:
+     *     summary: End a class timer
+     *     tags:
+     *       - Timer
+     *     description: |
+     *       Stops the currently active timer for the specified class. The timer data is preserved but marked inactive.
+     *
+     *       **Required Permission:** `CLASS.TIMER.CONTROL`
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Class ID
+     *     responses:
+     *       200:
+     *         description: Timer ended successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *       400:
+     *         description: Timer is not active
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.post("/class/:id/timer/end", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");

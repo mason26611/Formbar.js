@@ -5,6 +5,47 @@ const { SCOPES } = require("@modules/permissions");
 const classService = require("@services/class-service");
 
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/class/{id}/timer/clear:
+     *   post:
+     *     summary: Clear a class timer
+     *     tags:
+     *       - Timer
+     *     description: |
+     *       Resets the timer for the specified class back to its default zeroed-out state.
+     *
+     *       **Required Permission:** `CLASS.TIMER.CONTROL`
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Class ID
+     *     responses:
+     *       200:
+     *         description: Timer cleared successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.post("/class/:id/timer/clear", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");

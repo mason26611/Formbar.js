@@ -8,6 +8,70 @@ const classService = require("@services/class-service");
 const { classStateStore } = require("@services/classroom-service");
 
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/class/{id}/timer/start:
+     *   post:
+     *     summary: Start a class timer
+     *     tags:
+     *       - Timer
+     *     description: |
+     *       Starts a countdown timer for the specified class.
+     *
+     *       **Required Permission:** `CLASS.TIMER.CONTROL`
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Class ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - duration
+     *             properties:
+     *               duration:
+     *                 type: integer
+     *                 description: Timer duration in milliseconds
+     *                 example: 300000
+     *               sound:
+     *                 type: boolean
+     *                 description: Whether to play a sound when the timer ends
+     *                 default: false
+     *     responses:
+     *       200:
+     *         description: Timer started successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *       400:
+     *         description: Duration is required or invalid
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       403:
+     *         description: Insufficient permissions or classroom not loaded
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.post("/class/:id/timer/start", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         let { duration, sound } = req.body;
