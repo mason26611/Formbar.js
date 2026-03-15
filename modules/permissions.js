@@ -17,6 +17,7 @@ const SCOPES = {
         },
         DIGIPOGS: {
             AWARD: "global.digipogs.award",
+            TRANSFER: "global.digipogs.transfer",
         },
         POOLS: {
             MANAGE: "global.pools.manage",
@@ -190,7 +191,7 @@ const SOCKET_EVENT_SCOPE_MAP = {
     joinClass: null,
     joinRoom: null,
     getActiveClass: null,
-    transferDigipogs: null,
+    transferDigipogs: SCOPES.GLOBAL.DIGIPOGS.TRANSFER,
     awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
     awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,
 

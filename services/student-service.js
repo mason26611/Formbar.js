@@ -143,7 +143,7 @@ function createStudentFromUserData(userData, options = {}) {
 async function getStudentsInClass(classId) {
     // Grab students associated with the class
     const studentIdsAndPermissions = await new Promise((resolve, reject) => {
-        database.all("SELECT studentId, permissions FROM classusers WHERE classId = ?", [classId], (err, rows) => {
+        database.all("SELECT * FROM classusers WHERE classId = ?", [classId], (err, rows) => {
             if (err) {
                 return reject(err);
             }
@@ -151,6 +151,7 @@ async function getStudentsInClass(classId) {
             const studentIdsAndPermissions = rows.map((row) => ({
                 id: row.studentId,
                 permissions: row.permissions,
+                classRole: row.role || null,
             }));
 
             resolve(studentIdsAndPermissions);
@@ -181,6 +182,7 @@ async function getStudentsInClass(classId) {
         const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
         student.classPermissions = classUserRow.permissions;
+        student.classRole = classUserRow.classRole;
         students[email] = student;
     }
 

@@ -457,7 +457,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, display_name AS displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
+    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }

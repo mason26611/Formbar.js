@@ -3,6 +3,18 @@
 // Idempotent: safe to run multiple times on the same database.
 
 const { dbRun, dbGetAll } = require("@modules/database");
+const { ROLES, ROLE_NAMES } = require("@modules/roles");
+
+/**
+ * Builds the seed scopes JSON string for a role by combining its global and class scopes.
+ * Deduplicates entries via Set.
+ */
+function buildScopesJson(roleName) {
+    const roleDefinition = ROLES[roleName];
+    if (!roleDefinition) return "[]";
+    const allScopes = [...new Set([...roleDefinition.global, ...roleDefinition.class])];
+    return JSON.stringify(allScopes);
+}
 
 module.exports = {
     async run(database) {
@@ -46,23 +58,10 @@ module.exports = {
         const existingRoles = await dbGetAll("SELECT name FROM roles WHERE classId IS NULL", [], database);
         const existingNames = new Set(existingRoles.map((r) => r.name));
 
-        const defaultRoles = [
-            { name: "Banned", scopes: "[]" },
-            { name: "Guest", scopes: '["class.poll.read","class.digipogs.award"]' },
-            { name: "Student", scopes: '["class.poll.read","class.poll.vote","class.break.request","class.help.request","class.digipogs.award"]' },
-            {
-                name: "Mod",
-                scopes: '["class.poll.read","class.poll.vote","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.request","class.break.approve","class.help.request","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.digipogs.award"]',
-            },
-            {
-                name: "Teacher",
-                scopes: '["global.class.create","global.class.delete","global.digipogs.award","class.poll.read","class.poll.vote","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.break.request","class.break.approve","class.help.request","class.help.approve","class.timer.control","class.auxiliary.control","class.games.access","class.tags.manage","class.digipogs.award"]',
-            },
-            {
-                name: "Manager",
-                scopes: '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","class.poll.read","class.poll.vote","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.break.request","class.break.approve","class.help.request","class.help.approve","class.timer.control","class.auxiliary.control","class.games.access","class.tags.manage","class.digipogs.award"]',
-            },
-        ];
+        const defaultRoles = Object.values(ROLE_NAMES).map((name) => ({
+            name,
+            scopes: buildScopesJson(name),
+        }));
 
         for (const role of defaultRoles) {
             if (!existingNames.has(role.name)) {

@@ -37,7 +37,7 @@ module.exports = (router) => {
      *     description: |
      *       Returns the current tags for the classroom.
      *
-     *       **Required Permission:** Class-specific `classUpdate` permission
+     *       **Required Permission:** Authenticated user in an active class session
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
