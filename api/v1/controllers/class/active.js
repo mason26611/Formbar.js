@@ -55,7 +55,9 @@ module.exports = (router) => {
         req.infoEvent("class.active.view.success", "Class active status returned", { classId, isActive });
         res.status(200).json({
             success: true,
-            data: {},
+            data: {
+                isActive,
+            },
         });
     });
 };

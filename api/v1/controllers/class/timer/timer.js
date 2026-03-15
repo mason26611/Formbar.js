@@ -61,11 +61,6 @@ module.exports = (router) => {
         const classId = req.params.id;
         req.infoEvent("class.timer.view.attempt", "Attempting to view class timer", { classId });
 
-        const classroom = classStateStore.getClassroom(classId);
-        if (classroom && !classroom.students[req.user.email]) {
-            throw new ForbiddenError("You do not have permission to view the status of this class.");
-        }
-
         const timer = classService.getTimer(classId);
 
         req.infoEvent("class.timer.view.success", "Class timer returned", { classId, timer: timer || { active: false } });

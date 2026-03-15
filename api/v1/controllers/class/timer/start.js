@@ -1,7 +1,7 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
-const { hasScope } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
@@ -72,7 +72,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/start", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
+    router.post("/class/:id/timer/start", isAuthenticated, hasClassScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         let { duration, sound } = req.body;
         requireQueryParam(classId, "id");

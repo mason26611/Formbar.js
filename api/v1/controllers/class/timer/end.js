@@ -1,4 +1,4 @@
-const { hasScope } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
@@ -53,14 +53,18 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/timer/end", isAuthenticated, hasScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
+    router.post("/class/:id/timer/end", isAuthenticated, hasClassScope(SCOPES.CLASS.TIMER.CONTROL), async (req, res) => {
         const classId = Number(req.params.id);
         requireQueryParam(classId, "id");
 
         req.infoEvent("class.timer.end.attempt", "Attempting to end a timer", { classId });
 
         const timer = classService.getTimer(classId);
-        if (timer && !timer.active) {
+        if (!timer) {
+            throw new ValidationError("No current timer found for this class.");
+        }
+
+        if (!timer.active) {
             throw new ValidationError("Timer is not active.");
         }
 

@@ -921,7 +921,7 @@ function startTimer({ classId, duration, sound }) {
             startTime,
             endTime,
             active: true,
-            sound: sound || false,
+            sound: sound ?? false,
         },
     });
 }
@@ -932,7 +932,7 @@ function endTimer(classId) {
 
     classStateStore.updateClassroom(classId, {
         timer: {
-            ...classroom.timer,
+            ...(classroom.timer || {}),
             active: false,
         },
     });

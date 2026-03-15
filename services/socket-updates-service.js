@@ -601,32 +601,6 @@ class SocketUpdates {
             // Error handled
         }
     }
-
-    timer(sound, active) {
-        try {
-            const classId = this.socket.request.session.classId;
-            let classData = classStateStore.getClassroom(classId);
-            if (classData.timer.timeLeft <= 0) {
-                socketStateStore.clearRunningTimer(classId);
-            }
-
-            if (classData.timer.timeLeft > 0 && active) classData.timer.timeLeft--;
-            if (classData.timer.timeLeft <= 0 && active && sound) {
-                advancedEmitToClass("timerSound", classId, {});
-            }
-
-            advancedEmitToClass(
-                "vbTimer",
-                classId,
-                {
-                    classPermissions: CLASS_SOCKET_PERMISSIONS.vbTimer,
-                },
-                classData.timer
-            );
-        } catch (err) {
-            // Error handled
-        }
-    }
 }
 
 module.exports = {
