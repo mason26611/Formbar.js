@@ -1,5 +1,6 @@
-const { STUDENT_PERMISSIONS, MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
+const { userHasScope } = require("@modules/scope-resolver");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireBodyParam, requireQueryParam } = require("@modules/error-wrapper");
 const digipogService = require("@services/digipog-service");
@@ -79,7 +80,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/pools/:id/remove-member", isAuthenticated, hasPermission(STUDENT_PERMISSIONS), async (req, res) => {
+    router.post("/pools/:id/remove-member", isAuthenticated, hasScope(SCOPES.GLOBAL.POOLS.MANAGE), async (req, res) => {
         const poolId = Number(req.params.id);
         let { userId } = req.body || {};
 
@@ -101,7 +102,7 @@ module.exports = (router) => {
 
         // Check if the user owns this pool or is a manager
         const isOwner = await digipogService.isUserOwner(req.user.id, poolId);
-        if (!isOwner && req.user.permissions >= MANAGER_PERMISSIONS) {
+        if (!isOwner && !userHasScope(req.user, SCOPES.GLOBAL.SYSTEM.ADMIN)) {
             throw new ValidationError("You do not own this pool.", { event: "pool.remove_member.failed", reason: "not_owner" });
         }
 

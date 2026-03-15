@@ -1,6 +1,7 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { userHasScope } = require("@modules/scope-resolver");
 const roomService = require("@services/room-service");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -63,7 +64,7 @@ module.exports = (router) => {
         }
 
         // Check if the user has permissions to delete the room
-        if (room.owner !== req.user.id && req.user.permissions >= MANAGER_PERMISSIONS) {
+        if (room.owner !== req.user.id && !userHasScope(req.user, SCOPES.GLOBAL.SYSTEM.ADMIN)) {
             throw new ForbiddenError("You do not have permission to delete this room.", { statusCode: 403 });
         }
 

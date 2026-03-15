@@ -1,5 +1,5 @@
-const { GUEST_PERMISSIONS } = require("@modules/permissions");
-const { hasClassPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { isUserInRoom, getLinksInRoom } = require("@services/room-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
@@ -97,7 +97,7 @@ module.exports = (router) => {
      *         data:
      *           $ref: '#/components/schemas/LinksData'
      */
-    router.get("/room/:id/links", isAuthenticated, hasClassPermission(GUEST_PERMISSIONS), async (req, res) => {
+    router.get("/room/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.READ), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
         req.infoEvent("room.links.view.attempt", "Attempting to view room links", { classId });

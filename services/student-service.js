@@ -12,6 +12,8 @@ class Student {
         this.activeClass = null;
         this.permissions = permissions;
         this.classPermissions = null;
+        this.role = null;
+        this.classRole = null;
         this.tags = tags || [];
         this.ownedPolls = ownedPolls || [];
         this.sharedPolls = sharedPolls || [];
@@ -101,6 +103,14 @@ function createStudentFromUserData(userData, options = {}) {
         student.classPermissions = userData.classPermissions;
     }
 
+    if (userData.role != null) {
+        student.role = userData.role;
+    }
+
+    if (userData.classRole != null) {
+        student.classRole = userData.classRole;
+    }
+
     if (userData.pogMeter != null) {
         student.pogMeter = userData.pogMeter;
     }
@@ -133,7 +143,7 @@ function createStudentFromUserData(userData, options = {}) {
 async function getStudentsInClass(classId) {
     // Grab students associated with the class
     const studentIdsAndPermissions = await new Promise((resolve, reject) => {
-        database.all("SELECT studentId, permissions FROM classusers WHERE classId = ?", [classId], (err, rows) => {
+        database.all("SELECT studentId, permissions, role FROM classusers WHERE classId = ?", [classId], (err, rows) => {
             if (err) {
                 return reject(err);
             }
@@ -141,6 +151,7 @@ async function getStudentsInClass(classId) {
             const studentIdsAndPermissions = rows.map((row) => ({
                 id: row.studentId,
                 permissions: row.permissions,
+                role: row.role || null,
             }));
 
             resolve(studentIdsAndPermissions);
@@ -168,9 +179,10 @@ async function getStudentsInClass(classId) {
     const students = {};
     for (const email in studentsData) {
         const userData = studentsData[email];
-        const studentPermissions = studentIdsAndPermissions.find((student) => student.id === userData.id).permissions;
+        const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
-        student.classPermissions = studentPermissions;
+        student.classPermissions = classUserRow.permissions;
+        student.classRole = classUserRow.role || null;
         students[email] = student;
     }
 

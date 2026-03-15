@@ -1,8 +1,8 @@
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { settings } = require("@modules/config");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { getIpAccess } = require("@services/ip-service");
-const { hasPermission } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const authentication = require("@middleware/authentication");
 const fs = require("fs");
@@ -66,7 +66,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // List IPs
-    router.get("/ip/:type", isAuthenticated, isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/ip/:type", isAuthenticated, isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const ipMode = req.params.type;
         req.infoEvent("ip.list.view.attempt", "Attempting to view IP access list", { listType: ipMode });
         if (ipMode !== "whitelist" && ipMode !== "blacklist") {
@@ -86,7 +86,7 @@ module.exports = (router) => {
     });
 
     // Add IP
-    router.post("/ip/:type", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.post("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const { ip } = req.body || {};
         req.infoEvent("ip.list.add.attempt", "Attempting to add IP to access list", { listType: type });
@@ -202,7 +202,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // Update IP
-    router.put("/ip/:type/:id", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.put("/ip/:type/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const id = req.params.id;
         const { ip } = req.body || {};
@@ -298,7 +298,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.delete("/ip/:type/:id", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.delete("/ip/:type/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const id = req.params.id;
         req.infoEvent("ip.list.remove.attempt", "Attempting to remove IP from access list", { listType: type, ipEntryId: id });
@@ -391,7 +391,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // Toggle ip whitelist/blacklist
-    router.post("/ip/:type/toggle", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), (req, res) => {
+    router.post("/ip/:type/toggle", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), (req, res) => {
         const type = req.params.type;
         req.infoEvent("ip.list.toggle.attempt", "Attempting to toggle IP access list", { listType: type });
         if (type !== "whitelist" && type !== "blacklist") {

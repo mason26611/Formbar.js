@@ -354,22 +354,26 @@ async function getUser(userIdentifier) {
 
         let dbUser = await new Promise((resolve, reject) => {
             if (!classId) {
-                database.get("SELECT id, email, permissions, NULL AS classPermissions FROM users WHERE email = ?", [email], (err, dbUser) => {
-                    try {
-                        if (err) throw err;
-                        if (!dbUser) {
-                            resolve({ error: "user does not exist" });
-                            return;
+                database.get(
+                    "SELECT id, email, permissions, role, NULL AS classPermissions, NULL AS classRole FROM users WHERE email = ?",
+                    [email],
+                    (err, dbUser) => {
+                        try {
+                            if (err) throw err;
+                            if (!dbUser) {
+                                resolve({ error: "user does not exist" });
+                                return;
+                            }
+                            resolve(dbUser);
+                        } catch (err) {
+                            reject(err);
                         }
-                        resolve(dbUser);
-                    } catch (err) {
-                        reject(err);
                     }
-                });
+                );
                 return;
             }
             database.get(
-                "SELECT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE classusers.permissions END AS classPermissions FROM users JOIN classroom ON classroom.id = ? LEFT JOIN classusers ON classusers.classId = classroom.id AND classusers.studentId = users.id WHERE users.email = ?;",
+                "SELECT users.id, users.email, users.permissions, users.role, CASE WHEN users.id = classroom.owner THEN 5 ELSE classusers.permissions END AS classPermissions, classusers.role AS classRole FROM users JOIN classroom ON classroom.id = ? LEFT JOIN classusers ON classusers.classId = classroom.id AND classusers.studentId = users.id WHERE users.email = ?;",
                 [classId, email],
                 (err, dbUser) => {
                     try {

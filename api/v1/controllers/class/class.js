@@ -1,7 +1,8 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { getClassUsers } = require("@services/class-service");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { classUserHasScope } = require("@modules/scope-resolver");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -82,7 +83,9 @@ module.exports = (router) => {
                 name: rawClassData.className,
                 isActive: rawClassData.isActive,
                 owner: rawClassData.owner,
-                students: user.classPermissions < TEACHER_PERMISSIONS ? { [user.email]: classUsers[user.email] } : classUsers,
+                students: classUserHasScope(rawClassData.students[user.email], rawClassData, SCOPES.CLASS.STUDENTS.READ)
+                    ? classUsers
+                    : { [user.email]: classUsers[user.email] },
                 tags: rawClassData.tags,
                 settings: rawClassData.settings,
                 timer: rawClassData.timer,

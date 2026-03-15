@@ -1,5 +1,6 @@
 const { isVerified, isAuthenticated } = require("@middleware/authentication");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { userHasScope } = require("@modules/scope-resolver");
 const { getUserDataFromDb } = require("@services/user-service");
 const { getUserTransactionsPaginated } = require("@services/digipog-service");
 const { classStateStore } = require("@services/classroom-service");
@@ -119,7 +120,8 @@ module.exports = (router) => {
         requireQueryParam(userId, "id");
 
         // Check if the user has permission to view these transactions (either their own or they are a manager)
-        if (req.user.id !== userId && classStateStore.getUser(req.user.email)?.permissions < MANAGER_PERMISSIONS) {
+        const requesterUser = classStateStore.getUser(req.user.email);
+        if (req.user.id !== userId && !userHasScope(requesterUser, SCOPES.GLOBAL.USERS.MANAGE)) {
             throw new ForbiddenError("You do not have permission to view these transactions.", {
                 event: "user.transactions.view.failed",
                 reason: "forbidden",
