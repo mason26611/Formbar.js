@@ -1,6 +1,7 @@
 const { sendPollResponse } = require("@services/poll-service");
-const { httpPermCheck } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { parseJson } = require("@middleware/parse-json");
+const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 
 module.exports = (router) => {
@@ -67,7 +68,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/response", isAuthenticated, httpPermCheck("pollResp"), parseJson, async (req, res) => {
+    router.post("/class/:id/polls/response", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.VOTE), parseJson, async (req, res) => {
         const { response, textRes } = req.body;
         const classId = req.params.id;
 

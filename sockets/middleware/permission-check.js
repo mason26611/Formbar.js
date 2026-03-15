@@ -1,9 +1,15 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const { GLOBAL_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSIONS, CLASS_SOCKET_PERMISSION_MAPPER } = require("@modules/permissions");
+const {
+    GLOBAL_SOCKET_PERMISSIONS,
+    CLASS_SOCKET_PERMISSIONS,
+    CLASS_SOCKET_PERMISSION_MAPPER,
+    SOCKET_EVENT_SCOPE_MAP,
+} = require("@modules/permissions");
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
 
 module.exports = {
     order: 30,
@@ -41,6 +47,34 @@ module.exports = {
                     ]);
                 }
 
+                // Try scope-based check first
+                const requiredScope = SOCKET_EVENT_SCOPE_MAP[event];
+                if (requiredScope !== undefined) {
+                    // null scope means no permission required
+                    if (requiredScope === null) {
+                        return next();
+                    }
+
+                    // Global scope check
+                    if (requiredScope.startsWith("global.") && userHasScope(userData, requiredScope)) {
+                        return next();
+                    }
+
+                    // Class scope check
+                    if (requiredScope.startsWith("class.") && classId) {
+                        const classroom = classStateStore.getClassroom(classId);
+                        const classUser = classroom?.students[email];
+                        if (classUser && classUserHasScope(classUser, classroom, requiredScope)) {
+                            return next();
+                        }
+                    }
+
+                    // Scope is mapped but user doesn't have it — deny access
+                    socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    return;
+                }
+
+                // Legacy fallback for unmapped events
                 if (GLOBAL_SOCKET_PERMISSIONS[event] && userData.permissions >= GLOBAL_SOCKET_PERMISSIONS[event]) {
                     next();
                 } else if (CLASS_SOCKET_PERMISSIONS[event] && userData.classPermissions >= CLASS_SOCKET_PERMISSIONS[event]) {

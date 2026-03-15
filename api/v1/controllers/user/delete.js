@@ -1,6 +1,6 @@
 const { deleteUser } = require("@services/user-service");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
@@ -59,10 +59,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.delete("/user/:id", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), deleteUserHandler);
+    router.delete("/user/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), deleteUserHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/user/:id instead
-    router.get("/user/:id/delete", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/user/:id/delete", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use DELETE /api/v1/user/:id instead");
         res.setHeader("Warning", '299 - "Deprecated API: Use DELETE /api/v1/user/:id instead. This endpoint will be removed in a future version."');
         await deleteUserHandler(req, res);
