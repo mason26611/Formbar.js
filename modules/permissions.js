@@ -6,17 +6,78 @@ const STUDENT_PERMISSIONS = 2;
 const GUEST_PERMISSIONS = 1;
 const BANNED_PERMISSIONS = 0;
 
-// Permission level needed to access each page along with if it's a class-related page or not
-const PAGE_PERMISSIONS = {
-    student: { permissions: GUEST_PERMISSIONS, classPage: true },
-    links: { permissions: GUEST_PERMISSIONS, classPage: true },
-    createclass: { permissions: TEACHER_PERMISSIONS, classPage: false },
-    selectclass: { permissions: GUEST_PERMISSIONS, classPage: false },
-    manager: { permissions: MANAGER_PERMISSIONS, classPage: false },
-    logs: { permissions: MANAGER_PERMISSIONS, classPage: false },
-    profile: { permissions: STUDENT_PERMISSIONS, classPage: false },
-    pools: { permissions: STUDENT_PERMISSIONS, classPage: false },
-    transactions: { permissions: STUDENT_PERMISSIONS, classPage: false },
+const SCOPES = {
+    GLOBAL: {
+        CLASS: {
+            CREATE: "global.class.create",
+            DELETE: "global.class.delete",
+        },
+        USERS: {
+            MANAGE: "global.users.manage",
+        },
+        DIGIPOGS: {
+            AWARD: "global.digipogs.award",
+        },
+        SYSTEM: {
+            ADMIN: "global.system.admin",
+        },
+    },
+
+    CLASS: {
+        POLL: {
+            READ: "class.poll.read",
+            VOTE: "class.poll.vote",
+            CREATE: "class.poll.create",
+            END: "class.poll.end",
+            DELETE: "class.poll.delete",
+            SHARE: "class.poll.share",
+        },
+
+        STUDENTS: {
+            READ: "class.students.read",
+            KICK: "class.students.kick",
+            BAN: "class.students.ban",
+            PERM_CHANGE: "class.students.perm_change",
+        },
+
+        SESSION: {
+            START: "class.session.start",
+            END: "class.session.end",
+            RENAME: "class.session.rename",
+            SETTINGS: "class.session.settings",
+            REGENERATE_CODE: "class.session.regenerate_code",
+        },
+
+        BREAK: {
+            REQUEST: "class.break.request",
+            APPROVE: "class.break.approve",
+        },
+
+        HELP: {
+            REQUEST: "class.help.request",
+            APPROVE: "class.help.approve",
+        },
+
+        TIMER: {
+            CONTROL: "class.timer.control",
+        },
+
+        AUXILIARY: {
+            CONTROL: "class.auxiliary.control",
+        },
+
+        GAMES: {
+            ACCESS: "class.games.access",
+        },
+
+        TAGS: {
+            MANAGE: "class.tags.manage",
+        },
+
+        DIGIPOGS: {
+            AWARD: "class.digipogs.award",
+        },
+    },
 };
 
 const CLASS_PERMISSIONS = {
@@ -112,6 +173,8 @@ const CLASS_SOCKET_PERMISSION_MAPPER = {
 };
 
 module.exports = {
+    SCOPES,
+
     // Permissions
     MANAGER_PERMISSIONS,
     TEACHER_PERMISSIONS,
@@ -121,7 +184,6 @@ module.exports = {
     BANNED_PERMISSIONS,
 
     // Page permissions
-    PAGE_PERMISSIONS,
     CLASS_PERMISSIONS,
     DEFAULT_CLASS_PERMISSIONS,
 
