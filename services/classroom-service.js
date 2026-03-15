@@ -49,7 +49,7 @@ class Classroom {
         this.settings = settings || DEFAULT_CLASS_SETTINGS;
         this.timer = {
             startTime: 0,
-            timeLeft: 0,
+            endTime: 0,
             active: false,
             sound: false,
         };

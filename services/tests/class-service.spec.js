@@ -46,6 +46,10 @@ const {
     getClassIdByCode,
     getUserJoinedClasses,
     getClassLinks,
+    getTimer,
+    startTimer,
+    endTimer,
+    clearTimer,
 } = require("@services/class-service");
 
 const { classStateStore } = require("@services/classroom-service");
@@ -256,5 +260,100 @@ describe("createClass()", () => {
     it("throws ValidationError for an empty classroom name", async () => {
         const owner = await seedUser();
         await expect(createClass("", owner.id, owner.email)).rejects.toThrow();
+    });
+});
+
+describe("getTimer()", () => {
+    it("returns undefined when the classroom does not exist", () => {
+        expect(getTimer(999)).toBeUndefined();
+    });
+
+    it("returns undefined when the classroom has no timer set", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+        expect(getTimer(1)).toBeUndefined();
+    });
+
+    it("returns the timer object when set", () => {
+        const timer = { startTime: 1000, endTime: 2000, active: true, sound: false };
+        classStateStore.setClassroom(1, { className: "Test", timer });
+        expect(getTimer(1)).toEqual(timer);
+    });
+});
+
+describe("startTimer()", () => {
+    it("does nothing when the classroom does not exist", () => {
+        expect(() => startTimer({ classId: 999, duration: 5000 })).not.toThrow();
+    });
+
+    it("sets an active timer with the correct start and end times", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+
+        const before = Date.now();
+        startTimer({ classId: 1, duration: 5000 });
+        const after = Date.now();
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(true);
+        expect(timer.startTime).toBeGreaterThanOrEqual(before);
+        expect(timer.startTime).toBeLessThanOrEqual(after);
+        expect(timer.endTime).toBe(timer.startTime + 5000);
+    });
+
+    it("sets sound to false when not provided", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+        startTimer({ classId: 1, duration: 1000 });
+
+        expect(classStateStore.getClassroom(1).timer.sound).toBe(false);
+    });
+
+    it("sets sound when provided", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+        startTimer({ classId: 1, duration: 1000, sound: true });
+
+        expect(classStateStore.getClassroom(1).timer.sound).toBe(true);
+    });
+});
+
+describe("endTimer()", () => {
+    it("does nothing when the classroom does not exist", () => {
+        expect(() => endTimer(999)).not.toThrow();
+    });
+
+    it("sets active to false while preserving other timer fields", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: true, sound: true },
+        });
+
+        endTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(false);
+        expect(timer.startTime).toBe(1000);
+        expect(timer.endTime).toBe(6000);
+        expect(timer.sound).toBe(true);
+    });
+});
+
+describe("clearTimer()", () => {
+    it("does nothing when the classroom does not exist", () => {
+        expect(() => clearTimer(999)).not.toThrow();
+    });
+
+    it("resets the timer to zeroed-out inactive state", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: true, sound: true },
+        });
+
+        clearTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer).toEqual({
+            startTime: 0,
+            endTime: 0,
+            active: false,
+            sound: false,
+        });
     });
 });
