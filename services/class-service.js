@@ -928,6 +928,37 @@ function startTimer({ classId, duration, sound }) {
     broadcastClassUpdate(classId);
 }
 
+function resumeTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            ...(classroom.timer || {}),
+            startTime: classroom.timer.startTime + (Date.now() - classroom.timer.pausedAt),
+            endTime: classroom.timer.endTime + (Date.now() - classroom.timer.pausedAt),
+            active: true,
+        },
+    });
+    
+    broadcastClassUpdate(classId);
+}
+
+function pauseTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            ...(classroom.timer || {}),
+            active: false,
+            pausedAt: Date.now(),
+        },
+    });
+    
+    broadcastClassUpdate(classId);
+}
+
 function endTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -988,4 +1019,6 @@ module.exports = {
     startTimer,
     endTimer,
     clearTimer,
+    resumeTimer,
+    pauseTimer
 };

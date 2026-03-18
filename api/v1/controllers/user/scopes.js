@@ -87,8 +87,8 @@ module.exports = (router) => {
 
             // If the user is in an active class, resolve class-level scopes too
             const liveUser = classStateStore.getUser(userData.email);
-            if (liveUser && liveUser.classId) {
-                const classroom = classStateStore.getClassroom(liveUser.classId);
+            if (liveUser && liveUser.activeClass) {
+                const classroom = classStateStore.getClassroom(liveUser.activeClass);
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
                     result.classRole = getClassRoleName(classStudent);
