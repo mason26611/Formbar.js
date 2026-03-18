@@ -40,6 +40,12 @@ module.exports = (router) => {
      *                   example: true
      *                 data:
      *                   type: object
+     *       400:
+      *         description: Bad request (e.g., no current timer found for this class or invalid resume state)
+      *         content:
+      *           application/json:
+      *             schema:
+      *               $ref: '#/components/schemas/Error'
      *       403:
      *         description: Insufficient permissions or classroom not loaded
      *         content:
@@ -56,6 +62,11 @@ module.exports = (router) => {
         const timer = classService.getTimer(classId);
         if (!timer) {
             throw new ValidationError("No current timer found for this class.");
+        }
+
+        // Ensure the timer is actually paused before attempting to resume it
+        if (timer.active || !timer.pausedAt) {
+            throw new ValidationError("Timer is not paused and cannot be resumed.");
         }
 
         classService.resumeTimer(classId);

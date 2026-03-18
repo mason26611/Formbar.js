@@ -58,6 +58,10 @@ module.exports = (router) => {
             throw new ValidationError("No current timer found for this class.");
         }
 
+        if (!timer.active) {
+            throw new ValidationError("Cannot pause timer because it is not active.");
+        }
+
         classService.pauseTimer(classId);
 
         req.infoEvent("class.timer.pause.success", "Timer paused", { classId });

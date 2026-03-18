@@ -932,12 +932,25 @@ function resumeTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
 
+    const timer = classroom.timer;
+    // Ensure there is a timer to resume
+    if (!timer) return;
+    // Only resume if the timer is currently inactive/paused
+    if (timer.active) return;
+    const pausedAt = timer.pausedAt;
+    // Ensure pausedAt is a finite number before resuming
+    if (typeof pausedAt !== "number" || !Number.isFinite(pausedAt)) return;
+    const now = Date.now();
+    const pauseDelta = now - pausedAt;
+
     classStateStore.updateClassroom(classId, {
         timer: {
-            ...(classroom.timer || {}),
-            startTime: classroom.timer.startTime + (Date.now() - classroom.timer.pausedAt),
-            endTime: classroom.timer.endTime + (Date.now() - classroom.timer.pausedAt),
+            ...timer,
+            startTime: timer.startTime + pauseDelta,
+            endTime: timer.endTime + pauseDelta,
             active: true,
+            // Clear pausedAt so subsequent resumes do not re-shift the timer
+            pausedAt: undefined,
         },
     });
     
