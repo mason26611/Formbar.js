@@ -2,10 +2,8 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { SCOPES } = require("@modules/permissions");
 const { hasClassScope } = require("@middleware/permission-check");
-const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 const classService = require("@services/class-service");
-const { classStateStore } = require("@services/classroom-service");
 
 module.exports = (router) => {
     /**
