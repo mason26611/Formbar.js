@@ -924,6 +924,8 @@ function startTimer({ classId, duration, sound }) {
             sound: sound ?? false,
         },
     });
+    
+    broadcastClassUpdate(classId);
 }
 
 function endTimer(classId) {
@@ -936,6 +938,8 @@ function endTimer(classId) {
             active: false,
         },
     });
+    
+    broadcastClassUpdate(classId);
 }
 
 function clearTimer(classId) {
@@ -950,6 +954,8 @@ function clearTimer(classId) {
             sound: false,
         },
     });
+    
+    broadcastClassUpdate(classId);
 }
 
 module.exports = {
