@@ -40,8 +40,14 @@ module.exports = (router) => {
      *                   example: true
      *                 data:
      *                   type: object
+     *       400:
+     *         description: Bad request – validation error (e.g., no current timer found or timer is not active)
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
      *       403:
-     *         description: Insufficient permissions or classroom not loaded
+     *         description: Insufficient permissions
      *         content:
      *           application/json:
      *             schema:
