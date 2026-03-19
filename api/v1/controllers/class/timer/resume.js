@@ -41,11 +41,11 @@ module.exports = (router) => {
      *                 data:
      *                   type: object
      *       400:
-      *         description: Bad request (e.g., no current timer found for this class or invalid resume state)
-      *         content:
-      *           application/json:
-      *             schema:
-      *               $ref: '#/components/schemas/Error'
+     *         description: Bad request (e.g., no current timer found for this class or invalid resume state)
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
      *       403:
      *         description: Insufficient permissions or classroom not loaded
      *         content:

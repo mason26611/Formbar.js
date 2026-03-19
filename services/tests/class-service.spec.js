@@ -50,6 +50,8 @@ const {
     startTimer,
     endTimer,
     clearTimer,
+    pauseTimer,
+    resumeTimer,
 } = require("@services/class-service");
 
 const { classStateStore } = require("@services/classroom-service");
@@ -355,5 +357,121 @@ describe("clearTimer()", () => {
             active: false,
             sound: false,
         });
+    });
+});
+
+describe("pauseTimer()", () => {
+    it("does nothing when the classroom does not exist", () => {
+        expect(() => pauseTimer(999)).not.toThrow();
+    });
+
+    it("does nothing when the classroom has no timer", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+        pauseTimer(1);
+        expect(classStateStore.getClassroom(1).timer).toBeUndefined();
+    });
+
+    it("sets active to false and records pausedAt", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: true, sound: false },
+        });
+
+        const before = Date.now();
+        pauseTimer(1);
+        const after = Date.now();
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(false);
+        expect(timer.pausedAt).toBeGreaterThanOrEqual(before);
+        expect(timer.pausedAt).toBeLessThanOrEqual(after);
+        expect(timer.startTime).toBe(1000);
+        expect(timer.endTime).toBe(6000);
+    });
+
+    it("does nothing when timer has non-finite startTime or endTime", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: undefined, endTime: undefined, active: true },
+        });
+
+        pauseTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(true);
+        expect(timer.pausedAt).toBeUndefined();
+    });
+});
+
+describe("resumeTimer()", () => {
+    it("does nothing when the classroom does not exist", () => {
+        expect(() => resumeTimer(999)).not.toThrow();
+    });
+
+    it("does nothing when the classroom has no timer", () => {
+        classStateStore.setClassroom(1, { className: "Test" });
+        resumeTimer(1);
+        expect(classStateStore.getClassroom(1).timer).toBeUndefined();
+    });
+
+    it("does nothing when the timer is already active", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: true, pausedAt: 2000 },
+        });
+
+        resumeTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(true);
+        expect(timer.startTime).toBe(1000);
+    });
+
+    it("shifts startTime and endTime by the paused duration", () => {
+        const pausedAt = Date.now() - 500;
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: false, pausedAt },
+        });
+
+        const before = Date.now();
+        resumeTimer(1);
+        const after = Date.now();
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(true);
+        expect(timer.pausedAt).toBeUndefined();
+
+        const minDelta = before - pausedAt;
+        const maxDelta = after - pausedAt;
+        expect(timer.startTime).toBeGreaterThanOrEqual(1000 + minDelta);
+        expect(timer.startTime).toBeLessThanOrEqual(1000 + maxDelta);
+        expect(timer.endTime).toBeGreaterThanOrEqual(6000 + minDelta);
+        expect(timer.endTime).toBeLessThanOrEqual(6000 + maxDelta);
+    });
+
+    it("does nothing when pausedAt is missing", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: 1000, endTime: 6000, active: false },
+        });
+
+        resumeTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(false);
+        expect(timer.startTime).toBe(1000);
+    });
+
+    it("does nothing when startTime or endTime are not finite numbers", () => {
+        classStateStore.setClassroom(1, {
+            className: "Test",
+            timer: { startTime: undefined, endTime: undefined, active: false, pausedAt: Date.now() },
+        });
+
+        resumeTimer(1);
+
+        const timer = classStateStore.getClassroom(1).timer;
+        expect(timer.active).toBe(false);
     });
 });

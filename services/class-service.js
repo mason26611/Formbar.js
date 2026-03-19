@@ -924,7 +924,7 @@ function startTimer({ classId, duration, sound }) {
             sound: sound ?? false,
         },
     });
-    
+
     broadcastClassUpdate(classId);
 }
 
@@ -940,6 +940,14 @@ function resumeTimer(classId) {
     const pausedAt = timer.pausedAt;
     // Ensure pausedAt is a finite number before resuming
     if (typeof pausedAt !== "number" || !Number.isFinite(pausedAt)) return;
+    // Ensure startTime and endTime are finite numbers to avoid NaN
+    if (
+        typeof timer.startTime !== "number" ||
+        !Number.isFinite(timer.startTime) ||
+        typeof timer.endTime !== "number" ||
+        !Number.isFinite(timer.endTime)
+    )
+        return;
     const now = Date.now();
     const pauseDelta = now - pausedAt;
 
@@ -953,7 +961,7 @@ function resumeTimer(classId) {
             pausedAt: undefined,
         },
     });
-    
+
     broadcastClassUpdate(classId);
 }
 
@@ -961,14 +969,25 @@ function pauseTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
 
+    const timer = classroom.timer;
+    if (
+        !timer ||
+        typeof timer.startTime !== "number" ||
+        !Number.isFinite(timer.startTime) ||
+        typeof timer.endTime !== "number" ||
+        !Number.isFinite(timer.endTime)
+    ) {
+        return;
+    }
+
     classStateStore.updateClassroom(classId, {
         timer: {
-            ...(classroom.timer || {}),
+            ...timer,
             active: false,
             pausedAt: Date.now(),
         },
     });
-    
+
     broadcastClassUpdate(classId);
 }
 
@@ -982,7 +1001,7 @@ function endTimer(classId) {
             active: false,
         },
     });
-    
+
     broadcastClassUpdate(classId);
 }
 
@@ -998,7 +1017,7 @@ function clearTimer(classId) {
             sound: false,
         },
     });
-    
+
     broadcastClassUpdate(classId);
 }
 
@@ -1033,5 +1052,5 @@ module.exports = {
     endTimer,
     clearTimer,
     resumeTimer,
-    pauseTimer
+    pauseTimer,
 };
