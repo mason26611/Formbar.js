@@ -2,6 +2,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
@@ -64,6 +65,9 @@ module.exports = (router) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "id");
+        if (!Number.isInteger(classId) || classId <= 0) {
+            throw new ValidationError("Invalid class id");
+        }
 
         req.infoEvent("class.permissions.view", "Viewing class permissions", { classId });
 

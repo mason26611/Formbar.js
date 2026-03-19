@@ -1,4 +1,5 @@
 const { classStateStore } = require("@services/classroom-service");
+const { getEmailFromId } = require("@services/student-service");
 const { dbRun } = require("@modules/database");
 const { SCOPES } = require("@modules/permissions");
 const { hasScope } = require("@middleware/permission-check");
@@ -67,6 +68,9 @@ module.exports = (router) => {
         let { perm } = req.body || {};
 
         requireQueryParam(id, "id");
+        if (!Number.isInteger(id) || id <= 0) {
+            throw new ValidationError("Invalid user id");
+        }
         requireBodyParam(perm, "perm");
 
         req.infoEvent("user.permissions.update.attempt", "Attempting to update user permissions", { targetUserId: id });
@@ -77,8 +81,9 @@ module.exports = (router) => {
         }
 
         await dbRun("UPDATE users SET permissions=? WHERE id = ?", [perm, id]);
-        if (classStateStore.getUser(id)) {
-            classStateStore.updateUser(id, { permissions: perm });
+        const email = await getEmailFromId(id);
+        if (email && classStateStore.getUser(email)) {
+            classStateStore.updateUser(email, { permissions: perm });
         }
 
         req.infoEvent("user.permissions.update.success", "User permissions updated", { targetUserId: id, permissionLevel: perm });

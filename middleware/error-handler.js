@@ -10,7 +10,7 @@ module.exports = async (err, req, res, next) => {
     const logger = await getLogger();
 
     let error = err;
-    let statusCode = err.statusCode || 500;
+    let statusCode = err.statusCode || err.status || 500;
 
     const isAppError = err instanceof AppError;
     const isOperationalError = (isAppError && err.isOperational) || isRequestParseError(err);
