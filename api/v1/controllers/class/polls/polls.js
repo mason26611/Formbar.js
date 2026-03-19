@@ -1,5 +1,6 @@
 const { requireQueryParam } = require("@modules/error-wrapper");
 const { getPreviousPolls } = require("@services/poll-service");
+const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 
@@ -128,7 +129,7 @@ module.exports = (router) => {
         requireQueryParam(classId, "classId");
 
         // Ensure the authenticated user is logged into / associated with this class.
-        const userClassId = req.user && req.user.classId;
+        const userClassId = req.user?.classId ?? req.user?.activeClass ?? classStateStore.getUser(req.user?.email)?.activeClass;
         if (!userClassId || String(userClassId) !== String(classId)) {
             return res.status(403).json({
                 success: false,

@@ -2,9 +2,9 @@ const { dbGet } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const pools = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
-const { requireQueryParam } = require("@modules/error-wrapper");
 
 const DEFAULT_POOL_LIMIT = 20;
 const MAX_POOL_LIMIT = 100;
@@ -128,7 +128,6 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Handle displaying the pools management page
     router.get(
         "/user/:id/pools",
         isAuthenticated,
