@@ -1,4 +1,9 @@
-// Support module aliases for importing
+/**
+ * @module init
+ * @description Creates a fresh Formbar.js database from init.sql and populates
+ * seed data (item_registry from CSV). Exits if a database already exists.
+ */
+
 require("module-alias/register");
 
 const sqlite3 = require("sqlite3").verbose();
@@ -10,6 +15,10 @@ initializeDatabase().catch((err) => {
     process.exit(1);
 });
 
+/**
+ * Creates the database from init.sql and populates the item registry.
+ * @returns {Promise<void>}
+ */
 async function initializeDatabase() {
     if (fs.existsSync("./database/database.db")) {
         console.log("Database already exists. Skipping initialization.");
@@ -30,7 +39,6 @@ async function initializeDatabase() {
         await runStatement(database, "COMMIT");
         console.log("Schema created successfully.");
 
-        // Populate item_registry from CSV
         await populateItemRegistry(database);
     } catch (err) {
         try {
@@ -46,6 +54,11 @@ async function initializeDatabase() {
     console.log("Database initialized successfully.");
 }
 
+/**
+ * Reads items.csv and inserts rows into the item_registry table.
+ * @param {sqlite3.Database} database
+ * @returns {Promise<void>}
+ */
 async function populateItemRegistry(database) {
     const csvPath = "./database/items.csv";
     if (!fs.existsSync(csvPath)) {
@@ -83,6 +96,12 @@ async function populateItemRegistry(database) {
     }
 }
 
+/**
+ * @param {sqlite3.Database} database
+ * @param {string} sql
+ * @param {any[]} [params=[]]
+ * @returns {Promise<void>}
+ */
 function runStatement(database, sql, params = []) {
     return new Promise((resolve, reject) => {
         database.run(sql, params, (err) => {
@@ -95,6 +114,11 @@ function runStatement(database, sql, params = []) {
     });
 }
 
+/**
+ * @param {sqlite3.Database} database
+ * @param {string} sql
+ * @returns {Promise<void>}
+ */
 function execStatement(database, sql) {
     return new Promise((resolve, reject) => {
         database.exec(sql, (err) => {
@@ -107,6 +131,10 @@ function execStatement(database, sql) {
     });
 }
 
+/**
+ * @param {sqlite3.Database} database
+ * @returns {Promise<void>}
+ */
 function closeDatabase(database) {
     return new Promise((resolve, reject) => {
         database.close((err) => {

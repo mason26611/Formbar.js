@@ -1,23 +1,25 @@
-// ===========================================================================
-// migrate.js — Schema-versioned migration runner
-//
-// Checks the current schema_version and runs only the migrations needed.
-// For old databases (no schema_version table or version < 1), runs the
-// compacted legacy migration (00_legacy_compact.js) which idempotently
-// brings the database to version 1.
-// ===========================================================================
+/**
+ * @module migrate
+ * @description Schema-versioned migration runner for Formbar.js.
+ *
+ * Runs the compacted legacy migration if schema_version < 1, then executes
+ * any individual SQL/JS migration files in order. New migrations are added as
+ * numbered files; compact again on major version changes.
+ */
 
 require("module-alias/register");
 
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
 
-const CURRENT_SCHEMA_VERSION = 1;
+const COMPACT_VERSION = 1;
 
-// ---------------------------------------------------------------------------
-// Database helpers
-// ---------------------------------------------------------------------------
-
+/**
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @param {any[]} [params=[]]
+ * @returns {Promise<object|undefined>}
+ */
 function queryOne(db, sql, params = []) {
     return new Promise((resolve, reject) => {
         db.get(sql, params, (err, row) => {
@@ -27,25 +29,47 @@ function queryOne(db, sql, params = []) {
     });
 }
 
-function queryAll(db, sql, params = []) {
+/**
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @param {any[]} [params=[]]
+ * @returns {Promise<object>}
+ */
+function run(db, sql, params = []) {
     return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
+        db.run(sql, params, function (err) {
             if (err) return reject(err);
-            resolve(rows || []);
+            resolve(this);
         });
     });
 }
 
+/**
+ * @param {sqlite3.Database} db
+ * @param {string} sql
+ * @returns {Promise<void>}
+ */
+function exec(db, sql) {
+    return new Promise((resolve, reject) => {
+        db.exec(sql, (err) => (err ? reject(err) : resolve()));
+    });
+}
+
+/**
+ * @param {sqlite3.Database} db
+ * @returns {Promise<void>}
+ */
 function closeDb(db) {
     return new Promise((resolve, reject) => {
         db.close((err) => (err ? reject(err) : resolve()));
     });
 }
 
-// ---------------------------------------------------------------------------
-// Determine current schema version
-// ---------------------------------------------------------------------------
-
+/**
+ * Returns the current schema version from the database, or 0 if untracked.
+ * @param {sqlite3.Database} db
+ * @returns {Promise<number>}
+ */
 async function getSchemaVersion(db) {
     const table = await queryOne(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'");
     if (!table) return 0;
@@ -54,10 +78,83 @@ async function getSchemaVersion(db) {
     return row ? row.version : 0;
 }
 
-// ---------------------------------------------------------------------------
-// Backup
-// ---------------------------------------------------------------------------
+/**
+ * Collects SQL migrations from `database/migrations/` and JS migrations from
+ * `database/migrations/JSMigrations/`, sorted by filename.
+ * @returns {{type: string, filename: string, path: string}[]}
+ */
+function collectMigrations() {
+    const migDir = "./database/migrations";
+    const jsDir = `${migDir}/JSMigrations`;
 
+    const sqlMigrations = fs
+        .readdirSync(migDir)
+        .filter((file) => file.endsWith(".sql"))
+        .map((file) => ({
+            type: "sql",
+            filename: file,
+            path: `${migDir}/${file}`,
+        }));
+
+    if (!fs.existsSync(jsDir)) {
+        fs.mkdirSync(jsDir);
+    }
+
+    const jsMigrations = fs
+        .readdirSync(jsDir)
+        .filter((file) => file.endsWith(".js"))
+        .map((file) => ({
+            type: "js",
+            filename: file,
+            path: `${jsDir}/${file}`,
+        }));
+
+    return [...sqlMigrations, ...jsMigrations].sort((a, b) => a.filename.localeCompare(b.filename));
+}
+
+/**
+ * Runs a single SQL migration file inside a transaction.
+ * Rolls back and continues if the migration was already applied.
+ * @param {sqlite3.Database} db
+ * @param {{path: string}} migration
+ */
+async function executeSQLMigration(db, migration) {
+    const migrationSQL = fs.readFileSync(migration.path, "utf8");
+
+    await run(db, "BEGIN TRANSACTION");
+    try {
+        await exec(db, migrationSQL);
+        await run(db, "COMMIT");
+    } catch (err) {
+        await run(db, "ROLLBACK").catch(() => {});
+
+        if (process.argv.includes("verbose")) {
+            console.error(err);
+        }
+
+        console.log("  Unable to complete migration as it has already been run, or an error occurred. Continuing to next migration.");
+    }
+}
+
+/**
+ * Runs a single JS migration module. Skips if the module throws "ALREADY_DONE".
+ * @param {sqlite3.Database} db
+ * @param {{path: string}} migration
+ */
+async function executeJSMigration(db, migration) {
+    try {
+        const migrationModule = require(migration.path);
+        await migrationModule.run(db);
+    } catch (err) {
+        if (err.message === "ALREADY_DONE") {
+            console.log("  Already applied. Skipping.");
+            return;
+        }
+        throw err;
+    }
+}
+
+/** Creates a numbered backup of the database file. */
 function backupDatabase() {
     if (!fs.existsSync("database/database.db") || process.env.SKIP_BACKUP) return;
 
@@ -71,10 +168,7 @@ function backupDatabase() {
     console.log(`Database backed up to ${backupPath}`);
 }
 
-// ---------------------------------------------------------------------------
-// Run migrations
-// ---------------------------------------------------------------------------
-
+/** Runs all pending migrations against the database. */
 async function migrate() {
     if (!fs.existsSync("database/database.db")) {
         console.log("No database found. Run init.js first.");
@@ -87,16 +181,10 @@ async function migrate() {
         const version = await getSchemaVersion(db);
         console.log(`Current schema version: ${version}`);
 
-        if (version >= CURRENT_SCHEMA_VERSION) {
-            console.log("Database is up to date. No migrations needed.");
-            return;
-        }
-
-        backupDatabase();
-
-        // Version 0 → 1: Run the compacted legacy migration
-        if (version < 1) {
-            console.log("Running compacted legacy migration (0 → 1)...");
+        // Bring old databases up to baseline via compact migration
+        if (version < COMPACT_VERSION) {
+            backupDatabase();
+            console.log(`Running compacted legacy migration (${version} → ${COMPACT_VERSION})...`);
             const legacyCompact = require("./migrations/00_legacy_compact.js");
             try {
                 await legacyCompact.run(db);
@@ -109,9 +197,19 @@ async function migrate() {
             }
         }
 
-        // Future migrations would go here:
-        // if (version < 2) { ... }
-        // if (version < 3) { ... }
+        // Run any individual SQL/JS migrations added after compaction
+        const migrations = collectMigrations();
+        if (migrations.length > 0) {
+            for (const migration of migrations) {
+                console.log(`Running ${migration.type.toUpperCase()} migration: ${migration.filename}`);
+                if (migration.type === "sql") {
+                    await executeSQLMigration(db, migration);
+                } else {
+                    await executeJSMigration(db, migration);
+                }
+                console.log(`  Completed: ${migration.filename}`);
+            }
+        }
 
         const finalVersion = await getSchemaVersion(db);
         console.log(`Migration complete. Schema version: ${finalVersion}`);
