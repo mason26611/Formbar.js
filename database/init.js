@@ -3,6 +3,7 @@ require("module-alias/register");
 
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
+const csv = require("csv-parser");
 
 initializeDatabase().catch((err) => {
     console.error("Database initialization failed:", err);
@@ -27,6 +28,10 @@ async function initializeDatabase() {
         await runStatement(database, "BEGIN TRANSACTION");
         await execStatement(database, initSQL);
         await runStatement(database, "COMMIT");
+        console.log("Schema created successfully.");
+
+        // Populate item_registry from CSV
+        await populateItemRegistry(database);
     } catch (err) {
         try {
             await runStatement(database, "ROLLBACK");
@@ -39,10 +44,43 @@ async function initializeDatabase() {
     }
 
     console.log("Database initialized successfully.");
+}
 
-    // Set flag to skip backup during init, then run the migrations
-    process.env.SKIP_BACKUP = "true";
-    require("./migrate.js");
+async function populateItemRegistry(database) {
+    const csvPath = "./database/items.csv";
+    if (!fs.existsSync(csvPath)) {
+        console.log("items.csv not found, skipping item_registry population.");
+        return;
+    }
+
+    const items = await new Promise((resolve, reject) => {
+        const results = [];
+        fs.createReadStream(csvPath)
+            .on("error", reject)
+            .pipe(csv({ mapHeaders: ({ header }) => header.trim() }))
+            .on("error", reject)
+            .on("data", (row) => results.push(row))
+            .on("end", () => resolve(results));
+    });
+
+    if (items.length === 0) return;
+
+    await runStatement(database, "BEGIN TRANSACTION");
+    try {
+        for (const item of items) {
+            const stackSize = parseInt(item.stackSize, 10);
+            await runStatement(database, "INSERT OR IGNORE INTO item_registry (name, description, stack_size) VALUES (?, ?, ?)", [
+                item.name,
+                item.desc,
+                Number.isFinite(stackSize) ? stackSize : 1,
+            ]);
+        }
+        await runStatement(database, "COMMIT");
+        console.log(`Populated item_registry with ${items.length} items.`);
+    } catch (err) {
+        await runStatement(database, "ROLLBACK").catch(() => {});
+        throw err;
+    }
 }
 
 function runStatement(database, sql, params = []) {
