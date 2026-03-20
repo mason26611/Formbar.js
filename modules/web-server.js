@@ -34,6 +34,9 @@ function createServer() {
                 { name: "IP Management", description: "IP whitelist/blacklist management", "x-order": 11 },
                 { name: "Manager", description: "Manager/admin functions", "x-order": 12 },
                 { name: "Notifications", description: "User notification management", "x-order": 13 },
+                { name: "OAuth", description: "OAuth 2.0 authorization flow", "x-order": 14 },
+                { name: "Apps", description: "Application registration and management", "x-order": 15 },
+                { name: "Pools", description: "Digipog pool management", "x-order": 16 },
             ],
             components: {
                 securitySchemes: {

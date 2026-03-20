@@ -85,7 +85,82 @@ module.exports = (router) => {
         });
     });
 
-    // Add IP
+    /**
+     * @swagger
+     * /api/v1/ip/{type}:
+     *   post:
+     *     summary: Add IP to access list
+     *     tags:
+     *       - IP Management
+     *     description: |
+     *       Adds an IP address to the whitelist or blacklist.
+     *
+     *       **Required Permission:** Global System Admin permission (level 5)
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: type
+     *         required: true
+     *         schema:
+     *           type: string
+     *           enum: [whitelist, blacklist]
+     *         description: Type of IP list
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - ip
+     *             properties:
+     *               ip:
+     *                 type: string
+     *                 example: "192.168.1.1"
+     *     responses:
+     *       201:
+     *         description: IP added successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     ok:
+     *                       type: boolean
+     *                       example: true
+     *       400:
+     *         description: Invalid type or missing IP
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       409:
+     *         description: IP already exists in the list
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.post("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const { ip } = req.body || {};
