@@ -2,7 +2,7 @@ const ValidationError = require("@errors/validation-error");
 const AppError = require("@errors/app-error");
 
 function requireQueryParam(param, name) {
-    if (param === undefined || param === null) {
+    if (param === undefined || param === null || Number.isNaN(param)) {
         throw new ValidationError(`Required query parameter '${name}' is missing.`);
     }
 }

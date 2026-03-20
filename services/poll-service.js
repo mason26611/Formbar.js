@@ -208,8 +208,11 @@ async function createPoll(classId, pollData, userData) {
         });
     }
 
+    const pollStartTime = Date.now();
+
     // Set the poll's data in the classroom
-    pollRuntimeStore.setPollStartTime(classId, Date.now());
+    pollRuntimeStore.setPollStartTime(classId, pollStartTime);
+    classroom.poll.startTime = pollStartTime;
     classroom.poll.weight = weight;
     classroom.poll.allowTextResponses = allowTextResponses;
     classroom.poll.prompt = prompt;

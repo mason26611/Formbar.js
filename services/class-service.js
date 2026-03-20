@@ -928,6 +928,69 @@ function startTimer({ classId, duration, sound }) {
     broadcastClassUpdate(classId);
 }
 
+function resumeTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    const timer = classroom.timer;
+    // Ensure there is a timer to resume
+    if (!timer) return;
+    // Only resume if the timer is currently inactive/paused
+    if (timer.active) return;
+    const pausedAt = timer.pausedAt;
+    // Ensure pausedAt is a finite number before resuming
+    if (typeof pausedAt !== "number" || !Number.isFinite(pausedAt)) return;
+    // Ensure startTime and endTime are finite numbers to avoid NaN
+    if (
+        typeof timer.startTime !== "number" ||
+        !Number.isFinite(timer.startTime) ||
+        typeof timer.endTime !== "number" ||
+        !Number.isFinite(timer.endTime)
+    )
+        return;
+    const now = Date.now();
+    const pauseDelta = now - pausedAt;
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            ...timer,
+            startTime: timer.startTime + pauseDelta,
+            endTime: timer.endTime + pauseDelta,
+            active: true,
+            // Clear pausedAt so subsequent resumes do not re-shift the timer
+            pausedAt: undefined,
+        },
+    });
+
+    broadcastClassUpdate(classId);
+}
+
+function pauseTimer(classId) {
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) return;
+
+    const timer = classroom.timer;
+    if (
+        !timer ||
+        typeof timer.startTime !== "number" ||
+        !Number.isFinite(timer.startTime) ||
+        typeof timer.endTime !== "number" ||
+        !Number.isFinite(timer.endTime)
+    ) {
+        return;
+    }
+
+    classStateStore.updateClassroom(classId, {
+        timer: {
+            ...timer,
+            active: false,
+            pausedAt: Date.now(),
+        },
+    });
+
+    broadcastClassUpdate(classId);
+}
+
 function endTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -988,4 +1051,6 @@ module.exports = {
     startTimer,
     endTimer,
     clearTimer,
+    resumeTimer,
+    pauseTimer,
 };
