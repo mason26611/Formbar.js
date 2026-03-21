@@ -12,7 +12,67 @@ module.exports = (router) => {
         auxiliary: SCOPES.CLASS.AUXILIARY.CONTROL,
     };
 
-    // Used for checking class permissions such as the ability to use games and auxiliary
+    /**
+     * @swagger
+     * /api/v1/apiPermissionCheck:
+     *   get:
+     *     summary: Check API permissions for a class
+     *     tags:
+     *       - System
+     *     description: |
+     *       Checks whether a user (identified by API key) has a specific permission type
+     *       within a given class. Used by external integrations (games, auxiliary tools)
+     *       to verify access before performing actions.
+     *     parameters:
+     *       - in: query
+     *         name: api
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The user's API key
+     *       - in: query
+     *         name: permissionType
+     *         required: true
+     *         schema:
+     *           type: string
+     *           enum: [games, auxiliary]
+     *         description: The type of permission to check
+     *       - in: query
+     *         name: classId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The class ID to check permissions in
+     *     responses:
+     *       200:
+     *         description: Permission check passed
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     allowed:
+     *                       type: boolean
+     *                       example: true
+     *       400:
+     *         description: Missing or invalid query parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       403:
+     *         description: User is not logged in, not in the class, or lacks the required permission
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.get("/apiPermissionCheck", async (req, res) => {
         let { api, permissionType, classId } = req.query;
         req.infoEvent("api.permission.check.attempt", "Attempting API permission check", { permissionType, classId });

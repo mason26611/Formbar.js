@@ -1,0 +1,583 @@
+const request = require("supertest");
+const { createTestDb } = require("@test-helpers/db");
+const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+
+let mockDatabase;
+
+jest.mock("@modules/database", () => {
+    const dbProxy = new Proxy(
+        {},
+        {
+            get(_, method) {
+                return (...args) => mockDatabase.db[method](...args);
+            },
+        }
+    );
+    return {
+        get database() {
+            return dbProxy;
+        },
+        dbGet: (...args) => mockDatabase.dbGet(...args),
+        dbRun: (...args) => mockDatabase.dbRun(...args),
+        dbGetAll: (...args) => mockDatabase.dbGetAll(...args),
+    };
+});
+
+jest.mock("@modules/config", () => {
+    const crypto = require("crypto");
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: "spki", format: "pem" },
+        privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    return {
+        settings: { emailEnabled: false, googleOauthEnabled: false },
+        publicKey,
+        privateKey,
+        frontendUrl: "http://localhost:3000",
+    };
+});
+
+// Socket-updates-service emits to sockets that don't exist in tests — stub it out.
+jest.mock("@services/socket-updates-service", () => ({
+    managerUpdate: jest.fn().mockResolvedValue(),
+    userUpdateSocket: jest.fn(),
+}));
+
+const userController = require("../user/user");
+const meController = require("../user/me/me");
+const banController = require("../user/ban");
+const deleteController = require("../user/delete");
+const permController = require("../user/perm");
+const classesController = require("../user/classes");
+const scopesController = require("../user/scopes");
+const transactionsController = require("../user/transactions");
+const poolsController = require("../user/pools");
+
+// meController must be registered before userController so that
+// the literal "/user/me" route matches before the "/user/:id" param route.
+const app = createTestApp(
+    meController,
+    userController,
+    banController,
+    deleteController,
+    permController,
+    classesController,
+    scopesController,
+    transactionsController,
+    poolsController
+);
+
+beforeAll(async () => {
+    mockDatabase = await createTestDb();
+});
+
+afterEach(async () => {
+    await mockDatabase.reset();
+    clearClassStateStore();
+});
+
+afterAll(async () => {
+    await mockDatabase.close();
+});
+
+async function seedManager() {
+    return seedAuthenticatedUser(mockDatabase, {
+        email: "admin@example.com",
+        displayName: "Admin1",
+        permissions: 5,
+    });
+}
+
+async function seedStudent() {
+    // Explicitly set permissions=2 because the register() service grants the
+    // first user MANAGER_PERMISSIONS (5). Without the override, a student
+    // seeded first would silently become a manager.
+    return seedAuthenticatedUser(mockDatabase, { permissions: 2 });
+}
+
+async function seedSecondStudent() {
+    return seedAuthenticatedUser(mockDatabase, {
+        email: "student2@example.com",
+        displayName: "Student2",
+        permissions: 2,
+    });
+}
+
+describe("GET /api/v1/user/:id", () => {
+    it("returns 200 with user data for an existing user (no auth required)", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toMatchObject({
+            id: user.id,
+            displayName: user.displayName,
+        });
+    });
+
+    it("returns 404 for a non-existent user", async () => {
+        const res = await request(app).get("/api/v1/user/99999");
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("does not expose email to unauthenticated visitors", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.email).toBeUndefined();
+    });
+
+    it("does not expose email even with a valid token (no auth middleware on this route)", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        // The route is public (no isAuthenticated middleware), so req.user is
+        // never populated and the email is not returned.
+        expect(res.body.data.email).toBeUndefined();
+    });
+});
+
+describe("GET /api/v1/user/me", () => {
+    it("returns 200 with the authenticated user's data", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toMatchObject({
+            id: user.id,
+            email: user.email,
+            displayName: user.displayName,
+        });
+    });
+
+    it("returns 401 without auth", async () => {
+        const res = await request(app).get("/api/v1/user/me");
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("PATCH /api/v1/user/:id/ban", () => {
+    it("returns 200 when a manager bans a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/ban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        // Verify the user's permissions are now 0 (banned)
+        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
+        expect(row.permissions).toBe(0);
+    });
+
+    it("returns 404 when banning a non-existent user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+
+        const res = await request(app).patch("/api/v1/user/99999/ban").set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 403 when a regular user tries to ban", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/ban`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/ban`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("PATCH /api/v1/user/:id/unban", () => {
+    it("returns 200 when a manager unbans a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        // Ban first
+        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        // Verify permissions restored to STUDENT_PERMISSIONS (2)
+        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
+        expect(row.permissions).toBe(2);
+    });
+
+    it("returns 404 when unbanning a non-existent user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+
+        const res = await request(app).patch("/api/v1/user/99999/unban").set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 403 when a regular user tries to unban", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).patch(`/api/v1/user/${target.id}/unban`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("DELETE /api/v1/user/:id", () => {
+    it("returns 200 when a manager deletes a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).delete(`/api/v1/user/${target.id}`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        // Verify user no longer exists
+        const row = await mockDatabase.dbGet("SELECT id FROM users WHERE id = ?", [target.id]);
+        expect(row).toBeUndefined();
+    });
+
+    it("returns 403 when a regular user tries to delete", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).delete(`/api/v1/user/${target.id}`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).delete(`/api/v1/user/${target.id}`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("PATCH /api/v1/user/:email/perm", () => {
+    it("returns 200 when a manager updates permissions", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app)
+            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .set("Authorization", `Bearer ${managerTokens.accessToken}`)
+            .send({ perm: 4 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
+        expect(row.permissions).toBe(4);
+    });
+
+    it("returns 400 when perm value is invalid", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app)
+            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .set("Authorization", `Bearer ${managerTokens.accessToken}`)
+            .send({ perm: "abc" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 403 when a regular user tries to update permissions", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app)
+            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .set("Authorization", `Bearer ${studentTokens.accessToken}`)
+            .send({ perm: 4 });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user: target } = await seedStudent();
+
+        const res = await request(app)
+            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .send({ perm: 4 });
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("GET /api/v1/user/:id/classes", () => {
+    it("returns 200 when a user views their own classes", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/classes`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.data)).toBe(true);
+    });
+
+    it("returns 200 when a manager views another user's classes", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/classes`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("returns 403 when a regular user views another user's classes", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/classes`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 404 for a non-existent user", async () => {
+        const { tokens } = await seedManager();
+
+        const res = await request(app).get("/api/v1/user/99999/classes").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/classes`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("GET /api/v1/user/:id/scopes", () => {
+    it("returns 200 when a user views their own scopes", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/scopes`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty("role");
+        expect(res.body.data).toHaveProperty("globalScopes");
+        expect(res.body.data).toHaveProperty("classRole");
+        expect(res.body.data).toHaveProperty("classScopes");
+    });
+
+    it("returns 200 when a manager views another user's scopes", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/scopes`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("returns 403 when a regular user views another user's scopes", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/scopes`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 404 for a non-existent user", async () => {
+        const { tokens } = await seedManager();
+
+        const res = await request(app).get("/api/v1/user/99999/scopes").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/scopes`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("GET /api/v1/user/:id/transactions", () => {
+    it("returns 200 when a user views their own transactions", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/transactions`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty("transactions");
+        expect(res.body.data).toHaveProperty("pagination");
+    });
+
+    it("returns 200 when a manager views another user's transactions", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/transactions`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("returns 403 when a regular user views another user's transactions", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/transactions`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 404 for a non-existent user", async () => {
+        const { tokens } = await seedManager();
+
+        const res = await request(app).get("/api/v1/user/99999/transactions").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 for an invalid limit", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/transactions?limit=999`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 for a negative offset", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/transactions?offset=-1`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/transactions`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("GET /api/v1/user/:id/pools", () => {
+    it("returns 200 when a user views their own pools", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/pools`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toHaveProperty("pools");
+        expect(res.body.data).toHaveProperty("pagination");
+    });
+
+    it("returns 200 when a manager views another user's pools", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/pools`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
+    it("returns 403 when a regular user views another user's pools", async () => {
+        const { tokens: studentTokens } = await seedStudent();
+        const { user: target } = await seedSecondStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/pools`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 for an invalid limit", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/pools?limit=999`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 400 for a negative offset", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/pools?offset=-5`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/pools`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+});
