@@ -69,9 +69,6 @@ async function seedPool(name, description, amount, ownerId) {
     return poolId;
 }
 
-// ===========================================================================
-// POST /api/v1/pools/create
-// ===========================================================================
 describe("POST /api/v1/pools/create", () => {
     it("should create a pool when the user has POOLS.MANAGE scope", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
@@ -217,9 +214,6 @@ describe("POST /api/v1/pools/create", () => {
     });
 });
 
-// ===========================================================================
-// POST /api/v1/pools/:id/add-member
-// ===========================================================================
 describe("POST /api/v1/pools/:id/add-member", () => {
     it("should add a member when called by the pool owner", async () => {
         const { tokens, user: owner } = await seedAuthenticatedUser(mockDatabase);
@@ -300,9 +294,6 @@ describe("POST /api/v1/pools/:id/add-member", () => {
     });
 });
 
-// ===========================================================================
-// POST /api/v1/pools/:id/remove-member
-// ===========================================================================
 describe("POST /api/v1/pools/:id/remove-member", () => {
     it("should remove a member when called by the pool owner", async () => {
         const { tokens, user: owner } = await seedAuthenticatedUser(mockDatabase);
@@ -360,9 +351,6 @@ describe("POST /api/v1/pools/:id/remove-member", () => {
     });
 });
 
-// ===========================================================================
-// DELETE /api/v1/pools/:id
-// ===========================================================================
 describe("DELETE /api/v1/pools/:id", () => {
     it("should delete a pool when called by the pool owner", async () => {
         const { tokens, user: owner } = await seedAuthenticatedUser(mockDatabase);
@@ -414,9 +402,6 @@ describe("DELETE /api/v1/pools/:id", () => {
     });
 });
 
-// ===========================================================================
-// POST /api/v1/pools/:id/payout
-// ===========================================================================
 describe("POST /api/v1/pools/:id/payout", () => {
     it("should pay out pool funds to members", async () => {
         const { tokens, user: owner } = await seedAuthenticatedUser(mockDatabase);
