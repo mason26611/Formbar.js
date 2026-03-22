@@ -1,17 +1,17 @@
-const { leaveRoom } = require("@services/room-service");
+const { unenrollFromClass } = require("@services/class-membership-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/room/{id}/leave:
+     * /api/v1/class/{id}/unenroll:
      *   post:
-     *     summary: Leave a classroom entirely
+     *     summary: Unenroll from a classroom
      *     tags:
-     *       - Room
+     *       - Class
      *     description: |
-     *       Leaves the classroom entirely. The user is no longer attached to the classroom.
+     *       Unenrolls from the classroom entirely. The user is no longer attached to the classroom.
      *       This is different from leaving a class session - this completely removes the user from the classroom.
      *
      *       **Required Permission:** Class-specific `leaveRoom` permission
@@ -27,13 +27,13 @@ module.exports = (router) => {
      *         description: Class ID
      *     responses:
      *       200:
-     *         description: Successfully left the classroom
+     *         description: Successfully unenrolled from the classroom
      *         content:
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/SuccessResponse'
      *       400:
-     *         description: Unable to leave classroom
+     *         description: Unable to unenroll from classroom
      *         content:
      *           application/json:
      *             schema:
@@ -45,16 +45,16 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.post("/room/:id/leave", isAuthenticated, async (req, res) => {
+    router.post("/class/:id/unenroll", isAuthenticated, async (req, res) => {
         const classId = Number(req.params.id);
 
         requireQueryParam(classId, "classId");
 
-        req.infoEvent("room.leave.attempt", "User attempting to leave room", { classId });
+        req.infoEvent("class.unenroll.attempt", "User attempting to unenroll from class", { classId });
 
-        await leaveRoom({ ...req.user, classId });
+        await unenrollFromClass({ ...req.user, classId });
 
-        req.infoEvent("room.leave.success", "User left room successfully", { classId });
+        req.infoEvent("class.unenroll.success", "User unenrolled from class successfully", { classId });
         res.status(200).json({
             success: true,
             data: {},

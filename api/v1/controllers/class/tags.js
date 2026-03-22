@@ -9,7 +9,7 @@ const ValidationError = require("@errors/validation-error");
 module.exports = (router) => {
     const setTagsHandler = async (req, res) => {
         const classId = req.user.classId || req.user.activeClass;
-        req.infoEvent("room.tags.update.attempt", "Attempting to update room tags", { classId });
+        req.infoEvent("class.tags.update.attempt", "Attempting to update class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
         }
@@ -20,7 +20,7 @@ module.exports = (router) => {
         }
 
         setTags(tags, req.user);
-        req.infoEvent("room.tags.update.success", "Room tags updated", { classId, tagCount: tags.length });
+        req.infoEvent("class.tags.update.success", "Class tags updated", { classId, tagCount: tags.length });
         res.status(200).json({
             success: true,
             data: {},
@@ -29,11 +29,11 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/room/tags:
+     * /api/v1/class/tags:
      *   get:
      *     summary: Get current class tags
      *     tags:
-     *       - Room
+     *       - Class
      *     description: |
      *       Returns the current tags for the classroom.
      *
@@ -61,15 +61,15 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/room/tags", isAuthenticated, async (req, res) => {
+    router.get("/class/tags", isAuthenticated, async (req, res) => {
         const classId = req.user.classId || req.user.activeClass;
-        req.infoEvent("room.tags.view.attempt", "Attempting to view room tags", { classId });
+        req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
         }
 
         const tags = classStateStore.getClassroom(classId).tags || [];
-        req.infoEvent("room.tags.view.success", "Room tags returned", { classId, tagCount: tags.length });
+        req.infoEvent("class.tags.view.success", "Class tags returned", { classId, tagCount: tags.length });
         return res.status(200).json({
             success: true,
             data: {
@@ -80,11 +80,11 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/room/tags:
+     * /api/v1/class/tags:
      *   put:
      *     summary: Set class tags
      *     tags:
-     *       - Room
+     *       - Class
      *     description: |
      *       Sets (replaces) the tags for the current classroom.
      *
@@ -126,12 +126,12 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.put("/room/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), setTagsHandler);
+    router.put("/class/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), setTagsHandler);
 
-    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/room/tags instead
-    router.post("/room/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PUT /api/v1/room/tags instead");
-        res.setHeader("Warning", '299 - "Deprecated API: Use PUT /api/v1/room/tags instead. This endpoint will be removed in a future version."');
+    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/tags instead
+    router.post("/class/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
+        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/tags instead");
+        res.setHeader("Warning", '299 - "Deprecated API: Use PUT /api/v1/class/tags instead. This endpoint will be removed in a future version."');
         await setTagsHandler(req, res);
     });
 };

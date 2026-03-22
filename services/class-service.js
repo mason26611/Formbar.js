@@ -45,11 +45,6 @@ async function getClassCode(classId) {
     return result ? result.key : null;
 }
 
-async function getClassIdByCode(classCode) {
-    const result = await dbGet("SELECT id FROM classroom WHERE key = ?", [classCode]);
-    return result ? result.id : null;
-}
-
 /**
  * Validates a classroom name
  * @param {string} className - The classroom name to validate
@@ -526,10 +521,11 @@ function isClassActive(classId) {
 }
 
 /**
- * Deletes all classrooms owned by the specified user, along with related data in other tables.
+ * Deletes all classrooms owned by the specified user, along with related data
+ * (class users, polls, links) and in-memory session state.
  * @param {number|string} userId - The ID of the user whose classrooms should be deleted.
  */
-async function deleteRooms(userId) {
+async function deleteClassrooms(userId) {
     const classrooms = await dbGetAll("SELECT * FROM classroom WHERE owner=?", userId);
     if (classrooms.length == 0) return;
 
@@ -1025,7 +1021,6 @@ module.exports = {
     getUserJoinedClasses,
     getClassCode,
     getClassLinks,
-    getClassIdByCode,
     validateClassroomName,
     initializeClassroom,
     addUserToClassroomSession,
@@ -1036,7 +1031,7 @@ module.exports = {
     joinClass,
     leaveClass,
     isClassActive,
-    deleteRooms,
+    deleteClassrooms,
     classKickStudent,
     classKickStudents,
     requestBreak,

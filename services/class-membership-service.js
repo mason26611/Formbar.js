@@ -1,4 +1,15 @@
-const { classStateStore } = require("@services/classroom-service");
+/**
+ * @module class-membership-service
+ *
+ * Manages persistent classroom membership — enrollment, unenrollment, and
+ * classroom-level data (links, bans). Operations here survive across sessions
+ * and are backed by the database.
+ *
+ * For active session management (start/end, timers, polls, breaks, help),
+ * see `class-service`. For the shared Classroom model and state store,
+ * see `classroom-service`.
+ */
+const { classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
@@ -15,13 +26,13 @@ function getClassService() {
     return classService;
 }
 
-async function deleteRoom(roomId) {
-    requireInternalParam(roomId, "roomId");
+async function deleteClassroom(classroomId) {
+    requireInternalParam(classroomId, "classroomId");
 
     await dbRun("BEGIN TRANSACTION");
     try {
-        await dbRun("DELETE FROM classroom WHERE id=?", [roomId]);
-        await dbRun("DELETE FROM classusers WHERE classId=?", [roomId]);
+        await dbRun("DELETE FROM classroom WHERE id=?", [classroomId]);
+        await dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]);
         await dbRun("COMMIT");
     } catch (err) {
         try {
@@ -33,14 +44,14 @@ async function deleteRoom(roomId) {
     }
 }
 
-function getRoomById(roomId) {
-    requireInternalParam(roomId, "roomId");
+function getClassroomById(classroomId) {
+    requireInternalParam(classroomId, "classroomId");
 
-    return dbGet("SELECT * FROM classroom WHERE id=?", [roomId]);
+    return dbGet("SELECT * FROM classroom WHERE id=?", [classroomId]);
 }
 
 /**
- * Join a classroom for the first time using a room code.
+ * Enroll a user in a classroom for the first time using a class code.
  *
  * Use this function when a user is joining with a code they received. For rejoining a class
  * the user is already a member of, use `joinClass` from `class-service` instead.
@@ -50,67 +61,67 @@ function getRoomById(roomId) {
  *  - Initialize the classroom in memory if it's not already loaded.
  *  - Delegate the actual joining logic to `class-service.addUserToClassroomSession`.
  *
- * @param {string} code - The room code to join.
+ * @param {string} code - The class code to enroll with.
  * @param {Object} sessionUser - The user's session object (must include `email`).
- * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to an object with `success: true` and `roomId` on success, or `{ success: false }` if the underlying service indicates the join failed.
+ * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to an object with `success: true` and `roomId` on success, or `{ success: false }` if the underlying service indicates the enrollment failed.
  * @throws {NotFoundError} If no class exists with that code.
  * @throws {Error} Errors from `class-service` (for example, permission/ban related errors) are propagated.
  */
-async function joinRoomByCode(code, sessionUser) {
+async function enrollByCode(code, sessionUser) {
     const email = sessionUser.email;
 
-    // Find the classroom from the database
-    const classroomDb = await dbGet("SELECT * FROM classroom WHERE key=?", [code]);
+    // Resolve class code to classroom ID (uses cache when available)
+    const classId = await getClassIDFromCode(code);
 
-    // Check to make sure there was a class with that code
-    if (!classroomDb) {
+    if (!classId) {
         throw new NotFoundError("No class with that code");
     }
 
     // Initialize classroom if not already loaded
-    if (!classStateStore.getClassroom(classroomDb.id)) {
-        await getClassService().initializeClassroom(classroomDb.id);
+    if (!classStateStore.getClassroom(classId)) {
+        await getClassService().initializeClassroom(classId);
     }
 
     // Delegate to class-service to handle the actual joining logic
-    // This avoids code duplication and keeps room-service focused on code validation
-    const result = await getClassService().addUserToClassroomSession(classroomDb.id, email, sessionUser);
+    const result = await getClassService().addUserToClassroomSession(classId, email, sessionUser);
     if (!result) {
         return { success: false };
     }
 
     return {
         success: true,
-        roomId: classroomDb.id,
+        roomId: classId,
     };
 }
 
 /**
- * Join a room by class code and emit the result back to the user's sockets.
+ * Enroll in a class by code and emit the result back to the user's sockets.
  *
- * This wraps `joinRoomByCode` and forwards the resulting payload to the user's
- * connected clients via the `joinClass` socket event.
+ * This wraps `enrollByCode` and forwards the resulting payload to the user's
+ * connected clients via the `joinClass` socket event. The event is intentionally
+ * named `joinClass` (not `enroll`) because the client treats both first-time
+ * enrollment and session re-joins identically once the server responds.
  *
- * @param {Object} userSession - The session object of the user attempting to join. Must include `email` and may include other session data required by `joinRoomByCode`.
- * @param {string} classCode - The code of the class to join.
- * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to the join result returned by `joinRoomByCode`. On success `success` is true and `roomId` is provided.
- * @throws {NotFoundError} If no class exists with that code (propagated from `joinRoomByCode`).
+ * @param {Object} userSession - The session object of the user attempting to enroll. Must include `email`.
+ * @param {string} classCode - The code of the class to enroll in.
+ * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to the enrollment result. On success `success` is true and `roomId` is provided.
+ * @throws {NotFoundError} If no class exists with that code (propagated from `enrollByCode`).
  * @throws {Error} Errors from `class-service` (for example, permission/ban related errors) are propagated.
  */
-async function joinRoom(userSession, classCode) {
-    const response = await joinRoomByCode(classCode, userSession);
+async function enrollInClass(userSession, classCode) {
+    const response = await enrollByCode(classCode, userSession);
     emitToUser(userSession.email, "joinClass", response);
     return response;
 }
 
 /**
- * Removes a user from a classroom.
+ * Permanently removes a user from a classroom.
  * Deletes the user from the class in memory and the database, updates the user's session,
  * emits leave events, and reloads the user's page.
- * @param {Object} userData - The session object of the user leaving the room.
+ * @param {Object} userData - The session object of the user being unenrolled.
  * @returns {Promise<void>}
  */
-async function leaveRoom(userData) {
+async function unenrollFromClass(userData) {
     const classId = userData.classId;
     const email = userData.email;
     const studentId = await getIdFromEmail(email);
@@ -144,38 +155,37 @@ async function leaveRoom(userData) {
     await emitToUser(email, "reload");
 }
 
-async function isUserInRoom(userId, classId) {
+async function isUserEnrolled(userId, classId) {
     const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
     return !!result;
 }
 
-function getLinksInRoom(classId) {
+function getClassLinks(classId) {
     requireInternalParam(classId, "classId");
     return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
 }
 
 /**
- * Middleware-compatible ownership check for rooms.
+ * Middleware-compatible ownership check for classrooms.
  * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
- * Also caches the room on req._room for use by the handler.
+ * Also caches the classroom on req._room for use by the handler.
  */
-async function roomOwnerCheck(req) {
-    const room = await getRoomById(Number(req.params.id));
-    if (!room) {
-        const NotFoundError = require("@errors/not-found-error");
-        throw new NotFoundError("Room not found");
+async function classroomOwnerCheck(req) {
+    const classroom = await getClassroomById(Number(req.params.id));
+    if (!classroom) {
+        throw new NotFoundError("Classroom not found");
     }
-    req._room = room;
-    return room.owner === req.user.id;
+    req._room = classroom;
+    return classroom.owner === req.user.id;
 }
 
 module.exports = {
-    deleteRoom,
-    getRoomById,
-    roomOwnerCheck,
-    joinRoomByCode,
-    joinRoom,
-    leaveRoom,
-    isUserInRoom,
-    getLinksInRoom,
+    deleteClassroom,
+    getClassroomById,
+    classroomOwnerCheck,
+    enrollByCode,
+    enrollInClass,
+    unenrollFromClass,
+    isUserEnrolled,
+    getClassLinks,
 };

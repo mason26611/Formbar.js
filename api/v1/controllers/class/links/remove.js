@@ -8,14 +8,14 @@ module.exports = (router) => {
     const removeLinkHandler = async (req, res) => {
         const classId = req.params.id;
         const { name } = req.body;
-        req.infoEvent("room.links.remove.attempt", "Attempting to remove room link", { classId, linkName: name });
+        req.infoEvent("class.links.remove.attempt", "Attempting to remove class link", { classId, linkName: name });
         if (!name) {
             throw new ValidationError("Name is required.");
         }
 
         // Remove the link from the database
         await dbRun("DELETE FROM links WHERE classId = ? AND name = ?", [classId, name]);
-        req.infoEvent("room.links.remove.success", "Room link removed", { classId, linkName: name });
+        req.infoEvent("class.links.remove.success", "Class link removed", { classId, linkName: name });
         res.status(200).json({
             success: true,
             data: {
@@ -26,11 +26,11 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/room/{id}/links:
+     * /api/v1/class/{id}/links:
      *   delete:
-     *     summary: Remove a link from a room
+     *     summary: Remove a link from a class
      *     tags:
-     *       - Room - Links
+     *       - Class - Links
      *     description: Removes a link from a classroom (requires teacher permissions)
      *     security:
      *       - bearerAuth: []
@@ -78,14 +78,14 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.delete("/room/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), removeLinkHandler);
+    router.delete("/class/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), removeLinkHandler);
 
-    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/room/:id/links instead
-    router.post("/room/:id/links/remove", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use DELETE /api/v1/room/:id/links instead");
+    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/class/:id/links instead
+    router.post("/class/:id/links/remove", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
+        res.setHeader("X-Deprecated", "Use DELETE /api/v1/class/:id/links instead");
         res.setHeader(
             "Warning",
-            '299 - "Deprecated API: Use DELETE /api/v1/room/:id/links instead. This endpoint will be removed in a future version."'
+            '299 - "Deprecated API: Use DELETE /api/v1/class/:id/links instead. This endpoint will be removed in a future version."'
         );
         await removeLinkHandler(req, res);
     });
