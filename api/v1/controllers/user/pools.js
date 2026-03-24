@@ -156,8 +156,24 @@ module.exports = (router) => {
                     const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
                     if (pool) {
                         const users = await pools.getUsersForPool(poolData.pool_id);
-                        pool.members = users.filter((userData) => !userData.owner).map((u) => u.user_id);
-                        pool.owners = users.filter((userData) => userData.owner).map((u) => u.user_id);
+                        pool.members = await Promise.all(
+                            users.filter((userData) => !userData.owner).map(async (u) => {
+                                const user = await dbGet("SELECT displayName FROM users WHERE id = ?", [u.user_id]);
+                                return {
+                                    id: u.user_id,
+                                    displayName: user ? user.displayName : "Unknown User",
+                                };
+                            })
+                        );
+                        pool.owners = await Promise.all(
+                            users.filter((userData) => userData.owner).map(async (u) => {
+                                const user = await dbGet("SELECT displayName FROM users WHERE id = ?", [u.user_id]);
+                                return {
+                                    id: u.user_id,
+                                    displayName: user ? user.displayName : "Unknown User",
+                                };
+                            })
+                        );
                     }
                     return pool;
                 })

@@ -174,7 +174,7 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag) {
 }
 
 async function addMemberToPool({ actingUserId, poolId, userId }) {
-    if (!Number.isInteger(poolId) || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
@@ -203,7 +203,7 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
 }
 
 async function removeMemberFromPool({ actingUserId, poolId, userId }) {
-    if (typeof poolId !== "number" || poolId <= 0) {
+    if (typeof poolId !== "number" || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 

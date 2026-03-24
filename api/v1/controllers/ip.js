@@ -93,8 +93,13 @@ module.exports = (router) => {
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
         }
+        
         if (!ip) {
             throw new ValidationError("Missing ip");
+        }
+
+        if(!/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
@@ -212,6 +217,10 @@ module.exports = (router) => {
         }
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
+        }
+
+        if(!/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
