@@ -36,7 +36,7 @@ module.exports = {
                     }
                 }
             } catch (err) {
-                logger.log("error", err.stack);
+                handleSocketError(err, socket, "inactivity-middleware");
             }
         });
 

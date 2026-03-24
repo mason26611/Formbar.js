@@ -9,7 +9,6 @@ const session = require("express-session"); // For storing client login data
 const crypto = require("crypto");
 const fs = require("fs");
 require("dotenv").config(); // For environment variables
-const cors = require("cors");
 
 // If the database does not exist, then prompt the user to initialize it and exit
 if (!fs.existsSync("database/database.db")) {
@@ -44,9 +43,6 @@ const requestLoggerMiddleware = require("@middleware/request-logger");
 // Without this, all requests appear to come from the same IP and rate limiting
 // is applied globally rather than per-user.
 app.set("trust proxy", Number(process.env.TRUST_PROXY) ?? 1);
-
-// Enables CORS if not using nginx or if ENABLE_CORS is set to true. This allows the API to be accessed from other origins, which is useful for development and if the frontend is hosted separately from the backend.
-process.env.ENABLE_CORS == "true" && app.use(cors({ origin: "*" }));
 
 // Apply logger middleware
 // This should always be applied first so that we can log when anything goes wrong
