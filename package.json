@@ -1,25 +1,18 @@
 {
     "name": "formbar",
     "version": "3.0.0",
-    "description": "Javascript rewrite of Formbar, an open source classroom management tool",
-    "main": "app.js",
+    "description": "TypeScript rewrite of Formbar, an open source classroom management tool",
+    "main": "dist/app.js",
     "scripts": {
-        "dev": "nodemon app",
-        "start": "node app",
+        "dev": "nodemon --exec ts-node -r tsconfig-paths/register app.ts",
+        "start": "node -r tsconfig-paths/register dist/app.js",
+        "build": "tsc",
         "test": "jest",
-        "init-db": "node database/init.js",
-        "migrate": "node database/migrate.js",
-        "format": "prettier --write \"**/*.js\"",
-        "format:check": "prettier --check \"**/*.js\""
-    },
-    "_moduleAliases": {
-        "@modules": "modules",
-        "@middleware": "middleware",
-        "@services": "services",
-        "@controllers": "api/v1/controllers",
-        "@errors": "errors",
-        "@sockets": "sockets",
-        "@stores": "stores"
+        "init-db": "ts-node -r tsconfig-paths/register database/init.ts",
+        "migrate": "ts-node -r tsconfig-paths/register database/migrate.ts",
+        "format": "prettier --write \"**/*.ts\"",
+        "format:check": "prettier --check \"**/*.ts\"",
+        "typecheck": "tsc --noEmit"
     },
     "repository": {
         "type": "git",
@@ -31,18 +24,43 @@
     },
     "homepage": "https://github.com/csmith1188/Formbar.js#readme",
     "nodemonConfig": {
+        "watch": [
+            "*.ts",
+            "api/**/*.ts",
+            "database/**/*.ts",
+            "errors/**/*.ts",
+            "middleware/**/*.ts",
+            "modules/**/*.ts",
+            "services/**/*.ts",
+            "sockets/**/*.ts",
+            "stores/**/*.ts",
+            "types/**/*.ts"
+        ],
+        "ext": "ts",
         "ignore": [
             "settings.json",
-            "static/**"
+            "static/**",
+            "dist/**",
+            "node_modules/**"
         ]
     },
     "dependencies": {
         "@datalust/winston-seq": "^3.0.1",
+        "@types/bcrypt": "^6.0.0",
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.6",
+        "@types/express-session": "^1.18.2",
+        "@types/jsonwebtoken": "^9.0.10",
+        "@types/node": "^25.5.0",
+        "@types/nodemailer": "^7.0.11",
+        "@types/passport": "^1.0.17",
+        "@types/passport-google-oauth20": "^2.0.17",
+        "@types/unzipper": "^0.10.11",
         "axios": "^1.12.2",
         "axios-cookiejar-support": "^6.0.4",
         "bcrypt": "^6.0.0",
-        "csv-parser": "^3.2.0",
         "cors": "^2.8.6",
+        "csv-parser": "^3.2.0",
         "dotenv": "^16.4.7",
         "express": "^4.18.2",
         "express-async-errors": "^3.1.1",
@@ -63,14 +81,21 @@
         "swagger-jsdoc": "^6.2.8",
         "swagger-ui-express": "^5.0.1",
         "tough-cookie": "^6.0.0",
+        "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
+        "typescript": "^6.0.2",
         "unzipper": "^0.12.3",
         "winston": "^3.11.0",
         "winston-daily-rotate-file": "^4.7.1"
     },
     "devDependencies": {
         "@types/jest": "^29.5.14",
+        "@types/supertest": "^7.2.0",
+        "@types/swagger-jsdoc": "^6.0.4",
+        "@types/swagger-ui-express": "^4.1.8",
         "jest": "^29.7.0",
         "nodemon": "^3.0.1",
-        "supertest": "^7.1.0"
+        "supertest": "^7.1.0",
+        "ts-jest": "^29.4.6"
     }
 }

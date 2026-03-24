@@ -1,5 +1,6 @@
 module.exports = {
-    setupFiles: ["<rootDir>/jest.setup.js"],
+    preset: "ts-jest",
+    setupFiles: ["<rootDir>/jest.setup.ts"],
     moduleNameMapper: {
         "^@modules/(.*)$": "<rootDir>/modules/$1",
         "^@services/(.*)$": "<rootDir>/services/$1",
@@ -9,7 +10,12 @@ module.exports = {
         "^@sockets/(.*)$": "<rootDir>/sockets/$1",
         "^@stores/(.*)$": "<rootDir>/stores/$1",
         "^@test-helpers/(.*)$": "<rootDir>/modules/test-helpers/$1",
+        "^@types/(.*)$": "<rootDir>/types/$1",
     },
     testEnvironment: "node",
     testTimeout: 15000,
+    transform: {
+        "^.+\\.ts$": "ts-jest",
+    },
+    testMatch: ["**/*.spec.ts"],
 };

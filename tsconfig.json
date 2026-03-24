@@ -1,0 +1,39 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "commonjs",
+        "lib": ["ES2020"],
+        "outDir": "./dist",
+        "rootDir": ".",
+        "strict": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "baseUrl": ".",
+        "paths": {
+            "@modules/*": ["modules/*"],
+            "@middleware/*": ["middleware/*"],
+            "@services/*": ["services/*"],
+            "@controllers/*": ["api/v1/controllers/*"],
+            "@errors/*": ["errors/*"],
+            "@sockets/*": ["sockets/*"],
+            "@stores/*": ["stores/*"],
+            "@test-helpers/*": ["modules/test-helpers/*"],
+            "@types/*": ["types/*"]
+        }
+    },
+    "include": [
+        "**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "Formbar.ts-client",
+        "database/migrations"
+    ]
+}

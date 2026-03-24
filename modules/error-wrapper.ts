@@ -1,0 +1,26 @@
+const ValidationError = require("@errors/validation-error");
+const AppError = require("@errors/app-error");
+
+function requireQueryParam(param: unknown, name: string): void {
+    if (param === undefined || param === null || Number.isNaN(param)) {
+        throw new ValidationError(`Required query parameter '${name}' is missing.`);
+    }
+}
+
+function requireBodyParam(param: unknown, name: string): void {
+    if (param === undefined || param === null) {
+        throw new ValidationError(`Required body parameter '${name}' is missing.`);
+    }
+}
+
+function requireInternalParam(param: unknown, name: string): void {
+    if (param === undefined || param === null) {
+        throw new AppError(`Internal Error: Missing required parameter '${name}'.`, { statusCode: 500 });
+    }
+}
+
+module.exports = {
+    requireQueryParam,
+    requireBodyParam,
+    requireInternalParam,
+};
