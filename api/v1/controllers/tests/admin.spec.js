@@ -272,3 +272,51 @@ describe("GET /api/v1/logs/:log", () => {
         expect(res.body.data.text).toBe("line1\nline2\nline3");
     });
 });
+
+describe("POST /api/v1/ip/:type/toggle", () => {
+    const fs = require("fs");
+    const { settings } = require("@modules/config");
+
+    let readSpy, writeSpy;
+
+    beforeEach(() => {
+        settings.whitelistActive = false;
+        settings.blacklistActive = false;
+
+        readSpy = jest.spyOn(fs, "readFileSync").mockReturnValue("WHITELIST_ENABLED='false'\nBLACKLIST_ENABLED='false'\n");
+        writeSpy = jest.spyOn(fs, "writeFileSync").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        readSpy.mockRestore();
+        writeSpy.mockRestore();
+    });
+
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).post("/api/v1/ip/whitelist/toggle");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns 403 for a student", async () => {
+        const { tokens } = await seedStudent();
+        const res = await request(app).post("/api/v1/ip/whitelist/toggle").set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(403);
+    });
+
+    it("returns 200 and toggles whitelist active for admin", async () => {
+        const { tokens } = await seedAdmin();
+        const res = await request(app).post("/api/v1/ip/whitelist/toggle").set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.ok).toBe(true);
+        expect(res.body.data.active).toBe(true);
+        expect(res.body.data.otherDisabled).toBe(true);
+        expect(writeSpy).toHaveBeenCalled();
+    });
+
+    it("returns 400 for invalid type", async () => {
+        const { tokens } = await seedAdmin();
+        const res = await request(app).post("/api/v1/ip/invalidtype/toggle").set("Authorization", `Bearer ${tokens.accessToken}`);
+        expect(res.status).toBe(400);
+    });
+});

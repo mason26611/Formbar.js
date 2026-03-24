@@ -44,6 +44,12 @@ jest.mock("@services/socket-updates-service", () => ({
     userUpdateSocket: jest.fn(),
 }));
 
+jest.mock("@services/user-service", () => ({
+    ...jest.requireActual("@services/user-service"),
+    regenerateAPIKey: jest.fn().mockResolvedValue("new-api-key-123"),
+}));
+
+const userService = require("@services/user-service");
 const userController = require("../user/user");
 const meController = require("../user/me/me");
 const banController = require("../user/ban");
@@ -53,6 +59,8 @@ const classesController = require("../user/classes");
 const scopesController = require("../user/scopes");
 const transactionsController = require("../user/transactions");
 const poolsController = require("../user/pools");
+const classController = require("../user/class");
+const apiRegenerateController = require("../user/api/regenerate");
 
 // meController must be registered before userController so that
 // the literal "/user/me" route matches before the "/user/:id" param route.
@@ -65,7 +73,9 @@ const app = createTestApp(
     classesController,
     scopesController,
     transactionsController,
-    poolsController
+    poolsController,
+    classController,
+    apiRegenerateController
 );
 
 beforeAll(async () => {
@@ -579,5 +589,47 @@ describe("GET /api/v1/user/:id/pools", () => {
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
+    });
+});
+
+describe("GET /api/v1/user/:id/class", () => {
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/class`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 404 when user is not in a class", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/class`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+describe("POST /api/v1/user/:id/api/regenerate", () => {
+    it("returns 401 without auth", async () => {
+        const { user } = await seedStudent();
+
+        const res = await request(app).post(`/api/v1/user/${user.id}/api/regenerate`);
+
+        expect(res.status).toBe(401);
+        expect(res.body.success).toBe(false);
+    });
+
+    it("returns 200 and a new API key on success", async () => {
+        const { tokens, user } = await seedStudent();
+
+        const res = await request(app).post(`/api/v1/user/${user.id}/api/regenerate`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.apiKey).toBe("new-api-key-123");
+        expect(userService.regenerateAPIKey).toHaveBeenCalledWith(user.id);
     });
 });

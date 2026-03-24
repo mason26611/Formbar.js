@@ -52,6 +52,16 @@ jest.mock("../../../../sockets/init", () => ({
     userSocketUpdates: new Map(),
 }));
 
+jest.mock("@modules/web-server", () => ({
+    io: { to: () => ({ emit: jest.fn() }) },
+}));
+
+jest.mock("@stores/socket-state-store", () => ({
+    socketStateStore: {
+        getUserSocketsByEmail: jest.fn().mockReturnValue(null),
+    },
+}));
+
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
 
@@ -63,6 +73,9 @@ const linksController = require("../room/links/links");
 const addLinkController = require("../room/links/add");
 const changeLinkController = require("../room/links/change");
 const removeLinkController = require("../room/links/remove");
+const bannedController = require("../room/banned");
+const createClassController = require("../class/create");
+const joinClassController = require("../class/join");
 
 const app = createTestApp(
     joinController,
@@ -72,7 +85,10 @@ const app = createTestApp(
     linksController,
     addLinkController,
     changeLinkController,
-    removeLinkController
+    removeLinkController,
+    bannedController,
+    createClassController,
+    joinClassController
 );
 
 beforeAll(async () => {
@@ -406,5 +422,48 @@ describe("DELETE /api/v1/room/:id/links", () => {
 
         const res = await request(app).delete(`/api/v1/room/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`).send({});
         expect(res.status).toBe(400);
+    });
+});
+
+// GET /api/v1/class/:id/banned
+describe("GET /api/v1/class/:id/banned", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).get("/api/v1/class/1/banned");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when class not in classStateStore", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+
+        const res = await request(app).get("/api/v1/class/9999/banned").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+    });
+
+    it("returns 200 with empty array when no banned users", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Teacher",
+            permissions: TEACHER_PERMISSIONS,
+        });
+
+        const createRes = await request(app)
+            .post("/api/v1/class/create")
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ name: "Banned Test Class" });
+        const classId = createRes.body.data.classId;
+
+        // Teacher joins the class so they are in classStateStore
+        await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/banned`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(res.body.data).toHaveLength(0);
     });
 });
