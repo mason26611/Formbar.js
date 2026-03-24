@@ -182,6 +182,7 @@ async function migrate() {
         console.log(`Current schema version: ${version}`);
 
         // Bring old databases up to baseline via compact migration
+        // Eventually this should support multiple compacted migrations but that's a later issue
         if (version < COMPACT_VERSION) {
             backupDatabase();
             console.log(`Running compacted legacy migration (${version} → ${COMPACT_VERSION})...`);
