@@ -103,9 +103,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 async function setupClassWithTeacher() {
     const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
         email: "teacher@test.com",
@@ -137,9 +134,6 @@ async function setupClassWithStudentAndTeacher() {
     return { classId, teacherTokens, studentTokens, teacher, student };
 }
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/timer
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/timer", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/timer");
@@ -172,9 +166,6 @@ describe("GET /api/v1/class/:id/timer", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/timer/start
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/timer/start", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/timer/start").send({ duration: 60000 });
@@ -256,9 +247,6 @@ describe("POST /api/v1/class/:id/timer/start", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/timer/pause
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/timer/pause", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/timer/pause");
@@ -306,9 +294,6 @@ describe("POST /api/v1/class/:id/timer/pause", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/timer/resume
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/timer/resume", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/timer/resume");
@@ -358,9 +343,6 @@ describe("POST /api/v1/class/:id/timer/resume", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/timer/end
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/timer/end", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/timer/end");
@@ -408,9 +390,6 @@ describe("POST /api/v1/class/:id/timer/end", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/timer/clear
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/timer/clear", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/timer/clear");

@@ -305,13 +305,13 @@ describe("DELETE /api/v1/user/:id", () => {
     });
 });
 
-describe("PATCH /api/v1/user/:email/perm", () => {
+describe("PATCH /api/v1/user/:id/perm", () => {
     it("returns 200 when a manager updates permissions", async () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .patch(`/api/v1/user/${target.id}/perm`)
             .set("Authorization", `Bearer ${managerTokens.accessToken}`)
             .send({ perm: 4 });
 
@@ -327,7 +327,7 @@ describe("PATCH /api/v1/user/:email/perm", () => {
         const { user: target } = await seedStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .patch(`/api/v1/user/${target.id}/perm`)
             .set("Authorization", `Bearer ${managerTokens.accessToken}`)
             .send({ perm: "abc" });
 
@@ -340,7 +340,7 @@ describe("PATCH /api/v1/user/:email/perm", () => {
         const { user: target } = await seedSecondStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
+            .patch(`/api/v1/user/${target.id}/perm`)
             .set("Authorization", `Bearer ${studentTokens.accessToken}`)
             .send({ perm: 4 });
 
@@ -351,12 +351,57 @@ describe("PATCH /api/v1/user/:email/perm", () => {
     it("returns 401 without auth", async () => {
         const { user: target } = await seedStudent();
 
-        const res = await request(app)
-            .patch(`/api/v1/user/${encodeURIComponent(target.email)}/perm`)
-            .send({ perm: 4 });
+        const res = await request(app).patch(`/api/v1/user/${target.id}/perm`).send({ perm: 4 });
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Deprecated endpoints
+// ---------------------------------------------------------------------------
+describe("GET /api/v1/user/:id/ban (deprecated)", () => {
+    it("returns 200 with deprecation headers when a manager bans a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/ban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+describe("GET /api/v1/user/:id/unban (deprecated)", () => {
+    it("returns 200 with deprecation headers when a manager unbans a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+describe("GET /api/v1/user/:id/delete (deprecated)", () => {
+    it("returns 200 with deprecation headers when a manager deletes a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).get(`/api/v1/user/${target.id}/delete`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
     });
 });
 

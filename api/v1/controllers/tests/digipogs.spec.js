@@ -62,9 +62,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/digipogs/award
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/digipogs/award", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/digipogs/award").send({ to: "1", amount: 10 });
@@ -180,9 +177,6 @@ describe("POST /api/v1/digipogs/award", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/digipogs/transfer
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/digipogs/transfer", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/digipogs/transfer").send({ to: "1", amount: 5, pin: "1234" });

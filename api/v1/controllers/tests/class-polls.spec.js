@@ -100,9 +100,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 async function setupClassWithTeacher() {
     const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
         email: "teacher@test.com",
@@ -131,9 +128,6 @@ async function setupClassWithStudentAndTeacher() {
     return { classId, teacherTokens, studentTokens, teacher, student };
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/polls/create
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/polls/create", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/polls/create").send({ prompt: "Test?" });
@@ -188,9 +182,6 @@ describe("POST /api/v1/class/:id/polls/create", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/polls/end
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/polls/end", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/polls/end");
@@ -224,9 +215,6 @@ describe("POST /api/v1/class/:id/polls/end", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/polls/clear
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/polls/clear", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/polls/clear");
@@ -260,9 +248,6 @@ describe("POST /api/v1/class/:id/polls/clear", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/polls/response
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/polls/response", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app)
@@ -306,9 +291,6 @@ describe("POST /api/v1/class/:id/polls/response", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/polls/current
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/polls/current", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/polls/current");
@@ -330,9 +312,6 @@ describe("GET /api/v1/class/:id/polls/current", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/polls
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/polls", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/polls");

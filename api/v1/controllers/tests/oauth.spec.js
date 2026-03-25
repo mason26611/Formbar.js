@@ -64,9 +64,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/oauth/authorize
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/oauth/authorize", () => {
     it("returns 401 without an authorization header", async () => {
         const res = await request(app).get("/api/v1/oauth/authorize");
@@ -161,9 +158,6 @@ describe("GET /api/v1/oauth/authorize", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/oauth/token
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/oauth/token", () => {
     it("returns 400 when grant_type is missing", async () => {
         const res = await request(app).post("/api/v1/oauth/token").send({});
@@ -285,9 +279,6 @@ describe("POST /api/v1/oauth/token", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/oauth/revoke
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/oauth/revoke", () => {
     it("returns 200 even when no token is provided (prevents enumeration)", async () => {
         const res = await request(app).post("/api/v1/oauth/revoke").send({});
@@ -339,9 +330,6 @@ describe("POST /api/v1/oauth/revoke", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/apps/register
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/apps/register", () => {
     it("returns 401 without an authorization header", async () => {
         const res = await request(app).post("/api/v1/apps/register").send({ name: "My App", description: "A test app" });

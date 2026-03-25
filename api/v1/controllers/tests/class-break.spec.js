@@ -112,9 +112,6 @@ async function setupClassWithStudent() {
     return { classId, teacherTokens, studentTokens, teacher, student };
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/break/request
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/break/request", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/break/request");
@@ -159,9 +156,6 @@ describe("POST /api/v1/class/:id/break/request", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/break/end
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/break/end", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/break/end");
@@ -189,9 +183,6 @@ describe("POST /api/v1/class/:id/break/end", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/students/:userId/break/approve
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/students/:userId/break/approve", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/students/1/break/approve");
@@ -224,9 +215,6 @@ describe("POST /api/v1/class/:id/students/:userId/break/approve", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/students/:userId/break/deny
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/students/:userId/break/deny", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/students/1/break/deny");
@@ -255,5 +243,25 @@ describe("POST /api/v1/class/:id/students/:userId/break/deny", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Deprecated endpoint
+// ---------------------------------------------------------------------------
+describe("GET /api/v1/class/:id/students/:userId/break/approve (deprecated)", () => {
+    it("returns 200 with deprecation headers on success", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithStudent();
+
+        await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        const res = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/break/approve`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
     });
 });

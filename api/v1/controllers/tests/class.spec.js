@@ -90,17 +90,11 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// Helper: create a class via the API and return classId & key
-// ---------------------------------------------------------------------------
 async function createClassAsTeacher(tokens, name = "Test Class") {
     const res = await request(app).post("/api/v1/class/create").set("Authorization", `Bearer ${tokens.accessToken}`).send({ name });
     return res;
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/create
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/create", () => {
     it("returns 200 and creates a class when called by a teacher", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase, {
@@ -179,9 +173,6 @@ describe("POST /api/v1/class/create", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id  (requires class active in memory + user in class)
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1");
@@ -224,9 +215,6 @@ describe("GET /api/v1/class/:id", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/join
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/join", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/join");
@@ -295,9 +283,6 @@ describe("POST /api/v1/class/:id/join", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/leave
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/leave", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/leave");
@@ -316,9 +301,6 @@ describe("POST /api/v1/class/:id/leave", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/start  (requires hasClassScope — class must be active in memory)
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/start", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/start");
@@ -341,9 +323,6 @@ describe("POST /api/v1/class/:id/start", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/v1/class/:id/end  (requires hasClassScope — class must be active in memory)
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/class/:id/end", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/end");
@@ -366,9 +345,6 @@ describe("POST /api/v1/class/:id/end", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/students  (requires hasClassScope — class must be active)
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/students", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/students");
@@ -391,9 +367,6 @@ describe("GET /api/v1/class/:id/students", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/active  (requires isClassMember — DB or memory check)
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/active", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/active");

@@ -231,7 +231,6 @@ describe("DELETE /api/v1/room/:id", () => {
     });
 });
 
-// GET /api/v1/room/tags
 describe("GET /api/v1/room/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/room/tags");
@@ -262,7 +261,6 @@ describe("GET /api/v1/room/tags", () => {
     });
 });
 
-// PUT /api/v1/room/tags
 describe("PUT /api/v1/room/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app)
@@ -288,7 +286,6 @@ describe("PUT /api/v1/room/tags", () => {
     });
 });
 
-// GET /api/v1/room/:id/links
 describe("GET /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/room/1/links");
@@ -315,7 +312,6 @@ describe("GET /api/v1/room/:id/links", () => {
     });
 });
 
-// POST /api/v1/room/:id/links/add
 describe("POST /api/v1/room/:id/links/add", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/room/1/links/add").send({ name: "Link", url: "https://example.com" });
@@ -358,7 +354,6 @@ describe("POST /api/v1/room/:id/links/add", () => {
     });
 });
 
-// PUT /api/v1/room/:id/links
 describe("PUT /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).put("/api/v1/room/1/links").send({ name: "Link", url: "https://example.com" });
@@ -384,7 +379,6 @@ describe("PUT /api/v1/room/:id/links", () => {
     });
 });
 
-// DELETE /api/v1/room/:id/links
 describe("DELETE /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).delete("/api/v1/room/1/links").send({ name: "Link" });
@@ -422,6 +416,81 @@ describe("DELETE /api/v1/room/:id/links", () => {
 
         const res = await request(app).delete(`/api/v1/room/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`).send({});
         expect(res.status).toBe(400);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Deprecated endpoints
+// ---------------------------------------------------------------------------
+
+// POST /api/v1/room/tags (deprecated, use PUT)
+describe("POST /api/v1/room/tags (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher sets tags", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+        classStateStore.updateUser(user.email, { activeClass: classId });
+
+        const res = await request(app)
+            .post("/api/v1/room/tags")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ tags: ["science"] });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+// POST /api/v1/room/:id/links/change (deprecated, use PUT)
+describe("POST /api/v1/room/:id/links/change (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher changes a link", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Old", "https://old.example.com"]);
+
+        const res = await request(app)
+            .post(`/api/v1/room/${classId}/links/change`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ oldName: "Old", name: "New", url: "https://new.example.com" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+// POST /api/v1/room/:id/links/remove (deprecated, use DELETE)
+describe("POST /api/v1/room/:id/links/remove (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher removes a link", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "ToRemove", "https://remove.example.com"]);
+
+        const res = await request(app)
+            .post(`/api/v1/room/${classId}/links/remove`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "ToRemove" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
     });
 });
 

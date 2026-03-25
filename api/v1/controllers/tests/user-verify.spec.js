@@ -181,3 +181,20 @@ describe("PATCH /api/v1/user/:id/verify", () => {
         expect(res.body.data.ok).toBe(true);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Deprecated endpoint
+// ---------------------------------------------------------------------------
+describe("POST /api/v1/user/:id/verify (deprecated)", () => {
+    it("returns 200 with deprecation headers when a manager verifies a user", async () => {
+        const { tokens: managerTokens } = await seedManager();
+        const { user: target } = await seedStudent();
+
+        const res = await request(app).post(`/api/v1/user/${target.id}/verify`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});

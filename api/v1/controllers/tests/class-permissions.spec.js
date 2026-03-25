@@ -102,9 +102,6 @@ async function setupClassWithStudent() {
     return { classId, teacherTokens, studentTokens, teacher, student };
 }
 
-// ---------------------------------------------------------------------------
-// GET /api/v1/class/:id/permissions
-// ---------------------------------------------------------------------------
 describe("GET /api/v1/class/:id/permissions", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/permissions");
