@@ -94,12 +94,7 @@ module.exports = (router) => {
         const body = req.body || {};
         req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });
         const isLegacy =
-            body.pollPrompt != null ||
-            body.responseNumber != null ||
-            body.polls != null ||
-            body.blind != null ||
-            body.responseTextBox != null ||
-            body.multiRes != null;
+            body.pollPrompt != null || body.responseNumber != null || body.polls != null || body.responseTextBox != null || body.multiRes != null;
 
         // Check if the request is legacy and remap them if so
         const pollData = isLegacy

@@ -6,8 +6,22 @@ const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const authentication = require("@middleware/authentication");
 const fs = require("fs");
+const net = require("net");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
+
+function validateIp(ip) {
+    const cidrMatch = ip.match(/^(.+)\/(\d+)$/);
+    if (cidrMatch) {
+        const [, addr, prefixStr] = cidrMatch;
+        const ipVersion = net.isIP(addr);
+        if (!ipVersion) return false;
+        const prefix = Number(prefixStr);
+        const maxPrefix = ipVersion === 4 ? 32 : 128;
+        return prefix >= 0 && prefix <= maxPrefix;
+    }
+    return net.isIP(ip) !== 0;
+}
 
 module.exports = (router) => {
     /**
@@ -93,8 +107,13 @@ module.exports = (router) => {
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
         }
+
         if (!ip) {
             throw new ValidationError("Missing ip");
+        }
+
+        if (!validateIp(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
@@ -212,6 +231,10 @@ module.exports = (router) => {
         }
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
+        }
+
+        if (!validateIp(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
