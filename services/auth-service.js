@@ -268,13 +268,13 @@ function invalidCredentials() {
 }
 
 /**
- * Authenticates or registers a user via Google OAuth
+ * Authenticates or registers a user via OpenID with services like Google and Microsoft
  * @async
  * @param {string} email - The user's email address from Google
  * @param {string} displayName - The user's display name from Google
  * @returns {Promise<{tokens: {accessToken: string, refreshToken: string}, user: Object}|{error: string}>} Returns an object with tokens and user data on success, or an error object on failure
  */
-async function googleOAuth(email, displayName) {
+async function oidcLogin(email, displayName) {
     if (!privateKey || !publicKey) {
         throw new AppError("Either the public key or private key is not available for JWT signing.", {
             statusCode: 500,
@@ -524,7 +524,7 @@ module.exports = {
     login,
     refreshLogin,
     verifyToken,
-    googleOAuth,
+    googleOAuth: oidcLogin,
     generateAuthorizationCode,
     exchangeAuthorizationCodeForToken,
     exchangeRefreshTokenForAccessToken,
