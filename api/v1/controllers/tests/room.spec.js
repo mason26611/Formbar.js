@@ -113,7 +113,7 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
     const row = await mockDatabase.dbGet("SELECT * FROM classroom WHERE key = ?", [key]);
     const classroom = new Classroom({
         id: row.id,
-        className: row.className,
+        className: row.name,
         key: row.key,
         owner: row.owner,
         permissions: null,
