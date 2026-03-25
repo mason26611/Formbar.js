@@ -119,8 +119,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ── Pool CRUD ──────────────────────────────────────────────────────────
-
 describe("createPool()", () => {
     it("creates a pool and adds the owner", async () => {
         const user = await seedUser();
@@ -362,8 +360,6 @@ describe("setUserOwnerFlag()", () => {
     });
 });
 
-// ── Pool Business Logic ────────────────────────────────────────────────
-
 describe("addMemberToPool()", () => {
     it("adds a user to a pool the acting user owns", async () => {
         const owner = await seedUser();
@@ -541,8 +537,6 @@ describe("payoutPool()", () => {
     });
 });
 
-// ── Transactions ───────────────────────────────────────────────────────
-
 describe("getUserTransactions()", () => {
     it("returns enriched transactions involving the user", async () => {
         const sender = await seedUser();
@@ -615,8 +609,6 @@ describe("getUserTransactionsPaginated()", () => {
         expect(result.transactions[0].to.username).toBe("TestClass");
     });
 });
-
-// ── awardDigipogs ──────────────────────────────────────────────────────
 
 describe("awardDigipogs()", () => {
     it("awards digipogs to a user (teacher sender)", async () => {
@@ -760,8 +752,6 @@ describe("awardDigipogs()", () => {
         expect(studentRow.digipogs).toBe(7);
     });
 });
-
-// ── transferDigipogs ───────────────────────────────────────────────────
 
 describe("transferDigipogs()", () => {
     let hashedPin;
