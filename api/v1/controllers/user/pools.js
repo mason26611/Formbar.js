@@ -1,4 +1,4 @@
-const { dbGet } = require("@modules/database");
+const { dbGet, dbGetAll } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
 const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
@@ -89,11 +89,21 @@ module.exports = (router) => {
      *                           owners:
      *                             type: array
      *                             items:
-     *                               type: integer
+     *                               type: object
+     *                               properties:
+     *                                 id:
+     *                                   type: integer
+     *                                 displayName:
+     *                                   type: string
      *                           members:
      *                             type: array
      *                             items:
-     *                               type: integer
+     *                               type: object
+     *                               properties:
+     *                                 id:
+     *                                   type: integer
+     *                                 displayName:
+     *                                   type: string
      *                           created_at:
      *                             type: string
      *                             format: date-time
@@ -156,24 +166,27 @@ module.exports = (router) => {
                     const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
                     if (pool) {
                         const users = await pools.getUsersForPool(poolData.pool_id);
-                        pool.members = await Promise.all(
-                            users.filter((userData) => !userData.owner).map(async (u) => {
-                                const user = await dbGet("SELECT displayName FROM users WHERE id = ?", [u.user_id]);
-                                return {
-                                    id: u.user_id,
-                                    displayName: user ? user.displayName : "Unknown User",
-                                };
-                            })
-                        );
-                        pool.owners = await Promise.all(
-                            users.filter((userData) => userData.owner).map(async (u) => {
-                                const user = await dbGet("SELECT displayName FROM users WHERE id = ?", [u.user_id]);
-                                return {
-                                    id: u.user_id,
-                                    displayName: user ? user.displayName : "Unknown User",
-                                };
-                            })
-                        );
+                        const userIds = users.map((u) => u.user_id);
+                        const displayNameMap = {};
+                        if (userIds.length > 0) {
+                            const placeholders = userIds.map(() => "?").join(",");
+                            const rows = await dbGetAll(`SELECT id, displayName FROM users WHERE id IN (${placeholders})`, userIds);
+                            for (const row of rows) {
+                                displayNameMap[row.id] = row.displayName;
+                            }
+                        }
+                        pool.members = users
+                            .filter((userData) => !userData.owner)
+                            .map((u) => ({
+                                id: u.user_id,
+                                displayName: displayNameMap[u.user_id] || "Unknown User",
+                            }));
+                        pool.owners = users
+                            .filter((userData) => userData.owner)
+                            .map((u) => ({
+                                id: u.user_id,
+                                displayName: displayNameMap[u.user_id] || "Unknown User",
+                            }));
                     }
                     return pool;
                 })

@@ -94,25 +94,21 @@ module.exports = (router) => {
         const body = req.body || {};
         req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });
         const isLegacy =
-            body.pollPrompt != null ||
-            body.responseNumber != null ||
-            body.polls != null ||
-            body.responseTextBox != null ||
-            body.multiRes != null;
+            body.pollPrompt != null || body.responseNumber != null || body.polls != null || body.responseTextBox != null || body.multiRes != null;
 
         // Check if the request is legacy and remap them if so
         const pollData = isLegacy
             ? {
-                prompt: body.pollPrompt,
-                answers: Array.isArray(body.polls) ? body.polls : [],
-                blind: body.blind,
-                weight: body.weight,
-                tags: Array.isArray(body.tags) ? body.tags : (body.tags ?? []),
-                excludedRespondents: Array.isArray(body.boxes) ? body.boxes : undefined,
-                indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
-                allowTextResponses: !!body.responseTextBox,
-                allowMultipleResponses: !!body.multiRes,
-            }
+                  prompt: body.pollPrompt,
+                  answers: Array.isArray(body.polls) ? body.polls : [],
+                  blind: body.blind,
+                  weight: body.weight,
+                  tags: Array.isArray(body.tags) ? body.tags : (body.tags ?? []),
+                  excludedRespondents: Array.isArray(body.boxes) ? body.boxes : undefined,
+                  indeterminate: Array.isArray(body.indeterminate) ? body.indeterminate : [],
+                  allowTextResponses: !!body.responseTextBox,
+                  allowMultipleResponses: !!body.multiRes,
+              }
             : body;
 
         await createPoll(classId, pollData, req.user);
