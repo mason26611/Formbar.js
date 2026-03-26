@@ -316,8 +316,11 @@ describe("getPreviousPolls", () => {
         const polls = await getPreviousPolls(1);
 
         expect(polls).toHaveLength(1);
+        expect(polls[0].classPollId).toBe(1);
+        expect(polls[0].globalPollId).toEqual(expect.any(Number));
         expect(polls[0].prompt).toBe("Thumbs?");
-        expect(polls[0].class).toBe(1);
+        expect(polls[0]).not.toHaveProperty("id");
+        expect(polls[0]).not.toHaveProperty("class");
     });
 
     it("returns empty array when no history exists", async () => {
@@ -337,7 +340,7 @@ describe("getPreviousPolls", () => {
         expect(polls[0].responses).toEqual(responses);
     });
 
-    it("sets responses to null when JSON is invalid", async () => {
+    it("sets responses to empty array when JSON is invalid", async () => {
         await mockDatabase.dbRun(
             `INSERT INTO poll_history (class, prompt, responses, allowMultipleResponses, blind, allowTextResponses, createdAt)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -346,7 +349,7 @@ describe("getPreviousPolls", () => {
 
         const polls = await getPreviousPolls(1);
 
-        expect(polls[0].responses).toBeNull();
+        expect(polls[0].responses).toEqual([]);
     });
 
     it("converts integer booleans to actual booleans", async () => {
@@ -377,8 +380,11 @@ describe("getPreviousPolls", () => {
         const polls = await getPreviousPolls(1);
 
         expect(polls[0].prompt).toBe("Third");
+        expect(polls[0].classPollId).toBe(3);
         expect(polls[1].prompt).toBe("Second");
+        expect(polls[1].classPollId).toBe(2);
         expect(polls[2].prompt).toBe("First");
+        expect(polls[2].classPollId).toBe(1);
     });
 
     it("respects pagination with index and limit", async () => {
@@ -411,7 +417,7 @@ describe("getPreviousPolls", () => {
         );
 
         const polls = await getPreviousPolls(1);
-        expect(polls[0].responses).toBeNull();
+        expect(polls[0].responses).toEqual([]);
     });
 });
 

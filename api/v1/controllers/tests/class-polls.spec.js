@@ -348,8 +348,45 @@ describe("GET /api/v1/class/:id/polls", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data).toEqual([]);
+        expect(res.body.data).toEqual({ polls: [] });
         expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 0, 20);
+    });
+
+    it("returns standardized previous poll fields", async () => {
+        const { classId, studentTokens } = await setupClassWithStudentAndTeacher();
+        const { classStateStore } = require("@services/classroom-service");
+        const { getPreviousPolls } = require("@services/poll-service");
+
+        classStateStore.updateUser("student@test.com", { activeClass: classId });
+        getPreviousPolls.mockResolvedValueOnce([
+            {
+                globalPollId: 112,
+                classPollId: 12,
+                prompt: "True/False",
+                responses: [{ answer: "True", weight: 1, color: "#00ff00", responses: 8 }],
+                allowMultipleResponses: false,
+                blind: false,
+                allowTextResponses: false,
+                createdAt: 1712428800000,
+            },
+        ]);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/polls`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.polls[0]).toEqual(
+            expect.objectContaining({
+                globalPollId: 112,
+                classPollId: 12,
+                prompt: "True/False",
+                allowMultipleResponses: false,
+                blind: false,
+                allowTextResponses: false,
+            })
+        );
+        expect(res.body.data.polls[0]).not.toHaveProperty("id");
+        expect(res.body.data.polls[0]).not.toHaveProperty("class");
     });
 
     it("passes custom limit and index query params", async () => {
@@ -366,5 +403,33 @@ describe("GET /api/v1/class/:id/polls", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(getPreviousPolls).toHaveBeenCalledWith(String(classId), 10, 5);
+    });
+
+    it("returns 400 when limit is invalid", async () => {
+        const { classId, studentTokens } = await setupClassWithStudentAndTeacher();
+        const { classStateStore } = require("@services/classroom-service");
+        const { getPreviousPolls } = require("@services/poll-service");
+
+        classStateStore.updateUser("student@test.com", { activeClass: classId });
+
+        const res = await request(app).get(`/api/v1/class/${classId}/polls?limit=0`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(getPreviousPolls).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when index is invalid", async () => {
+        const { classId, studentTokens } = await setupClassWithStudentAndTeacher();
+        const { classStateStore } = require("@services/classroom-service");
+        const { getPreviousPolls } = require("@services/poll-service");
+
+        classStateStore.updateUser("student@test.com", { activeClass: classId });
+
+        const res = await request(app).get(`/api/v1/class/${classId}/polls?index=-1`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(getPreviousPolls).not.toHaveBeenCalled();
     });
 });
