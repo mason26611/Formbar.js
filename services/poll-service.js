@@ -292,15 +292,10 @@ async function updatePoll(classId, options, userSession) {
 async function getPreviousPolls(classId, index = 0, limit = 20) {
     requireInternalParam(classId, "classId");
     const polls = await dbGetAll(
-        `SELECT poll_history.*, (
-            SELECT COUNT(*)
-            FROM poll_history AS history_counter
-            WHERE history_counter.class = poll_history.class
-              AND history_counter.id <= poll_history.id
-        ) AS pollId
+        `SELECT *, ROW_NUMBER() OVER (ORDER BY id) AS pollId
          FROM poll_history
-         WHERE poll_history.class = ?
-         ORDER BY poll_history.id DESC
+         WHERE class = ?
+         ORDER BY id DESC
              LIMIT ?, ?`,
         [classId, index, limit]
     );
