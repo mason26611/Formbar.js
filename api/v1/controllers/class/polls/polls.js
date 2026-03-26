@@ -78,27 +78,52 @@ module.exports = (router) => {
      *                   type: boolean
      *                   example: true
      *                 data:
-     *                   type: array
-     *                   items:
-     *                     type: object
-     *                     properties:
-     *                       id:
-     *                         type: integer
-     *                         description: Poll history entry ID
-     *                         example: 1
-     *                       class:
-     *                         type: integer
-     *                         description: Class ID
-     *                         example: 123
-     *                       data:
-     *                         type: string
-     *                         description: JSON string containing poll data and responses
-     *                         example: '{"prompt":"What is 2+2?","answers":["3","4","5"],"responses":{}}'
-     *                       date:
-     *                         type: string
-     *                         format: date-time
-     *                         description: Timestamp when the poll was saved
-     *                         example: '2026-02-10T10:30:00.000Z'
+     *                   type: object
+     *                   properties:
+     *                     polls:
+     *                       type: array
+     *                       items:
+     *                         type: object
+     *                         properties:
+     *                           pollId:
+     *                             type: integer
+     *                             description: Class-relative poll ID (increments within a class)
+     *                             example: 12
+     *                           prompt:
+     *                             type: string
+     *                             description: Poll prompt shown to students
+     *                             example: True/False
+     *                           responses:
+     *                             type: array
+     *                             description: Poll options and aggregate response counts
+     *                             items:
+     *                               type: object
+     *                               properties:
+     *                                 answer:
+     *                                   type: string
+     *                                   example: True
+     *                                 weight:
+     *                                   type: number
+     *                                   example: 1
+     *                                 color:
+     *                                   type: string
+     *                                   example: '#00ff00'
+     *                                 responses:
+     *                                   type: integer
+     *                                   example: 8
+     *                           allowMultipleResponses:
+     *                             type: boolean
+     *                             example: false
+     *                           blind:
+     *                             type: boolean
+     *                             example: false
+     *                           allowTextResponses:
+     *                             type: boolean
+     *                             example: false
+     *                           createdAt:
+     *                             type: integer
+     *                             description: Poll creation timestamp in milliseconds
+     *                             example: 1712428800000
      *       400:
      *         description: Invalid parameters
      *         content:
@@ -156,7 +181,9 @@ module.exports = (router) => {
 
         res.status(200).json({
             success: true,
-            data: polls,
+            data: {
+                polls,
+            },
         });
     });
 };

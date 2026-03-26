@@ -291,24 +291,45 @@ async function updatePoll(classId, options, userSession) {
  */
 async function getPreviousPolls(classId, index = 0, limit = 20) {
     requireInternalParam(classId, "classId");
-    const polls = await dbGetAll("SELECT * FROM poll_history WHERE class = ? ORDER BY id DESC LIMIT ?, ?", [classId, index, limit]);
+    const polls = await dbGetAll(
+        `SELECT poll_history.*, (
+            SELECT COUNT(*)
+            FROM poll_history AS history_counter
+            WHERE history_counter.class = poll_history.class
+              AND history_counter.id <= poll_history.id
+        ) AS pollId
+         FROM poll_history
+         WHERE poll_history.class = ?
+         ORDER BY poll_history.id DESC
+             LIMIT ?, ?`,
+        [classId, index, limit]
+    );
 
     return polls.map((poll) => {
-        // Convert to booleans for API consistency
-        poll.allowMultipleResponses = !!poll.allowMultipleResponses;
-        poll.blind = !!poll.blind;
-        poll.allowTextResponses = !!poll.allowTextResponses;
-
-        // Parse responses from JSON string to object
+        // Parse responses into a predictable array for clients.
+        let parsedResponses = poll.responses;
         if (typeof poll.responses === "string") {
             try {
-                poll.responses = JSON.parse(poll.responses);
+                parsedResponses = JSON.parse(poll.responses);
             } catch (err) {
-                poll.responses = null;
+                parsedResponses = [];
             }
         }
 
-        return poll;
+        if (!Array.isArray(parsedResponses)) {
+            parsedResponses = [];
+        }
+
+        return {
+            globalPollId: poll.id,
+            classPollId: Number(poll.pollId),
+            prompt: poll.prompt,
+            responses: parsedResponses,
+            blind: !!poll.blind,
+            allowMultipleResponses: !!poll.allowMultipleResponses,
+            allowTextResponses: !!poll.allowTextResponses,
+            createdAt: poll.createdAt,
+        };
     });
 }
 
