@@ -10,7 +10,8 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { GUEST_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES } = require("@modules/roles");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
@@ -445,7 +446,7 @@ function logout(socket) {
                     user.help = false;
                     user.classPermissions = null;
                 }
-                if (user && user.permissions === GUEST_PERMISSIONS) {
+                if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
                     classStateStore.removeUser(email);
                 }
                 if (!classId) return;

@@ -1,7 +1,8 @@
 const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
-const { TEACHER_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { settings } = require("@modules/config");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
 
 // In-memory rate limit storage
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
@@ -14,28 +15,28 @@ async function rateLimiter(req, res, next) {
     } else if (req.headers.authorization) {
         const decodedToken = verifyToken(req.headers.authorization);
         if (!decodedToken || decodedToken.error || !decodedToken.email) {
-            user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+            user = { email: req.ip, permissions: 1 }; // Guest level
         } else {
             let email = decodedToken.email;
             user = await getUser({ email: email });
         }
     } else {
         // If no auth provided, use ip as identifier with guest permissions
-        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+        user = { email: req.ip, permissions: 1 }; // Guest level
     }
 
     // Fallback for invalid user data
     if (!user || user.error || !user.email || !user.permissions) {
-        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+        user = { email: req.ip, permissions: 1 }; // Guest level
     }
 
     const identifier = user.email;
     const currentTime = Date.now();
     const timeFrame = settings.rateLimitWindowMs ?? 60000;
     let limit = 10; // Default limit for unauthenticated users
-    if (user.permissions >= TEACHER_PERMISSIONS) {
+    if (isRoleAtLeast(getUserRoleName(user), ROLE_NAMES.TEACHER)) {
         limit = 225;
-    } else if (user.permissions > GUEST_PERMISSIONS) {
+    } else if (isRoleAtLeast(getUserRoleName(user), ROLE_NAMES.STUDENT)) {
         limit = req.path.startsWith("/auth/") ? 10 : 120;
     }
     // Apply the configurable multiplier so test runs can relax limits.

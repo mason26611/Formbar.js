@@ -1,7 +1,9 @@
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES } = require("@modules/roles");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -81,7 +83,7 @@ module.exports = (router) => {
         const classroom = classStateStore.getClassroom(classId);
         if (classroom) {
             for (const [studentId, studentInfo] of Object.entries(classroom.students)) {
-                if (studentInfo.permissions === GUEST_PERMISSIONS && !classUsers.find((user) => user.id === studentId)) {
+                if (getUserRoleName(studentInfo) === ROLE_NAMES.GUEST && !classUsers.find((user) => user.id === studentId)) {
                     classUsers.push({
                         id: studentId,
                         displayName: studentInfo.displayName || "Guest",

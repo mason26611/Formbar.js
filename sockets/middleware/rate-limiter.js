@@ -1,5 +1,6 @@
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { socketStateStore } = require("@stores/socket-state-store");
 
@@ -16,7 +17,7 @@ module.exports = {
                 const email = socket.request.session.email;
                 const currentTime = Date.now();
                 const timeFrame = 1000; // 1 Second
-                const limit = socket.request.session.permissions >= TEACHER_PERMISSIONS ? 100 : 30;
+                const limit = isRoleAtLeast(getUserRoleName({ permissions: socket.request.session.permissions }), ROLE_NAMES.TEACHER) ? 100 : 30;
                 const userRequests = socketStateStore.getUserRateLimits(email, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {

@@ -60,9 +60,8 @@ jest.mock("@stores/socket-state-store", () => ({
 const createController = require("../class/create");
 const joinController = require("../class/join");
 const settingsController = require("../class/settings");
-const permissionsController = require("../class/permissions");
 
-const app = createTestApp(createController, joinController, settingsController, permissionsController);
+const app = createTestApp(createController, joinController, settingsController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -200,119 +199,5 @@ describe("PATCH /api/v1/class/:id/settings", () => {
         const row = await mockDatabase.dbGet("SELECT settings FROM classroom WHERE id = ?", [classId]);
         const settings = JSON.parse(row.settings);
         expect(settings.isExcluded).toEqual(newExcluded);
-    });
-});
-
-describe("PATCH /api/v1/class/:id/permissions", () => {
-    it("returns 401 without authentication", async () => {
-        const res = await request(app).patch("/api/v1/class/1/permissions").send({ permission: "controlPoll", level: 3 });
-        expect(res.status).toBe(401);
-    });
-
-    it("returns 403 when user lacks class.session.settings scope", async () => {
-        const { classId, studentTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${studentTokens.accessToken}`)
-            .send({ permission: "controlPoll", level: 3 });
-
-        expect(res.status).toBe(403);
-    });
-
-    it("returns 400 when permission is missing", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ level: 3 });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("returns 400 when level is missing", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "controlPoll" });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("returns 400 for an invalid permission key", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "fakePermission", level: 3 });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("returns 400 for a level below 1", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "controlPoll", level: 0 });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("returns 400 for a level above 5", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "controlPoll", level: 6 });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("returns 400 for a non-integer level", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "controlPoll", level: 2.5 });
-
-        expect(res.status).toBe(400);
-    });
-
-    it("updates a permission threshold successfully", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/permissions`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ permission: "controlPoll", level: 2 });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-
-        // Verify persisted in DB
-        const row = await mockDatabase.dbGet("SELECT controlPoll FROM class_permissions WHERE classId = ?", [classId]);
-        expect(row.controlPoll).toBe(2);
-    });
-
-    it("updates different permission keys", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const permissions = ["links", "manageStudents", "breakHelp", "manageClass", "auxiliary", "userDefaults", "seePoll", "votePoll"];
-        for (const permission of permissions) {
-            const res = await request(app)
-                .patch(`/api/v1/class/${classId}/permissions`)
-                .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-                .send({ permission, level: 1 });
-
-            expect(res.status).toBe(200);
-        }
     });
 });

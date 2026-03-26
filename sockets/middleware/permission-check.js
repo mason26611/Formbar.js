@@ -1,11 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const {
-    GLOBAL_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSION_MAPPER,
-    SOCKET_EVENT_SCOPE_MAP,
-} = require("@modules/permissions");
+const { SOCKET_EVENT_SCOPE_MAP } = require("@modules/permissions");
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -33,7 +28,7 @@ module.exports = {
                 }
 
                 // If the class provided by the user is not loaded into memory, avoid going further to avoid errors
-                if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
+                if (SOCKET_EVENT_SCOPE_MAP[event] && SOCKET_EVENT_SCOPE_MAP[event]?.startsWith("class.") && !classStateStore.getClassroom(classId)) {
                     socket.emit("message", "Class is not loaded");
                     return;
                 }
@@ -74,18 +69,8 @@ module.exports = {
                     return;
                 }
 
-                // Legacy fallback for unmapped events
-                if (GLOBAL_SOCKET_PERMISSIONS[event] && userData.permissions >= GLOBAL_SOCKET_PERMISSIONS[event]) {
-                    next();
-                } else if (CLASS_SOCKET_PERMISSIONS[event] && userData.classPermissions >= CLASS_SOCKET_PERMISSIONS[event]) {
-                    next();
-                } else if (
-                    CLASS_SOCKET_PERMISSION_MAPPER[event] &&
-                    classStateStore.getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]] &&
-                    userData.classPermissions >= classStateStore.getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]]
-                ) {
-                    next();
-                } else if (!PASSIVE_SOCKETS.includes(event)) {
+                // Unmapped events: allow passive sockets, deny everything else
+                if (!PASSIVE_SOCKETS.includes(event)) {
                     socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
                 }
             } catch (err) {

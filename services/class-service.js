@@ -10,16 +10,9 @@ const {
 const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const {
-    MANAGER_PERMISSIONS,
-    DEFAULT_CLASS_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    BANNED_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MOD_PERMISSIONS,
-    STUDENT_PERMISSIONS,
-    GUEST_PERMISSIONS,
-} = require("@modules/permissions");
+const { MANAGER_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS, BANNED_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES, isRoleAtLeast, LEVEL_TO_ROLE } = require("@modules/roles");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
@@ -275,12 +268,7 @@ async function startClass(classId) {
 
     // Activate the class and send the class active event
     classStateStore.getClassroom(classId).isActive = true;
-    advancedEmitToClass(
-        "isClassActive",
-        classId,
-        { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classStateStore.getClassroom(classId).isActive
-    );
+    advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
 }
 
 /**
@@ -296,12 +284,7 @@ async function endClass(classId, userSession) {
     classStateStore.getClassroom(classId).isActive = false;
     await clearPoll(classId, userSession, true);
 
-    advancedEmitToClass(
-        "isClassActive",
-        classId,
-        { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classStateStore.getClassroom(classId).isActive
-    );
+    advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
 }
 
 /**
@@ -357,15 +340,16 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     // If the user is the owner of the classroom, give them manager permissions
     if (classroomDb.owner === user.id) {
         if (!classUser) {
-            classUser = { permissions: MANAGER_PERMISSIONS, tags: "" };
+            classUser = { permissions: MANAGER_PERMISSIONS, role: ROLE_NAMES.MANAGER, tags: "" };
         } else {
             classUser.permissions = MANAGER_PERMISSIONS;
+            classUser.role = ROLE_NAMES.MANAGER;
         }
     }
 
     if (classUser) {
         // If the user is banned, don't let them join
-        if (classUser.permissions <= BANNED_PERMISSIONS) {
+        if (getUserRoleName(classUser) === ROLE_NAMES.BANNED) {
             throw new ForbiddenError("You are banned from that class");
         }
 
@@ -374,6 +358,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Set class permissions and active class
         currentUser.classPermissions = classUser.permissions;
+        currentUser.classRole = classUser.role || LEVEL_TO_ROLE[classUser.permissions];
         currentUser.activeClass = classId;
 
         // Load tags from classusers table
@@ -416,6 +401,8 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
         currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
+        currentUser.classRole =
+            currentUser.id !== classData.owner ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST : ROLE_NAMES.TEACHER;
         currentUser.activeClass = classId;
         currentUser.tags = [];
 
@@ -573,6 +560,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
             if (options.ban) {
                 user.classPermissions = BANNED_PERMISSIONS;
+                user.classRole = ROLE_NAMES.BANNED;
             }
             setClassOfApiSockets(existingUser.API, null);
         }
@@ -628,7 +616,7 @@ function classKickStudents(classId) {
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) return;
         for (const student of Object.values(classroom.students)) {
-            if (student.classPermissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(getClassRoleName(student), ROLE_NAMES.TEACHER)) {
                 classKickStudent(student.id, classId);
             }
         }
@@ -843,7 +831,7 @@ async function saveTags(studentId, tags, userSession) {
  * @param {string} key - The class key/code.
  */
 async function getClassUsers(user, key) {
-    const classPermissions = user.classPermissions;
+    const userClassRole = getClassRoleName(user);
     const dbClassUsers = await new Promise((resolve, reject) => {
         database.all(
             "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
@@ -885,7 +873,7 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].classRole = cdUser.classRole || null;
         }
 
-        if (classPermissions <= MOD_PERMISSIONS) {
+        if (!isRoleAtLeast(userClassRole, ROLE_NAMES.TEACHER)) {
             if (classUsers[userRow.email].help) {
                 classUsers[userRow.email].help = true;
             }
@@ -894,7 +882,7 @@ async function getClassUsers(user, key) {
             }
         }
 
-        if (classPermissions <= STUDENT_PERMISSIONS) {
+        if (!isRoleAtLeast(userClassRole, ROLE_NAMES.MOD)) {
             delete classUsers[userRow.email].permissions;
             delete classUsers[userRow.email].classPermissions;
             delete classUsers[userRow.email].help;
@@ -1050,13 +1038,13 @@ function clearVotesFromExcludedStudents(classId) {
         }
 
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && student.permissions == GUEST_PERMISSIONS) {
+            if (classData.settings.isExcluded.guests && getUserRoleName(student) === ROLE_NAMES.GUEST) {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.mods && student.classPermissions == MOD_PERMISSIONS) {
+            if (classData.settings.isExcluded.mods && getClassRoleName(student) === ROLE_NAMES.MOD) {
                 shouldExclude = true;
             }
-            if (classData.settings.isExcluded.teachers && student.classPermissions == TEACHER_PERMISSIONS) {
+            if (classData.settings.isExcluded.teachers && getClassRoleName(student) === ROLE_NAMES.TEACHER) {
                 shouldExclude = true;
             }
         }
@@ -1065,7 +1053,7 @@ function clearVotesFromExcludedStudents(classId) {
             shouldExclude = true;
         }
 
-        if ((student.tags && student.tags.includes("Offline")) || student.classPermissions >= TEACHER_PERMISSIONS) {
+        if ((student.tags && student.tags.includes("Offline")) || isRoleAtLeast(getClassRoleName(student), ROLE_NAMES.TEACHER)) {
             shouldExclude = true;
         }
 
@@ -1116,38 +1104,6 @@ async function updateClassSetting(classId, setting, value) {
     broadcastClassUpdate(classId);
 }
 
-/**
- * Updates a single class permission threshold, persists to DB, and broadcasts via socket.
- * @param {string|number} classId
- * @param {string} permission - The permission key (e.g., controlPoll, manageStudents)
- * @param {number} level - Permission level 1-5
- */
-async function updateClassPermission(classId, permission, level) {
-    requireInternalParam(classId, "classId");
-
-    const validPermissions = Object.keys(DEFAULT_CLASS_PERMISSIONS);
-    if (!validPermissions.includes(permission)) {
-        throw new ValidationError(`Invalid permission "${permission}". Valid permissions: ${validPermissions.join(", ")}`);
-    }
-
-    if (!Number.isInteger(level) || level < 1 || level > 5) {
-        throw new ValidationError("Permission level must be an integer between 1 and 5.");
-    }
-
-    const classroom = classStateStore.getClassroom(classId);
-    if (!classroom) {
-        throw new NotFoundError("Class not started");
-    }
-
-    classStateStore.updateClassroom(classId, (c) => {
-        c.permissions[permission] = level;
-    });
-
-    await dbRun(`UPDATE class_permissions SET ${permission}=? WHERE classId=?`, [level, classId]);
-
-    broadcastClassUpdate(classId);
-}
-
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
@@ -1182,6 +1138,5 @@ module.exports = {
     pauseTimer,
     clearVotesFromExcludedStudents,
     updateClassSetting,
-    updateClassPermission,
     broadcastClassUpdate,
 };

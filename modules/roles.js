@@ -91,8 +91,30 @@ const LEVEL_TO_ROLE = {
     5: ROLE_NAMES.MANAGER,
 };
 
+// Maps role names back to numeric levels (for hierarchy comparisons)
+const ROLE_TO_LEVEL = {
+    [ROLE_NAMES.BANNED]: 0,
+    [ROLE_NAMES.GUEST]: 1,
+    [ROLE_NAMES.STUDENT]: 2,
+    [ROLE_NAMES.MOD]: 3,
+    [ROLE_NAMES.TEACHER]: 4,
+    [ROLE_NAMES.MANAGER]: 5,
+};
+
+/**
+ * Checks if a role is at or above a minimum role in the hierarchy.
+ * @param {string} roleName - The role to check
+ * @param {string} minRoleName - The minimum required role
+ * @returns {boolean}
+ */
+function isRoleAtLeast(roleName, minRoleName) {
+    return (ROLE_TO_LEVEL[roleName] ?? 0) >= (ROLE_TO_LEVEL[minRoleName] ?? 0);
+}
+
 module.exports = {
     ROLE_NAMES,
     ROLES,
     LEVEL_TO_ROLE,
+    ROLE_TO_LEVEL,
+    isRoleAtLeast,
 };
