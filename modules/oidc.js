@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+const { sha256 } = require("@modules/crypto");
 
 const possibleProviders = ["google", "microsoft"]
 function getAvailableProviders() {
@@ -18,6 +20,24 @@ function getAvailableProviders() {
     return availableProviders;
 }
 
+function generateCodeVerifier() {
+    return crypto.randomBytes(32).toString("base64url");
+}
+
+function generateCodeChallenge(verifier) {
+    return sha256(verifier);
+}
+
+function generateState(returnUrl) {
+    return {
+        csrf: crypto.randomBytes(16).toString("base64url"),
+        returnUrl,
+    };
+}
+
 module.exports = {
-    getAvailableProviders
+    getAvailableProviders,
+    generateCodeVerifier,
+    generateCodeChallenge,
+    generateState
 }

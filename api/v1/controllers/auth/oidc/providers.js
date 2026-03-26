@@ -1,5 +1,6 @@
 const oidc = require("@modules/oidc.js")
 const NotFoundError = require("@errors/not-found-error");
+const { settings } = require("@modules/config");
 
 const availableProviders = oidc.getAvailableProviders();
 function assertProviderSupported(provider) {
@@ -24,6 +25,12 @@ module.exports = (router) => {
     router.get("/auth/oidc/:provider", (req, res, next) => {
         const provider = req.params.provider;
         assertProviderSupported(provider);
+
+        const codeVerifier = oidc.generateCodeVerifier();
+        const codeChallenge = oidc.generateCodeChallenge(codeVerifier);
+        const state = oidc.generateState();
+
+
     });
 
     router.get("/auth/oidc/:provider/callback", (req, res, next) => {
