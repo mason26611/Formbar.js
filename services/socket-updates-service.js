@@ -335,6 +335,10 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         key: hasTeacherPermissions ? classData.key : undefined,
         tags: hasTeacherPermissions ? classData.tags : undefined,
         settings: classData.settings,
+        roles:
+            hasTeacherPermissions && classData.customRoles
+                ? Object.entries(classData.customRoles).map(([name, scopes]) => ({ name, scopes }))
+                : undefined,
         students: hasTeacherPermissions
             ? Object.fromEntries(
                   Object.entries(classData.students).map(([email, student]) => [
@@ -345,6 +349,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           activeClass: student.activeClass,
                           permissions: student.permissions,
                           classPermissions: student.classPermissions,
+                          classRole: student.classRole || null,
                           tags: student.tags,
                           pollRes: student.pollRes,
                           help: student.help,
@@ -358,11 +363,11 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
     };
 
     // If studentEmail is provided, include personalized data for that student
-    // This allows students to see their own tags without exposing other students' tags
     if (options.studentEmail && classData.students[options.studentEmail]) {
         const student = classData.students[options.studentEmail];
         result.myTags = student.tags || [];
         result.myId = student.id;
+        result.myRole = student.classRole || null;
     }
 
     return result;

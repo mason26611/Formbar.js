@@ -19,7 +19,7 @@ const DEFAULT_CLASS_SETTINGS = {
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, permissions, tags, settings } = {}) {
+    constructor({ id, className, key, owner, permissions, tags, settings, customRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -64,6 +64,8 @@ class Classroom {
         if (!this.tags.includes("Offline") && Array.isArray(this.tags)) {
             this.tags.push("Offline");
         }
+
+        this.customRoles = customRoles || {};
     }
 }
 
@@ -101,4 +103,5 @@ module.exports = {
     classStateStore,
     getClassroomFromDb,
     getClassIDFromCode,
+    DEFAULT_CLASS_SETTINGS,
 };

@@ -66,19 +66,30 @@ CREATE TABLE IF NOT EXISTS "classusers" (
 
 -- Named roles
 CREATE TABLE IF NOT EXISTS "roles" (
-    "name"          TEXT NOT NULL UNIQUE,
-    "global_scopes" TEXT NOT NULL DEFAULT '[]',
-    "class_scopes"  TEXT NOT NULL DEFAULT '[]',
-    PRIMARY KEY ("name")
+    "id"      INTEGER NOT NULL UNIQUE,
+    "name"    TEXT    NOT NULL,
+    "classId" INTEGER,
+    "scopes"  TEXT    NOT NULL DEFAULT '[]',
+    PRIMARY KEY ("id" AUTOINCREMENT),
+    UNIQUE ("name", "classId")
 );
 
 -- User-to-role mapping
 CREATE TABLE IF NOT EXISTS "user_roles" (
-    "user_id" INTEGER NOT NULL,
-    "role"    TEXT    NOT NULL,
-    PRIMARY KEY ("user_id"),
-    FOREIGN KEY ("role") REFERENCES "roles" ("name")
+    "userId"  INTEGER NOT NULL,
+    "roleId"  INTEGER NOT NULL,
+    "classId" INTEGER
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
+
+-- Seed built-in roles
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Banned', NULL, '[]');
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Guest', NULL, '["class.poll.read","class.links.read"]');
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Student', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Mod', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Teacher', NULL, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
+INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Manager', NULL, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
 
 -- Custom polls (final state: includes allowVoteChanges and allowMultipleResponses)
 CREATE TABLE IF NOT EXISTS "custom_polls" (

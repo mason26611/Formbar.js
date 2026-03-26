@@ -3,7 +3,16 @@ const { database, dbRun } = require("@modules/database");
 const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-updates-service");
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
-const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
+const {
+    startClass,
+    endClass,
+    leaveClass,
+    isClassActive,
+    joinClass,
+    classKickStudent,
+    classKickStudents,
+    clearVotesFromExcludedStudents,
+} = require("@services/class-service");
 const { joinRoom, leaveRoom } = require("@services/room-service");
 const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
@@ -82,70 +91,6 @@ module.exports = {
                 handleSocketError(err, socket, "getActiveClass");
             }
         });
-
-        /**
-         * Helper function to clear poll votes from excluded students
-         * @param {string} classId - The class ID
-         */
-        function clearVotesFromExcludedStudents(classId) {
-            const { GUEST_PERMISSIONS, MOD_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-            const classData = classStateStore.getClassroom(classId);
-            if (!classData) return;
-
-            // Get the list of excluded students using the same logic as sortStudentsInPoll
-            const excludedEmails = [];
-
-            for (const student of Object.values(classData.students)) {
-                let shouldExclude = false;
-
-                // Check if excluded by checkbox (excludedRespondents stores student IDs)
-                if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
-                    shouldExclude = true;
-                }
-
-                // Check if they have the Excluded tag
-                if (student.tags && student.tags.includes("Excluded")) {
-                    shouldExclude = true;
-                }
-
-                // Check exclusion based on class settings for permission levels
-                if (classData.settings && classData.settings.isExcluded) {
-                    if (classData.settings.isExcluded.guests && student.permissions == GUEST_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                    if (classData.settings.isExcluded.mods && student.classPermissions == MOD_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                    if (classData.settings.isExcluded.teachers && student.classPermissions == TEACHER_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                }
-
-                // Check if on break
-                if (student.break === true) {
-                    shouldExclude = true;
-                }
-
-                // Check if offline or is a teacher
-                if ((student.tags && student.tags.includes("Offline")) || student.classPermissions >= TEACHER_PERMISSIONS) {
-                    shouldExclude = true;
-                }
-
-                if (shouldExclude) {
-                    excludedEmails.push(student.email);
-                }
-            }
-
-            // Clear votes for all excluded students
-            for (const email of excludedEmails) {
-                const student = classData.students[email];
-                if (student && student.pollRes) {
-                    student.pollRes.buttonRes = "";
-                    student.pollRes.textRes = "";
-                    student.pollRes.date = null;
-                }
-            }
-        }
 
         /**
          * Sets a setting for the classroom

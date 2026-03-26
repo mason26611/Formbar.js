@@ -50,9 +50,14 @@ function resolveClassScopes(classUser, classroom) {
     }
 
     const roleDefinition = ROLES[roleName];
-    if (!roleDefinition) return [];
+    if (roleDefinition) return [...roleDefinition.class];
 
-    return [...roleDefinition.class];
+    // Check for custom class roles
+    if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
+        return [...classroom.customRoles[roleName]];
+    }
+
+    return [];
 }
 
 /**
@@ -105,7 +110,7 @@ function getUserRoleName(user) {
  * @returns {string} Role name
  */
 function getClassRoleName(classUser) {
-    if (classUser.classRole && ROLES[classUser.classRole]) {
+    if (classUser.classRole) {
         return classUser.classRole;
     }
     if (typeof classUser.classPermissions === "number") {
@@ -161,4 +166,5 @@ module.exports = {
     classUserHasScope,
     getUserRoleName,
     getClassRoleName,
+    getAllClassScopes,
 };

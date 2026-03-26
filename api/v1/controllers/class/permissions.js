@@ -1,5 +1,8 @@
 const { classStateStore } = require("@services/classroom-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { updateClassPermission } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
@@ -92,5 +95,113 @@ module.exports = (router) => {
             success: true,
             data: classData.permissions,
         });
+    });
+
+    /**
+     * @swagger
+     * /api/v1/class/{id}/permissions:
+     *   patch:
+     *     summary: Update a class permission threshold
+     *     tags:
+     *       - Class
+     *     description: |
+     *       Updates a single permission threshold for a class. Each permission controls
+     *       the minimum permission level required to perform an action.
+     *
+     *       **Required Scope:** `class.session.settings`
+     *
+     *       **Valid permissions:** `links`, `controlPoll`, `manageStudents`, `breakHelp`,
+     *       `manageClass`, `auxiliary`, `userDefaults`, `seePoll`, `votePoll`
+     *
+     *       **Permission Levels:**
+     *       - 1: Guest
+     *       - 2: Student
+     *       - 3: Moderator
+     *       - 4: Teacher
+     *       - 5: Manager
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Class ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - permission
+     *               - level
+     *             properties:
+     *               permission:
+     *                 type: string
+     *                 enum: [links, controlPoll, manageStudents, breakHelp, manageClass, auxiliary, userDefaults, seePoll, votePoll]
+     *                 description: The permission key to update
+     *               level:
+     *                 type: integer
+     *                 minimum: 1
+     *                 maximum: 5
+     *                 description: The minimum permission level required (1=Guest, 5=Manager)
+     *     responses:
+     *       200:
+     *         description: Permission threshold updated successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *       400:
+     *         description: Invalid parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       404:
+     *         description: Class not started
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     */
+    router.patch("/class/:id/permissions", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+        const classId = req.params.id;
+        const { permission, level } = req.body;
+
+        if (typeof permission !== "string") {
+            throw new ValidationError("Permission must be a string.");
+        }
+
+        if (level === undefined) {
+            throw new ValidationError("Level is required.");
+        }
+
+        req.infoEvent("class.permissions.update", "Updating class permission", { classId, permission });
+
+        await updateClassPermission(classId, permission, level);
+
+        req.infoEvent("class.permissions.updated", "Class permission updated", { classId, permission, level });
+
+        res.status(200).json({ success: true });
     });
 };

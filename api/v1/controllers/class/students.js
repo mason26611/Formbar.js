@@ -70,7 +70,7 @@ module.exports = (router) => {
         // Get the students of the class
         // If an error occurs, log the error and return the error
         const classUsers = await dbGetAll(
-            "SELECT users.id, users.displayName, users.digipogs, classUsers.permissions AS classPermissions FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
+            "SELECT users.id, users.displayName, users.digipogs, classUsers.permissions AS classPermissions, classUsers.role AS classRole FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
             [classId]
         );
         if (classUsers.error) {
