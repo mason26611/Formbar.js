@@ -1,4 +1,5 @@
-const oidc = require("@modules/oidc.js")
+const oidc = require("@modules/oidc.js");
+const { generators } = require("openid-client");
 const NotFoundError = require("@errors/not-found-error");
 const { settings } = require("@modules/config");
 
@@ -26,17 +27,13 @@ module.exports = (router) => {
         const provider = req.params.provider;
         assertProviderSupported(provider);
 
-        const codeVerifier = oidc.generateCodeVerifier();
-        const codeChallenge = oidc.generateCodeChallenge(codeVerifier);
-        const state = oidc.generateState();
-
-
+        const codeVerifier = generators.codeVerifier();
+        const codeChallenge = generators.codeChallenge(codeVerifier);
+        const state = generators.state();
     });
 
     router.get("/auth/oidc/:provider/callback", (req, res, next) => {
         const provider = req.params.provider;
         assertProviderSupported(provider);
-
-
-    })
+    });
 };
