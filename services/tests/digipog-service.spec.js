@@ -118,10 +118,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// Pool CRUD
-// ---------------------------------------------------------------------------
-
 describe("createPool()", () => {
     it("creates a pool and adds the owner", async () => {
         const user = await seedUser();
@@ -355,10 +351,6 @@ describe("setUserOwnerFlag()", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// Pool Business Logic
-// ---------------------------------------------------------------------------
-
 describe("addMemberToPool()", () => {
     it("adds a user to a pool the acting user owns", async () => {
         const owner = await seedUser();
@@ -535,10 +527,6 @@ describe("payoutPool()", () => {
         expect(result.message).toMatch(/not found/);
     });
 });
-
-// ---------------------------------------------------------------------------
-// Transactions
-// ---------------------------------------------------------------------------
 
 describe("getUserTransactions()", () => {
     it("returns enriched transactions involving the user", async () => {

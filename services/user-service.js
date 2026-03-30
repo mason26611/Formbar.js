@@ -280,9 +280,7 @@ async function regenerateAPIKey(userId) {
     return apiKey;
 }
 
-/*
- * User lookup
- */
+// User lookup
 
 /**
  * Gets the class id for the given user by checking in-memory classrooms.
@@ -417,9 +415,7 @@ async function getUserOwnedClasses(email) {
     return dbGetAll("SELECT * FROM classroom WHERE owner=?", [userId]);
 }
 
-/*
- * Session management
- */
+// Session Management
 
 /**
  * Logs a user out from a specific socket, cleaning up session state.

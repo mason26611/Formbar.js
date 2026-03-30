@@ -52,6 +52,16 @@ jest.mock("../../../../sockets/init", () => ({
     userSocketUpdates: new Map(),
 }));
 
+jest.mock("@modules/web-server", () => ({
+    io: { to: () => ({ emit: jest.fn() }) },
+}));
+
+jest.mock("@stores/socket-state-store", () => ({
+    socketStateStore: {
+        getUserSocketsByEmail: jest.fn().mockReturnValue(null),
+    },
+}));
+
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
 
@@ -63,6 +73,9 @@ const linksController = require("../class/links/links");
 const addLinkController = require("../class/links/add");
 const changeLinkController = require("../class/links/change");
 const removeLinkController = require("../class/links/remove");
+const bannedController = require("../class/banned");
+const createClassController = require("../class/create");
+const joinClassController = require("../class/join");
 
 const app = createTestApp(
     joinController,
@@ -72,7 +85,10 @@ const app = createTestApp(
     linksController,
     addLinkController,
     changeLinkController,
-    removeLinkController
+    removeLinkController,
+    bannedController,
+    createClassController,
+    joinClassController
 );
 
 beforeAll(async () => {
@@ -97,7 +113,7 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
     const row = await mockDatabase.dbGet("SELECT * FROM classroom WHERE key = ?", [key]);
     const classroom = new Classroom({
         id: row.id,
-        className: row.className,
+        className: row.name,
         key: row.key,
         owner: row.owner,
         permissions: null,
@@ -215,7 +231,6 @@ describe("DELETE /api/v1/class/:id", () => {
     });
 });
 
-// GET /api/v1/class/tags
 describe("GET /api/v1/class/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/tags");
@@ -246,8 +261,7 @@ describe("GET /api/v1/class/tags", () => {
     });
 });
 
-// PUT /api/v1/class/tags
-describe("PUT /api/v1/class/tags", () => {
+describe("PUT /api/v1/room/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app)
             .put("/api/v1/class/tags")
@@ -272,8 +286,7 @@ describe("PUT /api/v1/class/tags", () => {
     });
 });
 
-// GET /api/v1/class/:id/links
-describe("GET /api/v1/class/:id/links", () => {
+describe("GET /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).get("/api/v1/class/1/links");
         expect(res.status).toBe(401);
@@ -299,8 +312,7 @@ describe("GET /api/v1/class/:id/links", () => {
     });
 });
 
-// POST /api/v1/class/:id/links/add
-describe("POST /api/v1/class/:id/links/add", () => {
+describe("POST /api/v1/room/:id/links/add", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).post("/api/v1/class/1/links/add").send({ name: "Link", url: "https://example.com" });
         expect(res.status).toBe(401);
@@ -342,8 +354,7 @@ describe("POST /api/v1/class/:id/links/add", () => {
     });
 });
 
-// PUT /api/v1/class/:id/links
-describe("PUT /api/v1/class/:id/links", () => {
+describe("PUT /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).put("/api/v1/class/1/links").send({ name: "Link", url: "https://example.com" });
         expect(res.status).toBe(401);
@@ -368,8 +379,7 @@ describe("PUT /api/v1/class/:id/links", () => {
     });
 });
 
-// DELETE /api/v1/class/:id/links
-describe("DELETE /api/v1/class/:id/links", () => {
+describe("DELETE /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app).delete("/api/v1/class/1/links").send({ name: "Link" });
         expect(res.status).toBe(401);
@@ -406,5 +416,123 @@ describe("DELETE /api/v1/class/:id/links", () => {
 
         const res = await request(app).delete(`/api/v1/class/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`).send({});
         expect(res.status).toBe(400);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Deprecated endpoints
+// ---------------------------------------------------------------------------
+
+// POST /api/v1/room/tags (deprecated, use PUT)
+describe("POST /api/v1/room/tags (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher sets tags", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+        classStateStore.updateUser(user.email, { activeClass: classId });
+
+        const res = await request(app)
+            .post("/api/v1/room/tags")
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ tags: ["science"] });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+// POST /api/v1/room/:id/links/change (deprecated, use PUT)
+describe("POST /api/v1/room/:id/links/change (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher changes a link", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Old", "https://old.example.com"]);
+
+        const res = await request(app)
+            .post(`/api/v1/room/${classId}/links/change`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ oldName: "Old", name: "New", url: "https://new.example.com" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+// POST /api/v1/room/:id/links/remove (deprecated, use DELETE)
+describe("POST /api/v1/room/:id/links/remove (deprecated)", () => {
+    it("returns 200 with deprecation headers when a teacher removes a link", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "ToRemove", "https://remove.example.com"]);
+
+        const res = await request(app)
+            .post(`/api/v1/room/${classId}/links/remove`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ name: "ToRemove" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.headers["x-deprecated"]).toBeDefined();
+        expect(res.headers["warning"]).toMatch(/299/);
+    });
+});
+
+// GET /api/v1/class/:id/banned
+describe("GET /api/v1/class/:id/banned", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).get("/api/v1/class/1/banned");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when class not in classStateStore", async () => {
+        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            permissions: TEACHER_PERMISSIONS,
+        });
+
+        const res = await request(app).get("/api/v1/class/9999/banned").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+    });
+
+    it("returns 200 with empty array when no banned users", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Teacher",
+            permissions: TEACHER_PERMISSIONS,
+        });
+
+        const createRes = await request(app)
+            .post("/api/v1/class/create")
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ name: "Banned Test Class" });
+        const classId = createRes.body.data.classId;
+
+        // Teacher joins the class so they are in classStateStore
+        await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/banned`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(res.body.data).toHaveLength(0);
     });
 });

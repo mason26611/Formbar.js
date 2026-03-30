@@ -282,24 +282,40 @@ async function updatePoll(classId, options, userSession) {
  */
 async function getPreviousPolls(classId, index = 0, limit = 20) {
     requireInternalParam(classId, "classId");
-    const polls = await dbGetAll("SELECT * FROM poll_history WHERE class = ? ORDER BY id DESC LIMIT ?, ?", [classId, index, limit]);
+    const polls = await dbGetAll(
+        `SELECT *, ROW_NUMBER() OVER (ORDER BY id) AS pollId
+         FROM poll_history
+         WHERE class = ?
+         ORDER BY id DESC
+             LIMIT ?, ?`,
+        [classId, index, limit]
+    );
 
     return polls.map((poll) => {
-        // Convert to booleans for API consistency
-        poll.allowMultipleResponses = !!poll.allowMultipleResponses;
-        poll.blind = !!poll.blind;
-        poll.allowTextResponses = !!poll.allowTextResponses;
-
-        // Parse responses from JSON string to object
+        // Parse responses into a predictable array for clients.
+        let parsedResponses = poll.responses;
         if (typeof poll.responses === "string") {
             try {
-                poll.responses = JSON.parse(poll.responses);
+                parsedResponses = JSON.parse(poll.responses);
             } catch (err) {
-                poll.responses = null;
+                parsedResponses = [];
             }
         }
 
-        return poll;
+        if (!Array.isArray(parsedResponses)) {
+            parsedResponses = [];
+        }
+
+        return {
+            globalPollId: poll.id,
+            classPollId: Number(poll.pollId),
+            prompt: poll.prompt,
+            responses: parsedResponses,
+            blind: !!poll.blind,
+            allowMultipleResponses: !!poll.allowMultipleResponses,
+            allowTextResponses: !!poll.allowTextResponses,
+            createdAt: poll.createdAt,
+        };
     });
 }
 

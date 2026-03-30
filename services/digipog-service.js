@@ -176,7 +176,7 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag) {
 }
 
 async function addMemberToPool({ actingUserId, poolId, userId }) {
-    if (!Number.isInteger(poolId) || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
@@ -205,11 +205,11 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
 }
 
 async function removeMemberFromPool({ actingUserId, poolId, userId }) {
-    if (typeof poolId !== "number" || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    if (typeof userId !== "number" || userId <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0) {
         return { success: false, message: "Invalid user ID." };
     }
 
@@ -229,7 +229,7 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
 }
 
 async function payoutPool({ actingUserId, poolId }) {
-    if (typeof poolId !== "number" || poolId < 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 

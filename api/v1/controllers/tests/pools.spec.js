@@ -60,9 +60,6 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-// ---------------------------------------------------------------------------
-// Helper: seed a pool owned by a specific user
-// ---------------------------------------------------------------------------
 async function seedPool(name, description, amount, ownerId) {
     const poolId = await mockDatabase.dbRun("INSERT INTO digipog_pools (name, description, amount) VALUES (?, ?, ?)", [name, description, amount]);
     await mockDatabase.dbRun("INSERT INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, ownerId, 1]);
