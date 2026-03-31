@@ -1,7 +1,7 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 
 module.exports = (router) => {
     /**
@@ -39,7 +39,6 @@ module.exports = (router) => {
         const globalRole = getUserRoleName(req.user);
         const globalScopes = resolveUserScopes(req.user);
 
-        let classRole = null;
         let classRoles = [];
         let classScopes = [];
         const liveUser = classStateStore.getUser(req.user.email);
@@ -47,7 +46,6 @@ module.exports = (router) => {
             const classroom = classStateStore.getClassroom(liveUser.activeClass);
             const classStudent = classroom?.students?.[req.user.email];
             if (classStudent) {
-                classRole = getClassRoleName(classStudent);
                 classRoles = getClassRoleNames(classStudent);
                 classScopes = resolveClassScopes(classStudent, classroom);
             }
@@ -67,7 +65,6 @@ module.exports = (router) => {
                 classPermissions: req.user.classPermissions,
                 role: globalRole,
                 globalScopes,
-                classRole,
                 classRoles,
                 classScopes,
             },
