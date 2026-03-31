@@ -1,3 +1,16 @@
+/**
+ * Classroom Service — defines the Classroom model and the shared in-memory state store.
+ *
+ * The `Classroom` class represents a classroom that can be loaded into memory for
+ * an active session. The `classStateStore` singleton holds all currently-loaded
+ * classrooms and their connected users.
+ *
+ * This module is intentionally small and dependency-light so that both class-service
+ * (session logic) and room-service (persistent membership) can import it without
+ * circular-dependency issues.
+ *
+ * @module services/classroom-service
+ */
 const { database, dbGet } = require("@modules/database");
 const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");

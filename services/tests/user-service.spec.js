@@ -88,7 +88,7 @@ jest.mock("@services/classroom-service", () => {
 
 jest.mock("@services/class-service", () => ({
     endClass: jest.fn(),
-    deleteRooms: jest.fn(),
+    deleteClassrooms: jest.fn(),
 }));
 
 jest.mock("@services/poll-service", () => ({
@@ -113,7 +113,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { deleteRooms } = require("@services/class-service");
+const { deleteClassrooms } = require("@services/class-service");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const AuthError = require("@errors/auth-error");

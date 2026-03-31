@@ -15,7 +15,7 @@ const { ROLE_NAMES } = require("@modules/roles");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
-const { deleteRooms } = require("@services/class-service");
+const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -514,7 +514,7 @@ async function deleteUser(userId, userSession) {
                     dbRun("DELETE FROM shared_polls WHERE userId=?", userId),
                 ]);
                 await deleteCustomPolls(userId);
-                await deleteRooms(userId);
+                await deleteClassrooms(userId);
 
                 const student = classStateStore.getUser(user.email);
                 if (student) {

@@ -133,15 +133,6 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
 }
 
 /**
- * Broadcasts a class update to all user sockets.
- * @param {string} email - The user's email.
- * @param {number} classId - The class ID.
- */
-function broadcastClassUpdate(email, classId) {
-    userUpdateSocket(email, "classUpdate", classId, { global: true });
-}
-
-/**
  * Creates a new poll in the class.
  * @param {number} classId - The ID of the class.
  * @param {Object} pollData - The data for the poll.
@@ -220,7 +211,7 @@ async function createPoll(classId, pollData, userData) {
     classroom.poll.allowMultipleResponses = allowMultipleResponses;
 
     resetStudentPollResponses(classroom);
-    broadcastClassUpdate(userData.email, classId);
+    userUpdateSocket(userData.email, "classUpdate", classId, { global: true });
 }
 
 /**
@@ -381,7 +372,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     // Adds data to the previous poll answers table upon clearing the poll
     if (!currentPollId) {
         if (updateClass && userSession) {
-            broadcastClassUpdate(userSession.email, classId);
+            userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
         }
         pollRuntimeStore.clearPogMeterTracker(classId);
         pollRuntimeStore.clearLastSavedPollId(classId);
@@ -415,7 +406,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     if (updateClass && userSession) {
-        broadcastClassUpdate(userSession.email, classId);
+        userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
     }
 
     pollRuntimeStore.clearPogMeterTracker(classId);
@@ -505,7 +496,7 @@ function sendPollResponse(classId, res, textRes, userSession) {
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
-    broadcastClassUpdate(email, classId);
+    userUpdateSocket(email, "classUpdate", classId, { global: true });
 }
 
 /**
