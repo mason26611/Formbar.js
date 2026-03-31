@@ -54,9 +54,17 @@ module.exports = (router) => {
      *                       builtIn:
      *                         type: boolean
      *       401:
-     *         $ref: '#/components/responses/UnauthorizedError'
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
      *       404:
-     *         $ref: '#/components/responses/NotFoundError'
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
      */
     router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
         const classId = req.params.id;
@@ -133,11 +141,23 @@ module.exports = (router) => {
      *                       items:
      *                         type: string
      *       400:
-     *         $ref: '#/components/responses/ValidationError'
+     *         description: Invalid parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
      *       401:
-     *         $ref: '#/components/responses/UnauthorizedError'
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
      *       403:
-     *         $ref: '#/components/responses/ForbiddenError'
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
      */
     router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const classId = req.params.id;
@@ -217,13 +237,29 @@ module.exports = (router) => {
      *                       items:
      *                         type: string
      *       400:
-     *         $ref: '#/components/responses/ValidationError'
+     *         description: Invalid parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
      *       401:
-     *         $ref: '#/components/responses/UnauthorizedError'
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
      *       403:
-     *         $ref: '#/components/responses/ForbiddenError'
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
      *       404:
-     *         $ref: '#/components/responses/NotFoundError'
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
      */
     router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const { id: classId, roleId } = req.params;
@@ -278,11 +314,23 @@ module.exports = (router) => {
      *                 message:
      *                   type: string
      *       401:
-     *         $ref: '#/components/responses/UnauthorizedError'
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
      *       403:
-     *         $ref: '#/components/responses/ForbiddenError'
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
      *       404:
-     *         $ref: '#/components/responses/NotFoundError'
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
      */
     router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const { id: classId, roleId } = req.params;

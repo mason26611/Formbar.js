@@ -191,14 +191,24 @@ async function deleteClassRole(roleId, classId) {
 
     const roleName = role.name;
 
-    // Reassign students with this role to Guest
-    await dbRun("UPDATE classusers SET role = ? WHERE classId = ? AND role = ?", [ROLE_NAMES.GUEST, classId, roleName]);
+    // Find users affected by this role deletion before removing assignments
+    const affectedUsers = await dbGetAll("SELECT DISTINCT ur.userId FROM user_roles ur WHERE ur.roleId = ? AND ur.classId = ?", [roleId, classId]);
 
     // Remove role assignments from user_roles
     await dbRun("DELETE FROM user_roles WHERE roleId = ? AND classId = ?", [roleId, classId]);
 
     // Delete the role
     await dbRun("DELETE FROM roles WHERE id = ?", [roleId]);
+
+    // Recompute primary role for each affected user from their remaining roles
+    for (const user of affectedUsers) {
+        const remainingRoles = await dbGetAll(
+            "SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ? AND ur.classId = ?",
+            [user.userId, classId]
+        );
+        const primaryRole = computePrimaryRole(remainingRoles.map((r) => r.name)) || ROLE_NAMES.GUEST;
+        await dbRun("UPDATE classusers SET role = ? WHERE classId = ? AND studentId = ?", [primaryRole, classId, user.userId]);
+    }
 
     // Update in-memory state
     const classroom = classStateStore.getClassroom(classId);

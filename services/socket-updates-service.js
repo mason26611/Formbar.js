@@ -453,10 +453,10 @@ class SocketUpdates {
                     const classReturnData = getClassUpdateData(classData, hasTeacherPermissions);
                     advancedEmitToClass("classUpdate", classId, { scopes: CONTROL_PANEL_SCOPES }, classReturnData);
                 } else {
-                    // For guests and other non-teachers, send personalized data
+                    // For guests and other non-teachers, send personalized data only to this socket
                     const email = this.socket.request.session?.email;
                     const personalizedData = getClassUpdateData(classData, hasTeacherPermissions, { studentEmail: email });
-                    advancedEmitToClass("classUpdate", classId, {}, personalizedData);
+                    this.socket.emit("classUpdate", personalizedData);
                 }
                 this.customPollUpdate();
             }
