@@ -10,8 +10,9 @@
  * see `classroom-service`.
  */
 const { classStateStore, getClassIDFromCode } = require("@services/classroom-service");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
-const { advancedEmitToClass, emitToUser } = require("@services/socket-updates-service");
+const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
 const { userSocketUpdates } = require("../sockets/init");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -29,10 +30,20 @@ function getClassService() {
 async function deleteClassroom(classroomId) {
     requireInternalParam(classroomId, "classroomId");
 
+    // End the active class session if it's currently loaded in memory
+    if (classStateStore.getClassroom(classroomId)) {
+        await getClassService().endClass(classroomId);
+    }
+
     await dbRun("BEGIN TRANSACTION");
     try {
         await dbRun("DELETE FROM classroom WHERE id=?", [classroomId]);
-        await dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]);
+        await Promise.all([
+            dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM class_permissions WHERE classId=?", [classroomId]),
+        ]);
         await dbRun("COMMIT");
     } catch (err) {
         try {
@@ -42,6 +53,10 @@ async function deleteClassroom(classroomId) {
         }
         throw err;
     }
+
+    // Invalidate in-memory caches
+    invalidateClassPollCache(classroomId);
+    classCodeCacheStore.invalidateByClassId(classroomId);
 }
 
 function getClassroomById(classroomId) {
@@ -137,9 +152,9 @@ async function unenrollFromClass(userData) {
     await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
 
     // If the owner of the classroom leaves, then delete the classroom
-    const owner = (await dbGet("SELECT owner FROM classroom WHERE id=?", classId)).owner;
-    if (owner === studentId) {
-        await dbRun("DELETE FROM classroom WHERE id=?", classId);
+    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", classId);
+    if (classRow && classRow.owner === studentId) {
+        await deleteClassroom(classId);
     }
 
     // Update the class and play leave sound

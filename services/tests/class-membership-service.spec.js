@@ -30,6 +30,7 @@ jest.mock("@modules/config", () => ({
 jest.mock("@services/socket-updates-service", () => ({
     advancedEmitToClass: jest.fn(),
     emitToUser: jest.fn(),
+    invalidateClassPollCache: jest.fn(),
 }));
 
 const mockClassrooms = {};
@@ -45,9 +46,16 @@ jest.mock("@services/classroom-service", () => ({
     }),
 }));
 
+jest.mock("@stores/class-code-cache-store", () => ({
+    classCodeCacheStore: {
+        invalidateByClassId: jest.fn(),
+    },
+}));
+
 jest.mock("@services/class-service", () => ({
     initializeClassroom: jest.fn(),
     addUserToClassroomSession: jest.fn(() => true),
+    endClass: jest.fn(),
 }));
 
 jest.mock("@services/student-service", () => ({
