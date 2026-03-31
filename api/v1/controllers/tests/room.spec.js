@@ -65,15 +65,15 @@ jest.mock("@stores/socket-state-store", () => ({
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
 
-const joinController = require("../room/join");
-const leaveController = require("../room/leave");
-const deleteController = require("../room/delete");
-const tagsController = require("../room/tags");
-const linksController = require("../room/links/links");
-const addLinkController = require("../room/links/add");
-const changeLinkController = require("../room/links/change");
-const removeLinkController = require("../room/links/remove");
-const bannedController = require("../room/banned");
+const joinController = require("../class/enroll");
+const leaveController = require("../class/unenroll");
+const deleteController = require("../class/delete");
+const tagsController = require("../class/tags");
+const linksController = require("../class/links/links");
+const addLinkController = require("../class/links/add");
+const changeLinkController = require("../class/links/change");
+const removeLinkController = require("../class/links/remove");
+const bannedController = require("../class/banned");
 const createClassController = require("../class/create");
 const joinClassController = require("../class/join");
 
@@ -139,32 +139,32 @@ async function enrollUserInClass(user, classId, classPermissions = MOD_PERMISSIO
     }
 }
 
-// POST /api/v1/room/:code/join
-describe("POST /api/v1/room/:code/join", () => {
+// POST /api/v1/class/enroll/:code
+describe("POST /api/v1/class/enroll/:code", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/room/TESTCODE/join");
+        const res = await request(app).post("/api/v1/class/enroll/TESTCODE");
         expect(res.status).toBe(401);
     });
 
     it("returns 404 when the room code does not exist", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
-        const res = await request(app).post("/api/v1/room/BADCODE/join").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).post("/api/v1/class/enroll/BADCODE").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
     });
 });
 
-// POST /api/v1/room/:id/leave
-describe("POST /api/v1/room/:id/leave", () => {
+// POST /api/v1/class/:id/unenroll
+describe("POST /api/v1/class/:id/unenroll", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/room/1/leave");
+        const res = await request(app).post("/api/v1/class/1/unenroll");
         expect(res.status).toBe(401);
     });
 });
 
-// DELETE /api/v1/room/:id
-describe("DELETE /api/v1/room/:id", () => {
+// DELETE /api/v1/class/:id
+describe("DELETE /api/v1/class/:id", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).delete("/api/v1/room/1");
+        const res = await request(app).delete("/api/v1/class/1");
         expect(res.status).toBe(401);
     });
 
@@ -182,7 +182,7 @@ describe("DELETE /api/v1/room/:id", () => {
             permissions: TEACHER_PERMISSIONS,
         });
 
-        const res = await request(app).delete(`/api/v1/room/${classId}`).set("Authorization", `Bearer ${otherTokens.accessToken}`);
+        const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${otherTokens.accessToken}`);
         expect(res.status).toBe(403);
     });
 
@@ -193,7 +193,7 @@ describe("DELETE /api/v1/room/:id", () => {
         });
         const classId = await seedClassroom(user.id);
 
-        const res = await request(app).delete(`/api/v1/room/${classId}`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
@@ -215,7 +215,7 @@ describe("DELETE /api/v1/room/:id", () => {
             permissions: MANAGER_PERMISSIONS,
         });
 
-        const res = await request(app).delete(`/api/v1/room/${classId}`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
+        const res = await request(app).delete(`/api/v1/class/${classId}`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
     });
@@ -226,20 +226,20 @@ describe("DELETE /api/v1/room/:id", () => {
             permissions: MANAGER_PERMISSIONS,
         });
 
-        const res = await request(app).delete("/api/v1/room/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).delete("/api/v1/class/99999").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
     });
 });
 
-describe("GET /api/v1/room/tags", () => {
+describe("GET /api/v1/class/tags", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/room/tags");
+        const res = await request(app).get("/api/v1/class/tags");
         expect(res.status).toBe(401);
     });
 
     it("returns 404 when user has no active class", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
-        const res = await request(app).get("/api/v1/room/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get("/api/v1/class/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
     });
 
@@ -254,7 +254,7 @@ describe("GET /api/v1/room/tags", () => {
         // Set activeClass on the user in classStateStore
         classStateStore.updateUser(user.email, { activeClass: classId });
 
-        const res = await request(app).get("/api/v1/room/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get("/api/v1/class/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data.tags)).toBe(true);
@@ -264,7 +264,7 @@ describe("GET /api/v1/room/tags", () => {
 describe("PUT /api/v1/room/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app)
-            .put("/api/v1/room/tags")
+            .put("/api/v1/class/tags")
             .send({ tags: ["math"] });
         expect(res.status).toBe(401);
     });
@@ -279,7 +279,7 @@ describe("PUT /api/v1/room/tags", () => {
         classStateStore.updateUser(user.email, { activeClass: classId });
 
         const res = await request(app)
-            .put("/api/v1/room/tags")
+            .put("/api/v1/class/tags")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ tags: ["math"] });
         expect(res.status).toBe(403);
@@ -288,7 +288,7 @@ describe("PUT /api/v1/room/tags", () => {
 
 describe("GET /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/room/1/links");
+        const res = await request(app).get("/api/v1/class/1/links");
         expect(res.status).toBe(401);
     });
 
@@ -303,7 +303,7 @@ describe("GET /api/v1/room/:id/links", () => {
         // Insert a link
         await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Course Website", "https://example.com"]);
 
-        const res = await request(app).get(`/api/v1/room/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data.links)).toBe(true);
@@ -314,7 +314,7 @@ describe("GET /api/v1/room/:id/links", () => {
 
 describe("POST /api/v1/room/:id/links/add", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/room/1/links/add").send({ name: "Link", url: "https://example.com" });
+        const res = await request(app).post("/api/v1/class/1/links/add").send({ name: "Link", url: "https://example.com" });
         expect(res.status).toBe(401);
     });
 
@@ -327,7 +327,7 @@ describe("POST /api/v1/room/:id/links/add", () => {
         await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
 
         const res = await request(app)
-            .post(`/api/v1/room/${classId}/links/add`)
+            .post(`/api/v1/class/${classId}/links/add`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ name: "Docs", url: "https://docs.example.com" });
         expect(res.status).toBe(200);
@@ -347,7 +347,7 @@ describe("POST /api/v1/room/:id/links/add", () => {
         await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
 
         const res = await request(app)
-            .post(`/api/v1/room/${classId}/links/add`)
+            .post(`/api/v1/class/${classId}/links/add`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ name: "Missing URL" });
         expect(res.status).toBe(400);
@@ -356,7 +356,7 @@ describe("POST /api/v1/room/:id/links/add", () => {
 
 describe("PUT /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).put("/api/v1/room/1/links").send({ name: "Link", url: "https://example.com" });
+        const res = await request(app).put("/api/v1/class/1/links").send({ name: "Link", url: "https://example.com" });
         expect(res.status).toBe(401);
     });
 
@@ -371,7 +371,7 @@ describe("PUT /api/v1/room/:id/links", () => {
         await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Old Link", "https://old.example.com"]);
 
         const res = await request(app)
-            .put(`/api/v1/room/${classId}/links`)
+            .put(`/api/v1/class/${classId}/links`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ oldName: "Old Link", name: "New Link", url: "https://new.example.com" });
         expect(res.status).toBe(200);
@@ -381,7 +381,7 @@ describe("PUT /api/v1/room/:id/links", () => {
 
 describe("DELETE /api/v1/room/:id/links", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).delete("/api/v1/room/1/links").send({ name: "Link" });
+        const res = await request(app).delete("/api/v1/class/1/links").send({ name: "Link" });
         expect(res.status).toBe(401);
     });
 
@@ -396,7 +396,7 @@ describe("DELETE /api/v1/room/:id/links", () => {
         await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "ToRemove", "https://remove.example.com"]);
 
         const res = await request(app)
-            .delete(`/api/v1/room/${classId}/links`)
+            .delete(`/api/v1/class/${classId}/links`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ name: "ToRemove" });
         expect(res.status).toBe(200);
@@ -414,7 +414,7 @@ describe("DELETE /api/v1/room/:id/links", () => {
         const classId = await seedClassroom(user.id);
         await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
 
-        const res = await request(app).delete(`/api/v1/room/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`).send({});
+        const res = await request(app).delete(`/api/v1/class/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`).send({});
         expect(res.status).toBe(400);
     });
 });

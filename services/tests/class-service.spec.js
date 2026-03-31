@@ -3,9 +3,11 @@
  *
  * Focuses on:
  *  - Pure helper functions (validateClassroomName, normalizeClassroomData)
- *  - Database-only read functions (getClassCode, getClassIdByCode,
- *    getUserJoinedClasses, getClassLinks)
+ *  - Database-only read functions (getClassCode, getUserJoinedClasses, getClassLinks)
  *  - createClass (DB + in-memory state; no socket emissions at creation time)
+ *
+ * Note: getClassIdByCode was removed in favor of getClassIDFromCode from
+ * classroom-service (which includes caching). See classroom-service tests.
  *
  * Functions that emit socket events (startClass, endClass, joinClass, etc.) are
  * *not* exercised here as they require a live socket server.
@@ -43,7 +45,6 @@ const {
     validateClassroomName,
     createClass,
     getClassCode,
-    getClassIdByCode,
     getUserJoinedClasses,
     getClassLinks,
     getTimer,
@@ -146,19 +147,6 @@ describe("getClassCode()", () => {
 
     it("returns null for a non-existent class id", async () => {
         const result = await getClassCode(99999);
-        expect(result).toBeNull();
-    });
-});
-
-describe("getClassIdByCode()", () => {
-    it("returns the class id for a valid code", async () => {
-        const { id } = await seedClassroom({ key: 4321 });
-        const result = await getClassIdByCode(4321);
-        expect(result).toBe(id);
-    });
-
-    it("returns null for a code that does not exist", async () => {
-        const result = await getClassIdByCode(9999);
         expect(result).toBeNull();
     });
 });

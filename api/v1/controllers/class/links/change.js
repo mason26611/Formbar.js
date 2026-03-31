@@ -8,7 +8,7 @@ module.exports = (router) => {
     const changeLinkHandler = async (req, res) => {
         const classId = req.params.id;
         const { oldName, name, url } = req.body;
-        req.infoEvent("room.links.update.attempt", "Attempting to update room link", { classId, linkName: name, oldLinkName: oldName || null });
+        req.infoEvent("class.links.update.attempt", "Attempting to update class link", { classId, linkName: name, oldLinkName: oldName || null });
         if (!name || !url) {
             throw new ValidationError("Name and URL are required.");
         }
@@ -19,7 +19,7 @@ module.exports = (router) => {
         } else {
             await dbRun("UPDATE links SET url = ? WHERE classId = ? AND name = ?", [url, classId, name]);
         }
-        req.infoEvent("room.links.update.success", "Room link updated", { classId, linkName: name, oldLinkName: oldName || null });
+        req.infoEvent("class.links.update.success", "Class link updated", { classId, linkName: name, oldLinkName: oldName || null });
         res.status(200).json({
             success: true,
             data: {
@@ -30,11 +30,11 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/room/{id}/links:
+     * /api/v1/class/{id}/links:
      *   put:
-     *     summary: Update a link in a room
+     *     summary: Update a link in a class
      *     tags:
-     *       - Room - Links
+     *       - Class - Links
      *     description: Updates an existing link in a classroom (requires teacher permissions)
      *     security:
      *       - bearerAuth: []
@@ -90,14 +90,14 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.put("/room/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), changeLinkHandler);
+    router.put("/class/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), changeLinkHandler);
 
-    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/room/:id/links instead
-    router.post("/room/:id/links/change", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PUT /api/v1/room/:id/links instead");
+    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/links instead
+    router.post("/class/:id/links/change", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
+        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/links instead");
         res.setHeader(
             "Warning",
-            '299 - "Deprecated API: Use PUT /api/v1/room/:id/links instead. This endpoint will be removed in a future version."'
+            '299 - "Deprecated API: Use PUT /api/v1/class/:id/links instead. This endpoint will be removed in a future version."'
         );
         await changeLinkHandler(req, res);
     });

@@ -134,13 +134,15 @@ async function isUserInPool(userId, poolId) {
     return !!row;
 }
 
-async function isUserOwner(userId, poolId) {
+/**
+ * Checks whether a specific user is an owner of a pool.
+ * @param {number} poolId - The pool to check.
+ * @param {number} userId - The user to check.
+ * @returns {Promise<boolean>} True if the user is an owner of the pool.
+ */
+async function isPoolOwnedByUser(poolId, userId) {
     const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!(row && row.owner);
-}
-
-async function isPoolOwnedByUser(poolId, userId) {
-    return isUserOwner(userId, poolId);
 }
 
 /**
@@ -149,7 +151,7 @@ async function isPoolOwnedByUser(poolId, userId) {
  * @returns {Promise<boolean>} Whether the requesting user owns the pool
  */
 function poolOwnerCheck(req) {
-    return isUserOwner(req.user.id, Number(req.params.id));
+    return isPoolOwnedByUser(Number(req.params.id), req.user.id);
 }
 
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
@@ -157,7 +159,7 @@ async function addUserToPool(poolId, userId, ownerFlag = 0) {
 }
 
 async function removeUserFromPool(poolId, userId) {
-    if (await isUserOwner(userId, poolId)) {
+    if (await isPoolOwnedByUser(poolId, userId)) {
         const poolUsers = await getUsersForPool(poolId);
         const otherOwners = poolUsers.filter((poolUser) => poolUser.user_id !== userId && poolUser.owner);
         if (otherOwners.length === 0) {
@@ -182,7 +184,7 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -211,7 +213,7 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -231,7 +233,7 @@ async function payoutPool({ actingUserId, poolId }) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -727,7 +729,6 @@ module.exports = {
     getUsersForPool,
     getPoolById,
     isUserInPool,
-    isUserOwner,
     isPoolOwnedByUser,
     poolOwnerCheck,
     addUserToPool,

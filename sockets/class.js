@@ -4,7 +4,7 @@ const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
 const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
-const { joinRoom, leaveRoom } = require("@services/room-service");
+const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -39,9 +39,13 @@ module.exports = {
             await joinClass(socket.request.session, classId);
         });
 
-        // Joins a classroom
+        // Enrolls in a classroom by code
         socket.on("joinRoom", async (classCode) => {
-            joinRoom(socket.request.session, classCode);
+            try {
+                await enrollInClass(socket.request.session, classCode);
+            } catch (err) {
+                handleSocketError(err, socket, "joinRoom", "There was a server error. Please try again");
+            }
         });
 
         /**
@@ -57,11 +61,15 @@ module.exports = {
         });
 
         /**
-         * Leaves the classroom entirely
-         * The user is no longer associated with the class
+         * Permanently unenrolls the user from the classroom.
+         * The user is no longer associated with the class.
          */
         socket.on("leaveRoom", async () => {
-            await leaveRoom(socket.request.session);
+            try {
+                await unenrollFromClass(socket.request.session);
+            } catch (err) {
+                handleSocketError(err, socket, "leaveRoom", "There was a server error. Please try again");
+            }
         });
 
         socket.on("getActiveClass", () => {

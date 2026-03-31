@@ -1,16 +1,16 @@
-const { joinRoom } = require("@services/room-service");
+const { enrollInClass } = require("@services/class-membership-service");
 const { isAuthenticated } = require("@middleware/authentication");
 
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/room/{code}/join:
+     * /api/v1/class/enroll/{code}:
      *   post:
-     *     summary: Join a room with a code
+     *     summary: Enroll in a class with a code
      *     tags:
-     *       - Room
+     *       - Class
      *     description: |
-     *       Joins a classroom using a room code.
+     *       Enrolls in a classroom using a class code.
      *
      *       **Required Permission:** Global Guest permission (level 1)
      *
@@ -29,12 +29,12 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Room code
+     *         description: Class code
      *     responses:
      *       200:
-     *         description: Successfully joined the room
+     *         description: Successfully enrolled in the class
      *       400:
-     *         description: Invalid code or unable to join
+     *         description: Invalid code or unable to enroll
      *         content:
      *           application/json:
      *             schema:
@@ -46,13 +46,13 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.post("/room/:code/join", isAuthenticated, async (req, res) => {
+    router.post("/class/enroll/:code", isAuthenticated, async (req, res) => {
         const code = req.params.code;
-        req.infoEvent("room.join.attempt", "User attempting to join room", { code });
+        req.infoEvent("class.enroll.attempt", "User attempting to enroll in class", { code });
 
-        const response = await joinRoom(req.user, code);
+        const response = await enrollInClass(req.user, code);
 
-        req.infoEvent("room.join.success", "User joined room successfully", { code });
+        req.infoEvent("class.enroll.success", "User enrolled in class successfully", { code });
         res.status(200).json({
             success: true,
             data: {

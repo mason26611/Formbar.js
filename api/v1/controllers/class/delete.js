@@ -2,18 +2,18 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { isOwnerOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
-const roomService = require("@services/room-service");
+const membershipService = require("@services/class-membership-service");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/room/{id}:
+     * /api/v1/class/{id}:
      *   delete:
-     *     summary: Delete a room
+     *     summary: Delete a classroom
      *     tags:
-     *       - Rooms
-     *     description: Deletes a room. The authenticated user must be the room owner or have sufficient permissions.
+     *       - Class
+     *     description: Deletes a classroom. The authenticated user must be the classroom owner or have sufficient permissions.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -23,22 +23,22 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: integer
-     *         description: Room ID
+     *         description: Classroom ID
      *     responses:
      *       200:
-     *         description: Room deleted successfully
+     *         description: Classroom deleted successfully
      *         content:
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/SuccessResponse'
      *       403:
-     *         description: Insufficient permissions to delete the room
+     *         description: Insufficient permissions to delete the classroom
      *         content:
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/Error'
      *       404:
-     *         description: Room not found
+     *         description: Classroom not found
      *         content:
      *           application/json:
      *             schema:
@@ -51,24 +51,24 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.delete(
-        "/room/:id",
+        "/class/:id",
         isAuthenticated,
-        isOwnerOrHasScope(roomService.roomOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not have permission to delete this room."),
+        isOwnerOrHasScope(membershipService.classroomOwnerCheck, SCOPES.GLOBAL.SYSTEM.ADMIN, "You do not have permission to delete this classroom."),
         async (req, res) => {
             const id = Number(req.params.id);
 
             requireQueryParam(id, "id");
 
-            req.infoEvent("room.delete.attempt", "User attempting to delete room", { id });
+            req.infoEvent("class.delete.attempt", "User attempting to delete classroom", { id });
 
-            const room = req._room || (await roomService.getRoomById(id));
+            const room = req._room || (await membershipService.getClassroomById(id));
             if (!room) {
-                throw new NotFoundError("Room not found");
+                throw new NotFoundError("Classroom not found");
             }
 
-            await roomService.deleteRoom(room.id);
+            await membershipService.deleteClassroom(room.id);
 
-            req.infoEvent("room.delete.success", "Room deleted successfully", { id });
+            req.infoEvent("class.delete.success", "Classroom deleted successfully", { id });
             res.status(200).json({
                 success: true,
                 data: {},
