@@ -465,7 +465,7 @@ describe("GET /api/v1/user/:id/scopes", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toHaveProperty("role");
         expect(res.body.data).toHaveProperty("globalScopes");
-        expect(res.body.data).toHaveProperty("classRole");
+        expect(res.body.data).toHaveProperty("classRoles");
         expect(res.body.data).toHaveProperty("classScopes");
     });
 

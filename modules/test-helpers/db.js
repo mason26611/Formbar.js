@@ -98,6 +98,7 @@ const CLEARABLE_TABLES = [
     "inventory",
     "item_registry",
     "trades",
+    "user_roles",
 ];
 
 /**
@@ -142,6 +143,14 @@ async function createTestDb() {
                 });
             });
         }
+
+        // Delete custom roles (keep built-in roles where classId IS NULL)
+        await new Promise((resolve, reject) => {
+            db.run(`DELETE FROM "roles" WHERE "classId" IS NOT NULL`, (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
         // Reset SQLite auto-increment counters by deleting rows in sqlite_sequence
         await new Promise((resolve, reject) => {

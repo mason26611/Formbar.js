@@ -3,7 +3,7 @@ const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
@@ -47,10 +47,11 @@ module.exports = (router) => {
      *                       items:
      *                         type: string
      *                       example: []
-     *                     classRole:
-     *                       type: string
-     *                       nullable: true
-     *                       example: "Student"
+     *                     classRoles:
+     *                       type: array
+     *                       items:
+     *                         type: string
+     *                       example: ["Student", "Mod"]
      *                     classScopes:
      *                       type: array
      *                       items:
@@ -81,17 +82,16 @@ module.exports = (router) => {
             const result = {
                 role: globalRole,
                 globalScopes,
-                classRole: null,
+                classRoles: [],
                 classScopes: [],
             };
 
-            // If the user is in an active class, resolve class-level scopes too
             const liveUser = classStateStore.getUser(userData.email);
             if (liveUser && liveUser.activeClass) {
                 const classroom = classStateStore.getClassroom(liveUser.activeClass);
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
-                    result.classRole = getClassRoleName(classStudent);
+                    result.classRoles = getClassRoleNames(classStudent);
                     result.classScopes = resolveClassScopes(classStudent, classroom);
                 }
             }

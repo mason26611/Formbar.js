@@ -1,5 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES, isRoleAtLeast, LEVEL_TO_ROLE, ROLE_TO_LEVEL } = require("@modules/roles");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -494,15 +495,15 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient class not found.");
             }
 
-            let classPermissions = 0;
+            let classRole = ROLE_NAMES.GUEST;
             if (classInfo.owner === from) {
-                classPermissions = TEACHER_PERMISSIONS;
+                classRole = ROLE_NAMES.TEACHER;
             } else {
-                const permRow = await dbGet("SELECT permissions FROM classusers WHERE classId = ? AND studentId = ?", [to.id, from]);
-                classPermissions = permRow ? permRow.permissions : 0;
+                const permRow = await dbGet("SELECT role, permissions FROM classusers WHERE classId = ? AND studentId = ?", [to.id, from]);
+                classRole = permRow ? permRow.role || LEVEL_TO_ROLE[permRow.permissions] || ROLE_NAMES.GUEST : ROLE_NAMES.GUEST;
             }
 
-            if (classPermissions < TEACHER_PERMISSIONS && fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(classRole, ROLE_NAMES.TEACHER) && !isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 return fail("Sender does not have permission to award to this class.");
             }
 
@@ -515,7 +516,7 @@ async function awardDigipogs(awardData, user) {
             if (!to.id) {
                 return fail("Missing pool identifier.");
             }
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 return fail("Sender does not have permission to award to pools.");
             }
             const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
@@ -529,11 +530,11 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient account not found.");
             }
 
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 const hasPermission = await dbGet(
                     "SELECT 1 FROM classusers cu1 INNER JOIN classroom c ON c.id = cu1.classId WHERE cu1.studentId = ? AND (cu1.classId IN (SELECT classId FROM classusers cu2 WHERE cu2.studentId = ? AND cu2.permissions >= ?) OR c.owner = ?)",
 
-                    [to.id, from, TEACHER_PERMISSIONS, from]
+                    [to.id, from, ROLE_TO_LEVEL[ROLE_NAMES.TEACHER], from]
                 );
                 if (!hasPermission) {
                     return fail("Sender does not have permission to award to this user.");

@@ -1,6 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
-const { database, dbGet } = require("@modules/database");
+const { database, dbGet, dbGetAll } = require("@modules/database");
 const { STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { ROLE_TO_LEVEL, ROLE_NAMES } = require("@modules/roles");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
@@ -14,6 +15,7 @@ class Student {
         this.classPermissions = null;
         this.role = null;
         this.classRole = null;
+        this.classRoles = [];
         this.tags = tags || [];
         this.ownedPolls = ownedPolls || [];
         this.sharedPolls = sharedPolls || [];
@@ -111,6 +113,10 @@ function createStudentFromUserData(userData, options = {}) {
         student.classRole = userData.classRole;
     }
 
+    if (userData.classRoles != null) {
+        student.classRoles = Array.isArray(userData.classRoles) ? userData.classRoles : [];
+    }
+
     if (userData.pogMeter != null) {
         student.pogMeter = userData.pogMeter;
     }
@@ -160,6 +166,8 @@ async function getStudentsInClass(classId) {
 
     // Get student ids in the class user data
     const studentIds = studentIdsAndPermissions.map((student) => student.id);
+    if (studentIds.length === 0) return {};
+
     const studentsData = await new Promise((resolve, reject) => {
         database.all("SELECT * FROM users WHERE id IN (" + studentIds.map(() => "?").join(",") + ")", studentIds, (err, rows) => {
             if (err) {
@@ -175,6 +183,22 @@ async function getStudentsInClass(classId) {
         });
     });
 
+    // Batch-load all role assignments for this class from user_roles
+    const roleAssignments = await dbGetAll(
+        `SELECT ur.userId, r.name AS roleName
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.classId = ?`,
+        [classId]
+    );
+
+    // Group roles by userId
+    const rolesByUserId = {};
+    for (const row of roleAssignments) {
+        if (!rolesByUserId[row.userId]) rolesByUserId[row.userId] = [];
+        rolesByUserId[row.userId].push(row.roleName);
+    }
+
     // Create student class and return the data
     const students = {};
     for (const email in studentsData) {
@@ -182,7 +206,12 @@ async function getStudentsInClass(classId) {
         const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
         student.classPermissions = classUserRow.permissions;
-        student.classRole = classUserRow.classRole;
+
+        // Load multi-role assignments from user_roles
+        const roles = rolesByUserId[userData.id] || [];
+        student.classRoles = roles;
+        student.classRole = computePrimaryRole(roles);
+
         students[email] = student;
     }
 
@@ -234,10 +263,48 @@ async function getEmailFromId(userId) {
     return email;
 }
 
+/**
+ * Computes the "primary" role from an array of role names.
+ * Returns the highest built-in role (by hierarchy), or the first custom role,
+ * or null if empty (Guest-only).
+ * @param {string[]} roles
+ * @returns {string|null}
+ */
+function computePrimaryRole(roles) {
+    if (!roles || roles.length === 0) return null;
+
+    let highest = null;
+    let highestLevel = -1;
+
+    const customRoles = [];
+    for (const roleName of roles) {
+        const level = ROLE_TO_LEVEL[roleName];
+        if (level !== undefined) {
+            if (level > highestLevel) {
+                highest = roleName;
+                highestLevel = level;
+            }
+        } else if (roleName) {
+            customRoles.push(roleName);
+        }
+    }
+
+    if (highest) return highest;
+
+    // If no built-in role found, deterministically pick the first custom role alphabetically
+    if (customRoles.length > 0) {
+        customRoles.sort((a, b) => a.localeCompare(b));
+        return customRoles[0];
+    }
+
+    return null;
+}
+
 module.exports = {
     Student,
     createStudentFromUserData,
     getStudentsInClass,
     getIdFromEmail,
     getEmailFromId,
+    computePrimaryRole,
 };

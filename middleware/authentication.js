@@ -1,7 +1,8 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { GUEST_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES } = require("@modules/roles");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { compare } = require("@modules/crypto");
 const { createStudentFromUserData } = require("@services/student-service");
@@ -164,7 +165,7 @@ async function isVerified(req, res, next) {
     }
 
     // Guests bypass email verification.
-    if (user && user.permissions == GUEST_PERMISSIONS) {
+    if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
         next();
         return;
     }
