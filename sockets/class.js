@@ -41,7 +41,11 @@ module.exports = {
 
         // Enrolls in a classroom by code
         socket.on("joinRoom", async (classCode) => {
-            enrollInClass(socket.request.session, classCode);
+            try {
+                await enrollInClass(socket.request.session, classCode);
+            } catch (err) {
+                handleSocketError(err, socket, "joinRoom", "There was a server error. Please try again");
+            }
         });
 
         /**
