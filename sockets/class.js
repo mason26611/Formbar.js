@@ -65,7 +65,11 @@ module.exports = {
          * The user is no longer associated with the class.
          */
         socket.on("leaveRoom", async () => {
-            await unenrollFromClass(socket.request.session);
+            try {
+                await unenrollFromClass(socket.request.session);
+            } catch (err) {
+                handleSocketError(err, socket, "leaveRoom", "There was a server error. Please try again");
+            }
         });
 
         socket.on("getActiveClass", () => {
