@@ -512,24 +512,19 @@ function validateNoPrivilegeEscalationForRole(roleName, actingClassUser, classro
 
 /**
  * Determines the hierarchy level of the acting class user for privilege escalation checks.
- * Checks classRoles (multi-role), classRole (single), then classPermissions (numeric fallback).
  * @param {Object} classUser - The class user object.
  * @returns {number} The highest hierarchy level (0=Banned, 1=Guest, 2=Student, 3=Mod, 4=Teacher, 5=Manager).
  */
 function getActorLevel(classUser) {
     if (!classUser) return 0;
 
-    // Check multi-role first
+    // Get the highest role a user has
     if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
         let highest = 0;
         for (const role of classUser.classRoles) {
             highest = Math.max(highest, ROLE_TO_LEVEL[role] ?? 0);
         }
         return highest;
-    }
-
-    if (classUser.classRole && ROLE_TO_LEVEL[classUser.classRole] !== undefined) {
-        return ROLE_TO_LEVEL[classUser.classRole];
     }
 
     return ROLE_TO_LEVEL[ROLE_NAMES.GUEST] ?? 0;
