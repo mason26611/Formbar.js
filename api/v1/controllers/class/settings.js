@@ -2,7 +2,7 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { SCOPES } = require("@modules/permissions");
 const { updateClassSetting } = require("@services/class-service");
-const { DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
+
 const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {

@@ -65,7 +65,9 @@ module.exports = {
                     }
 
                     // Scope is mapped but user doesn't have it — deny access
-                    socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    if (!PASSIVE_SOCKETS.includes(event)) {
+                        socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    }
                     return;
                 }
 

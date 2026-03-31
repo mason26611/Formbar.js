@@ -88,10 +88,10 @@ module.exports = (router) => {
                 }
             }
 
-            for (const [studentId, studentInfo] of Object.entries(classroom.students)) {
-                if (getUserRoleName(studentInfo) === ROLE_NAMES.GUEST && !classUsers.find((user) => user.id === studentId)) {
+            for (const [, studentInfo] of Object.entries(classroom.students)) {
+                if (getUserRoleName(studentInfo) === ROLE_NAMES.GUEST && !classUsers.find((user) => user.id === studentInfo.id)) {
                     classUsers.push({
-                        id: studentId,
+                        id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
                         classPermissions: 0,
                     });

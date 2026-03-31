@@ -1,6 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { ROLES, ROLE_NAMES, ROLE_TO_LEVEL, LEVEL_TO_ROLE } = require("@modules/roles");
+const { ROLES, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
 const { resolveClassScopes, getAllClassScopes } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");

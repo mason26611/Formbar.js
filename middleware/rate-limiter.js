@@ -3,6 +3,7 @@ const { verifyToken } = require("@services/auth-service");
 const { settings } = require("@modules/config");
 const { getUserRoleName } = require("@modules/scope-resolver");
 const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
+const { GUEST_PERMISSIONS } = require("@modules/permissions");
 
 // In-memory rate limit storage
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
@@ -15,19 +16,19 @@ async function rateLimiter(req, res, next) {
     } else if (req.headers.authorization) {
         const decodedToken = verifyToken(req.headers.authorization);
         if (!decodedToken || decodedToken.error || !decodedToken.email) {
-            user = { email: req.ip, permissions: 1 }; // Guest level
+            user = { email: req.ip, permissions: GUEST_PERMISSIONS };
         } else {
             let email = decodedToken.email;
             user = await getUser({ email: email });
         }
     } else {
         // If no auth provided, use ip as identifier with guest permissions
-        user = { email: req.ip, permissions: 1 }; // Guest level
+        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
     }
 
     // Fallback for invalid user data
     if (!user || user.error || !user.email || !user.permissions) {
-        user = { email: req.ip, permissions: 1 }; // Guest level
+        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
     }
 
     const identifier = user.email;

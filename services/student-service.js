@@ -276,16 +276,28 @@ function computePrimaryRole(roles) {
     let highest = null;
     let highestLevel = -1;
 
+    const customRoles = [];
     for (const roleName of roles) {
         const level = ROLE_TO_LEVEL[roleName];
-        if (level !== undefined && level > highestLevel) {
-            highest = roleName;
-            highestLevel = level;
+        if (level !== undefined) {
+            if (level > highestLevel) {
+                highest = roleName;
+                highestLevel = level;
+            }
+        } else if (roleName) {
+            customRoles.push(roleName);
         }
     }
 
-    // If no built-in role found, return the first custom role
-    return highest || roles[0] || null;
+    if (highest) return highest;
+
+    // If no built-in role found, deterministically pick the first custom role alphabetically
+    if (customRoles.length > 0) {
+        customRoles.sort((a, b) => a.localeCompare(b));
+        return customRoles[0];
+    }
+
+    return null;
 }
 
 module.exports = {

@@ -124,6 +124,8 @@ const SOCKET_EVENT_SCOPE_MAP = {
     joinClass: null,
     joinRoom: null,
     getActiveClass: null,
+    auth: null, // Backwards-compat: jukebar authentication
+    getClassroom: null, // Backwards-compat: classroom state pull
     transferDigipogs: SCOPES.GLOBAL.DIGIPOGS.TRANSFER,
     awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
     awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,

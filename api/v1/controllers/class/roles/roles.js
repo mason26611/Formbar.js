@@ -65,8 +65,8 @@ module.exports = (router) => {
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
 
-        const email = req.user.email;
-        if (!classroom.students[email] && classroom.owner !== email) {
+        const { id: userId, email } = req.user;
+        if (!classroom.students[email] && classroom.owner !== userId && classroom.owner !== email) {
             throw new NotFoundError("Class not found.");
         }
 
