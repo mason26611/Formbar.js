@@ -200,14 +200,19 @@ module.exports = (router) => {
      *       404:
      *         $ref: '#/components/responses/NotFoundError'
      */
-    router.delete("/class/:id/students/:userId/roles/:roleName", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
-        const { id: classId, userId, roleName } = req.params;
-        requireQueryParam(classId, "id");
-        requireQueryParam(userId, "userId");
-        requireQueryParam(roleName, "roleName");
+    router.delete(
+        "/class/:id/students/:userId/roles/:roleName",
+        isAuthenticated,
+        hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE),
+        async (req, res) => {
+            const { id: classId, userId, roleName } = req.params;
+            requireQueryParam(classId, "id");
+            requireQueryParam(userId, "userId");
+            requireQueryParam(roleName, "roleName");
 
-        await removeStudentRole(classId, userId, roleName);
-        await broadcastClassUpdate(classId);
-        res.status(200).json({ success: true, data: { message: "Role removed." } });
-    });
+            await removeStudentRole(classId, userId, roleName);
+            await broadcastClassUpdate(classId);
+            res.status(200).json({ success: true, data: { message: "Role removed." } });
+        }
+    );
 };

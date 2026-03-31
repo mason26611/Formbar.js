@@ -408,9 +408,8 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
         currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
-        const defaultRole = currentUser.id !== classData.owner
-            ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST
-            : ROLE_NAMES.TEACHER;
+        const defaultRole =
+            currentUser.id !== classData.owner ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST : ROLE_NAMES.TEACHER;
         // New joiners start with no explicit role assignments (Guest-only)
         // unless they are the owner (Teacher)
         currentUser.classRoles = defaultRole === ROLE_NAMES.GUEST ? [] : [defaultRole];

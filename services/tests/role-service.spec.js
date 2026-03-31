@@ -104,20 +104,20 @@ async function seedUser(overrides = {}) {
 }
 
 async function seedClass(ownerId) {
-    const classId = await mockDatabase.dbRun(
-        "INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)",
-        ["TestClass", ownerId, 123456]
-    );
+    const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["TestClass", ownerId, 123456]);
     return classId;
 }
 
 async function seedClassUser(classId, studentId, overrides = {}) {
     const defaults = { permissions: 2, digiPogs: 0, role: null };
     const cu = { ...defaults, ...overrides };
-    await mockDatabase.dbRun(
-        "INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)",
-        [classId, studentId, cu.permissions, cu.digiPogs, cu.role]
-    );
+    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
+        classId,
+        studentId,
+        cu.permissions,
+        cu.digiPogs,
+        cu.role,
+    ]);
 }
 
 function setupMockClassroom(classId, ownerId, students = {}) {

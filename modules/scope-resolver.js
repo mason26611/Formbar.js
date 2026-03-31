@@ -49,9 +49,7 @@ function resolveClassScopes(classUser, classroom) {
 
     // Banned override: if Banned is present and no role >= Teacher, suppress all scopes
     if (roleNames.includes(ROLE_NAMES.BANNED)) {
-        const hasTeacherPlus = roleNames.some(
-            (r) => (ROLE_TO_LEVEL[r] ?? -1) >= ROLE_TO_LEVEL[ROLE_NAMES.TEACHER]
-        );
+        const hasTeacherPlus = roleNames.some((r) => (ROLE_TO_LEVEL[r] ?? -1) >= ROLE_TO_LEVEL[ROLE_NAMES.TEACHER]);
         if (!hasTeacherPlus) {
             return [];
         }

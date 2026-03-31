@@ -268,10 +268,7 @@ async function addStudentRole(classId, userId, roleName, actingClassUser, classr
     }
 
     // Check if already assigned
-    const existing = await dbGet(
-        "SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?",
-        [userId, roleId, classId]
-    );
+    const existing = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [userId, roleId, classId]);
     if (existing) {
         throw new ValidationError(`User already has the "${roleName}" role.`);
     }
@@ -325,10 +322,7 @@ async function removeStudentRole(classId, userId, roleName) {
     }
 
     // Check the assignment exists
-    const existing = await dbGet(
-        "SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?",
-        [userId, roleId, classId]
-    );
+    const existing = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [userId, roleId, classId]);
     if (!existing) {
         throw new ValidationError(`User does not have the "${roleName}" role.`);
     }
