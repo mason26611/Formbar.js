@@ -358,7 +358,7 @@ describe("DELETE /api/v1/class/:id/roles/:roleId", () => {
         const res = await request(app).delete(`/api/v1/class/${classId}/roles/${roleId}`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
 
         expect(res.status).toBe(200);
-        expect(res.body.message).toBe("Role deleted.");
+        expect(res.body.data.message).toBe("Role deleted.");
 
         // Verify it's gone
         const listRes = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
@@ -367,11 +367,11 @@ describe("DELETE /api/v1/class/:id/roles/:roleId", () => {
     });
 });
 
-// ── PATCH /api/v1/class/:id/students/:userId/role ──
+// ── POST /api/v1/class/:id/students/:userId/roles (Add Role) ──
 
-describe("PATCH /api/v1/class/:id/students/:userId/role", () => {
+describe("POST /api/v1/class/:id/students/:userId/roles", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).patch("/api/v1/class/1/students/1/role").send({ role: "Mod" });
+        const res = await request(app).post("/api/v1/class/1/students/1/roles").send({ role: "Mod" });
         expect(res.status).toBe(401);
     });
 
@@ -379,36 +379,35 @@ describe("PATCH /api/v1/class/:id/students/:userId/role", () => {
         const { classId, studentTokens, student } = await setupClassWithTeacherAndStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${student.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
             .set("Authorization", `Bearer ${studentTokens.accessToken}`)
             .send({ role: "Mod" });
 
         expect(res.status).toBe(403);
     });
 
-    it("assigns a built-in role to a student", async () => {
+    it("adds a built-in role to a student", async () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${student.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ role: "Mod" });
 
         expect(res.status).toBe(200);
-        expect(res.body.message).toBe("Role assigned.");
+        expect(res.body.data.message).toBe("Role added.");
     });
 
-    it("assigns a custom role to a student", async () => {
+    it("adds a custom role to a student", async () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
 
-        // Create custom role first
         await request(app)
             .post(`/api/v1/class/${classId}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ name: "CustomRole", scopes: ["class.poll.create"] });
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${student.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ role: "CustomRole" });
 
@@ -419,7 +418,7 @@ describe("PATCH /api/v1/class/:id/students/:userId/role", () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${student.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ role: "NonExistentRole" });
 
@@ -430,7 +429,7 @@ describe("PATCH /api/v1/class/:id/students/:userId/role", () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${student.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({});
 
@@ -446,10 +445,160 @@ describe("PATCH /api/v1/class/:id/students/:userId/role", () => {
         });
 
         const res = await request(app)
-            .patch(`/api/v1/class/${classId}/students/${outsider.id}/role`)
+            .post(`/api/v1/class/${classId}/students/${outsider.id}/roles`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({ role: "Mod" });
 
         expect(res.status).toBe(404);
+    });
+
+    it("returns 400 when adding Guest (implicit role)", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Guest" });
+
+        expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when adding a role the student already has", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Mod" });
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Mod" });
+
+        expect(res.status).toBe(400);
+    });
+
+    it("allows adding multiple roles to the same student", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        await request(app)
+            .post(`/api/v1/class/${classId}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ name: "Helper", scopes: ["class.help.approve"] });
+
+        const res1 = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Mod" });
+        expect(res1.status).toBe(200);
+
+        const res2 = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Helper" });
+        expect(res2.status).toBe(200);
+
+        // Verify both roles are listed
+        const listRes = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+        expect(listRes.status).toBe(200);
+        expect(listRes.body.data.roles).toContain("Mod");
+        expect(listRes.body.data.roles).toContain("Helper");
+    });
+});
+
+// ── DELETE /api/v1/class/:id/students/:userId/roles/:roleName (Remove Role) ──
+
+describe("DELETE /api/v1/class/:id/students/:userId/roles/:roleName", () => {
+    it("returns 403 when student lacks scope", async () => {
+        const { classId, studentTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .delete(`/api/v1/class/${classId}/students/${student.id}/roles/Mod`)
+            .set("Authorization", `Bearer ${studentTokens.accessToken}`);
+
+        expect(res.status).toBe(403);
+    });
+
+    it("removes a role from a student", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        // Add the role first
+        await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Mod" });
+
+        // Remove it
+        const res = await request(app)
+            .delete(`/api/v1/class/${classId}/students/${student.id}/roles/Mod`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.message).toBe("Role removed.");
+
+        // Verify it's gone
+        const listRes = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+        expect(listRes.body.data.roles).not.toContain("Mod");
+    });
+
+    it("returns 400 when removing Guest (implicit role)", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .delete(`/api/v1/class/${classId}/students/${student.id}/roles/Guest`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when removing a role the student does not have", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .delete(`/api/v1/class/${classId}/students/${student.id}/roles/Mod`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(400);
+    });
+});
+
+// ── GET /api/v1/class/:id/students/:userId/roles (List Roles) ──
+
+describe("GET /api/v1/class/:id/students/:userId/roles", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).get("/api/v1/class/1/students/1/roles");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns empty roles for a new student", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.roles).toEqual([]);
+    });
+
+    it("returns assigned roles", async () => {
+        const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
+
+        await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ role: "Mod" });
+
+        const res = await request(app)
+            .get(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.roles).toContain("Mod");
     });
 });

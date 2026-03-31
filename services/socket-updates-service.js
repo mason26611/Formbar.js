@@ -364,6 +364,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           permissions: student.permissions,
                           classPermissions: student.classPermissions,
                           classRole: student.classRole || null,
+                          classRoles: student.classRoles || [],
                           tags: student.tags,
                           pollRes: student.pollRes,
                           help: student.help,
@@ -382,6 +383,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         result.myTags = student.tags || [];
         result.myId = student.id;
         result.myRole = student.classRole || null;
+        result.myRoles = student.classRoles || [];
     }
 
     return result;

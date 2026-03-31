@@ -1,5 +1,7 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
+const { classStateStore } = require("@services/classroom-service");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 
 module.exports = (router) => {
     /**
@@ -9,7 +11,9 @@ module.exports = (router) => {
      *     summary: Get current user information
      *     tags:
      *       - Users
-     *     description: Returns information about the currently authenticated user based on their session.
+     *     description: |
+     *       Returns information about the currently authenticated user, including
+     *       their resolved global/class scopes and roles.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -27,11 +31,28 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Gets the current user's information
     router.get("/user/me", isAuthenticated, async (req, res) => {
         req.infoEvent("user.me.view", "Fetching user information");
 
         const { digipogs } = await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]);
+
+        const globalRole = getUserRoleName(req.user);
+        const globalScopes = resolveUserScopes(req.user);
+
+        let classRole = null;
+        let classRoles = [];
+        let classScopes = [];
+        const liveUser = classStateStore.getUser(req.user.email);
+        if (liveUser && liveUser.activeClass) {
+            const classroom = classStateStore.getClassroom(liveUser.activeClass);
+            const classStudent = classroom?.students?.[req.user.email];
+            if (classStudent) {
+                classRole = getClassRoleName(classStudent);
+                classRoles = getClassRoleNames(classStudent);
+                classScopes = resolveClassScopes(classStudent, classroom);
+            }
+        }
+
         res.status(200).json({
             success: true,
             data: {
@@ -44,6 +65,11 @@ module.exports = (router) => {
                 permissions: req.user.permissions,
                 classId: req.user.classId,
                 classPermissions: req.user.classPermissions,
+                role: globalRole,
+                globalScopes,
+                classRole,
+                classRoles,
+                classScopes,
             },
         });
     });

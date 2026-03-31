@@ -111,6 +111,7 @@ describe("Student class", () => {
         expect(s.classPermissions).toBeNull();
         expect(s.role).toBeNull();
         expect(s.classRole).toBeNull();
+        expect(s.classRoles).toEqual([]);
         expect(s.help).toBe(false);
         expect(s.break).toBe(false);
         expect(s.pogMeter).toBe(0);
@@ -297,9 +298,13 @@ describe("createStudentFromUserData()", () => {
 });
 
 describe("getStudentsInClass()", () => {
-    it("returns students keyed by email with classPermissions and classRole", async () => {
+    it("returns students keyed by email with classPermissions and classRoles", async () => {
         const user = await seedUser({ email: "stu@test.com" });
         await seedClassUser(10, user.id, { permissions: 3, role: "helper" });
+
+        // Seed a custom role and user_roles entry for the multi-role system
+        const roleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes) VALUES (?, ?, ?)", ["helper", 10, "[]"]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, roleId, 10]);
 
         const result = await getStudentsInClass(10);
         expect(result["stu@test.com"]).toBeDefined();
@@ -309,6 +314,7 @@ describe("getStudentsInClass()", () => {
         expect(s.email).toBe("stu@test.com");
         expect(s.id).toBe(user.id);
         expect(s.classPermissions).toBe(3);
+        expect(s.classRoles).toEqual(["helper"]);
         expect(s.classRole).toBe("helper");
     });
 

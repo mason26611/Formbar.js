@@ -79,9 +79,15 @@ module.exports = (router) => {
             throw new NotFoundError(classUsers, { event: "class.students.error", reason: "retrieval_error" });
         }
 
-        // Guest users cannot be found in the database, so if the classroom exists, then add them to the list
         const classroom = classStateStore.getClassroom(classId);
         if (classroom) {
+            for (const cu of classUsers) {
+                const studentEntry = Object.values(classroom.students).find((s) => s.id === cu.id);
+                if (studentEntry) {
+                    cu.classRoles = studentEntry.classRoles || [];
+                }
+            }
+
             for (const [studentId, studentInfo] of Object.entries(classroom.students)) {
                 if (getUserRoleName(studentInfo) === ROLE_NAMES.GUEST && !classUsers.find((user) => user.id === studentId)) {
                     classUsers.push({

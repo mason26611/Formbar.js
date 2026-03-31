@@ -3,7 +3,7 @@ const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
@@ -82,6 +82,7 @@ module.exports = (router) => {
                 role: globalRole,
                 globalScopes,
                 classRole: null,
+                classRoles: [],
                 classScopes: [],
             };
 
@@ -92,6 +93,7 @@ module.exports = (router) => {
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
                     result.classRole = getClassRoleName(classStudent);
+                    result.classRoles = getClassRoleNames(classStudent);
                     result.classScopes = resolveClassScopes(classStudent, classroom);
                 }
             }

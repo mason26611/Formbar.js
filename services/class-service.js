@@ -11,12 +11,12 @@ const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS }
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { MANAGER_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS, BANNED_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
+const { getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { ROLE_NAMES, isRoleAtLeast, LEVEL_TO_ROLE } = require("@modules/roles");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
-const { loadCustomRoles } = require("@services/role-service");
+const { loadCustomRoles, getStudentRoles: getStudentRolesFromDb } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
@@ -358,7 +358,14 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Set class permissions and active class
         currentUser.classPermissions = classUser.permissions;
-        currentUser.classRole = classUser.role || LEVEL_TO_ROLE[classUser.permissions];
+
+        // Load multi-role assignments from user_roles
+        const roles = await getStudentRolesFromDb(classId, currentUser.id);
+        if (roles.length === 0 && classUser.role && classUser.role !== ROLE_NAMES.GUEST) {
+            roles.push(classUser.role);
+        }
+        currentUser.classRoles = roles;
+        currentUser.classRole = computePrimaryRole(roles);
         currentUser.activeClass = classId;
 
         // Load tags from classusers table
@@ -401,8 +408,13 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
         currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
-        currentUser.classRole =
-            currentUser.id !== classData.owner ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST : ROLE_NAMES.TEACHER;
+        const defaultRole = currentUser.id !== classData.owner
+            ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST
+            : ROLE_NAMES.TEACHER;
+        // New joiners start with no explicit role assignments (Guest-only)
+        // unless they are the owner (Teacher)
+        currentUser.classRoles = defaultRole === ROLE_NAMES.GUEST ? [] : [defaultRole];
+        currentUser.classRole = defaultRole === ROLE_NAMES.GUEST ? null : defaultRole;
         currentUser.activeClass = classId;
         currentUser.tags = [];
 
@@ -560,6 +572,7 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
             if (options.ban) {
                 user.classPermissions = BANNED_PERMISSIONS;
+                user.classRoles = [ROLE_NAMES.BANNED];
                 user.classRole = ROLE_NAMES.BANNED;
             }
             setClassOfApiSockets(existingUser.API, null);
@@ -871,6 +884,7 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].break = cdUser.break;
             classUsers[userRow.email].pogMeter = cdUser.pogMeter;
             classUsers[userRow.email].classRole = cdUser.classRole || null;
+            classUsers[userRow.email].classRoles = cdUser.classRoles || [];
         }
 
         if (!isRoleAtLeast(userClassRole, ROLE_NAMES.TEACHER)) {

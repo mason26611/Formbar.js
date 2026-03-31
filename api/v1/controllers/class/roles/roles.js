@@ -1,8 +1,9 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { hasClassScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
+const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
 const { classStateStore } = require("@services/classroom-service");
-const { getClassRoles, createClassRole, updateClassRole, deleteClassRole } = require("@services/role-service");
+const { getClassRoles, createClassRole, updateClassRole, deleteClassRole, getActingUser } = require("@services/role-service");
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -59,6 +60,8 @@ module.exports = (router) => {
      */
     router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
         const classId = req.params.id;
+        requireQueryParam(classId, "id");
+
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
 
@@ -68,7 +71,7 @@ module.exports = (router) => {
         }
 
         const roles = await getClassRoles(classId);
-        res.json({ data: roles });
+        res.status(200).json({ success: true, data: roles });
     });
 
     /**
@@ -138,13 +141,19 @@ module.exports = (router) => {
      */
     router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const classId = req.params.id;
+        requireQueryParam(classId, "id");
+
         const { name, scopes } = req.body;
+        requireBodyParam(name, "name");
+        requireBodyParam(scopes, "scopes");
+
         const classroom = classStateStore.getClassroom(classId);
-        const actingClassUser = classroom.students[req.user.email];
+        if (!classroom) throw new NotFoundError("Class not found.");
+        const actingClassUser = getActingUser(classroom, req.user);
 
         const role = await createClassRole(classId, name, scopes, actingClassUser, classroom);
         await broadcastClassUpdate(classId);
-        res.status(201).json({ data: role });
+        res.status(201).json({ success: true, data: role });
     });
 
     /**
@@ -218,13 +227,17 @@ module.exports = (router) => {
      */
     router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const { id: classId, roleId } = req.params;
+        requireQueryParam(classId, "id");
+        requireQueryParam(roleId, "roleId");
+
         const updates = req.body;
         const classroom = classStateStore.getClassroom(classId);
-        const actingClassUser = classroom.students[req.user.email];
+        if (!classroom) throw new NotFoundError("Class not found.");
+        const actingClassUser = getActingUser(classroom, req.user);
 
         const role = await updateClassRole(roleId, classId, updates, actingClassUser, classroom);
         await broadcastClassUpdate(classId);
-        res.json({ data: role });
+        res.status(200).json({ success: true, data: role });
     });
 
     /**
@@ -273,8 +286,11 @@ module.exports = (router) => {
      */
     router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const { id: classId, roleId } = req.params;
+        requireQueryParam(classId, "id");
+        requireQueryParam(roleId, "roleId");
+
         await deleteClassRole(roleId, classId);
         await broadcastClassUpdate(classId);
-        res.json({ message: "Role deleted." });
+        res.status(200).json({ success: true, data: { message: "Role deleted." } });
     });
 };

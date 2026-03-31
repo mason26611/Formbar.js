@@ -4,7 +4,8 @@ const { privateKey, publicKey } = require("@modules/config");
 const { MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
-const { resolveUserScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { classStateStore } = require("@services/classroom-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -423,6 +424,20 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
+    let classRole = null;
+    let classRoles = [];
+    let classScopes = [];
+    const liveUser = classStateStore.getUser(user.email);
+    if (liveUser && liveUser.activeClass) {
+        const classroom = classStateStore.getClassroom(liveUser.activeClass);
+        const classStudent = classroom?.students?.[user.email];
+        if (classStudent) {
+            classRole = getClassRoleName(classStudent);
+            classRoles = getClassRoleNames(classStudent);
+            classScopes = resolveClassScopes(classStudent, classroom);
+        }
+    }
+
     return {
         access_token: accessToken,
         token_type: "Bearer",
@@ -431,6 +446,9 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         permissions: user.permissions,
         role: getUserRoleName(user),
         scopes: resolveUserScopes(user),
+        classRole,
+        classRoles,
+        classScopes,
     };
 }
 

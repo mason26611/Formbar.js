@@ -1,4 +1,4 @@
-const { ROLES, LEVEL_TO_ROLE, ROLE_NAMES } = require("@modules/roles");
+const { ROLES, LEVEL_TO_ROLE, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
 
 /**
  * Resolves the effective global scopes for a user.
@@ -26,38 +26,69 @@ function resolveUserScopes(user) {
 
 /**
  * Resolves the effective class scopes for a user within a specific class.
- * Checks class-specific role overrides first, then falls back to default role scopes.
+ * Supports multi-role: unions scopes from all assigned roles.
+ * Guest scopes are always included as a base.
+ * If user has Banned role and no role >= Teacher, returns [].
  *
  * @param {Object} classUser - The user's class-specific data (from classroom.students[email])
- * @param {Object} [classroom] - The classroom object (for per-class role overrides)
+ * @param {Object} [classroom] - The classroom object (for per-class role overrides and custom roles)
+ * @param {string[]} [classUser.classRoles] - Array of assigned role names (new multi-role system)
+ * @param {string} [classUser.classRole] - Single role name (legacy, backward compat)
  * @param {number} [classUser.classPermissions] - Numeric class permission level (legacy)
- * @param {string} [classUser.classRole] - Named class role (new system)
  * @returns {string[]} Array of granted class scope strings
  */
 function resolveClassScopes(classUser, classroom) {
     if (!classUser) return [];
 
-    const roleName = getClassRoleName(classUser);
+    const roleNames = getClassRoleNames(classUser);
 
-    // Manager class role implicitly has all class scopes
-    if (roleName === ROLE_NAMES.MANAGER) {
+    // Manager in any role gets everything
+    if (roleNames.includes(ROLE_NAMES.MANAGER)) {
         return getAllClassScopes();
     }
 
-    // Check for per-class role scope overrides
-    if (classroom && classroom.roleOverrides && classroom.roleOverrides[roleName]) {
-        return [...classroom.roleOverrides[roleName]];
+    // Banned override: if Banned is present and no role >= Teacher, suppress all scopes
+    if (roleNames.includes(ROLE_NAMES.BANNED)) {
+        const hasTeacherPlus = roleNames.some(
+            (r) => (ROLE_TO_LEVEL[r] ?? -1) >= ROLE_TO_LEVEL[ROLE_NAMES.TEACHER]
+        );
+        if (!hasTeacherPlus) {
+            return [];
+        }
     }
 
-    const roleDefinition = ROLES[roleName];
-    if (roleDefinition) return [...roleDefinition.class];
+    // Start with Guest scopes as implicit base
+    const allScopes = new Set(ROLES[ROLE_NAMES.GUEST].class);
 
-    // Check for custom class roles
-    if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
-        return [...classroom.customRoles[roleName]];
+    for (const roleName of roleNames) {
+        if (roleName === ROLE_NAMES.GUEST) continue; // Already included as base
+
+        // Check for per-class role scope overrides
+        if (classroom && classroom.roleOverrides && classroom.roleOverrides[roleName]) {
+            for (const scope of classroom.roleOverrides[roleName]) {
+                allScopes.add(scope);
+            }
+            continue;
+        }
+
+        // Built-in role
+        const roleDefinition = ROLES[roleName];
+        if (roleDefinition) {
+            for (const scope of roleDefinition.class) {
+                allScopes.add(scope);
+            }
+            continue;
+        }
+
+        // Custom class role
+        if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
+            for (const scope of classroom.customRoles[roleName]) {
+                allScopes.add(scope);
+            }
+        }
     }
 
-    return [];
+    return [...allScopes];
 }
 
 /**
@@ -75,6 +106,7 @@ function userHasScope(user, scope) {
 
 /**
  * Checks if a class user has a specific class scope.
+ * Supports multi-role: checks union of all assigned role scopes.
  * @param {Object} classUser - Class user object
  * @param {Object} [classroom] - Classroom object
  * @param {string} scope - Scope string to check
@@ -82,8 +114,8 @@ function userHasScope(user, scope) {
  */
 function classUserHasScope(classUser, classroom, scope) {
     if (!classUser) return false;
-    const roleName = getClassRoleName(classUser);
-    if (roleName === ROLE_NAMES.MANAGER) return true;
+    const roleNames = getClassRoleNames(classUser);
+    if (roleNames.includes(ROLE_NAMES.MANAGER)) return true;
     return resolveClassScopes(classUser, classroom).includes(scope);
 }
 
@@ -104,12 +136,26 @@ function getUserRoleName(user) {
 }
 
 /**
- * Derives the class role name from a class user object.
- * Prefers the explicit `classRole` field, falls back to mapping from numeric classPermissions.
+ * Derives the class role name from a class user object (backward compat — returns primary role).
+ * Prefers the explicit `classRole` field, falls back to highest role in classRoles,
+ * then mapping from numeric classPermissions.
  * @param {Object} classUser
  * @returns {string} Role name
  */
 function getClassRoleName(classUser) {
+    // If classRoles array exists and is populated, return the primary (highest) role
+    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
+        let highest = null;
+        let highestLevel = -1;
+        for (const roleName of classUser.classRoles) {
+            const level = ROLE_TO_LEVEL[roleName];
+            if (level !== undefined && level > highestLevel) {
+                highest = roleName;
+                highestLevel = level;
+            }
+        }
+        return highest || classUser.classRoles[0];
+    }
     if (classUser.classRole) {
         return classUser.classRole;
     }
@@ -117,6 +163,27 @@ function getClassRoleName(classUser) {
         return LEVEL_TO_ROLE[classUser.classPermissions] || ROLE_NAMES.GUEST;
     }
     return ROLE_NAMES.GUEST;
+}
+
+/**
+ * Returns all class role names for a class user.
+ * Supports multi-role: returns the classRoles array if available,
+ * falls back to single classRole, then numeric classPermissions.
+ * @param {Object} classUser
+ * @returns {string[]} Array of role names
+ */
+function getClassRoleNames(classUser) {
+    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
+        return classUser.classRoles;
+    }
+    if (classUser.classRole) {
+        return [classUser.classRole];
+    }
+    if (typeof classUser.classPermissions === "number") {
+        const roleName = LEVEL_TO_ROLE[classUser.classPermissions];
+        return roleName ? [roleName] : [];
+    }
+    return [];
 }
 
 /**
@@ -166,5 +233,6 @@ module.exports = {
     classUserHasScope,
     getUserRoleName,
     getClassRoleName,
+    getClassRoleNames,
     getAllClassScopes,
 };
