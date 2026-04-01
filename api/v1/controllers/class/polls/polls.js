@@ -167,8 +167,8 @@ module.exports = (router) => {
         const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POLL_LIMIT);
         const offset = parseIntegerQueryParam(req.query.offset, 0);
 
-        if (!Number.isInteger(offset) || offset < 0 || offset > MAX_POLL_LIMIT) {
-            throw new ValidationError(`Invalid offset. Expected an integer between 0 and ${MAX_POLL_LIMIT}.`);
+        if (!Number.isInteger(limit) || limit < 0 || limit > MAX_POLL_LIMIT) {
+            throw new ValidationError(`Invalid limit. Expected an integer between 0 and ${MAX_POLL_LIMIT}.`);
         }
 
         if (!Number.isInteger(offset) || offset < 0) {
