@@ -276,23 +276,25 @@ async function updatePoll(classId, options, userSession) {
 /**
  * Gets previous polls for a class from the database with pagination.
  * Post-processes results to ensure proper types (booleans as actual booleans, responses as parsed objects).
- * @param classId
- * @param index
- * @param limit
- * @returns {Promise<Array<Object>>}
+ * @param {number} classId - The ID of the class.
+ * @param {number} [offset=0] - The number of records to skip.
+ * @param {number} [limit=20] - The maximum number of records to return.
+ * @returns {Promise<Object>} An object containing polls array and total count.
  */
-async function getPreviousPolls(classId, index = 0, limit = 20) {
+async function getPreviousPolls(classId, offset = 0, limit = 20) {
     requireInternalParam(classId, "classId");
+    
+    const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM poll_history WHERE class = ?`, [classId]);
     const polls = await dbGetAll(
         `SELECT *, ROW_NUMBER() OVER (ORDER BY id) AS pollId
          FROM poll_history
          WHERE class = ?
          ORDER BY id DESC
-             LIMIT ?, ?`,
-        [classId, index, limit]
+         LIMIT ? OFFSET ?`,
+        [classId, limit, offset]
     );
 
-    return polls.map((poll) => {
+    const enrichedPolls = polls.map((poll) => {
         // Parse responses into a predictable array for clients.
         let parsedResponses = poll.responses;
         if (typeof poll.responses === "string") {
@@ -318,6 +320,11 @@ async function getPreviousPolls(classId, index = 0, limit = 20) {
             createdAt: poll.createdAt,
         };
     });
+
+    return {
+        polls: enrichedPolls,
+        total: totalRow ? totalRow.count : 0,
+    };
 }
 
 /**
