@@ -1,11 +1,8 @@
 const oidc = require("@modules/oidc.js");
-const { generators } = require("openid-client");
 const NotFoundError = require("@errors/not-found-error");
-const { settings } = require("@modules/config");
 
-const availableProviders = oidc.getAvailableProviders();
 function assertProviderSupported(provider) {
-    if (!availableProviders.includes(provider)) {
+    if (!oidc.getClient(provider)) {
         throw new NotFoundError("Requested provider not found.", {
             event: "auth.oidc.provider.not_found",
             reason: "provider_not_found",
@@ -18,22 +15,37 @@ module.exports = (router) => {
         res.json(200).send({
             success: true,
             data: {
-                providers: availableProviders,
+                providers: oidc.getAvailableProviders(),
             },
         });
     });
 
-    router.get("/auth/oidc/:provider", (req, res, next) => {
+    router.get("/auth/oidc/:provider", async (req, res, next) => {
         const provider = req.params.provider;
         assertProviderSupported(provider);
 
-        const codeVerifier = generators.codeVerifier();
-        const codeChallenge = generators.codeChallenge(codeVerifier);
-        const state = generators.state();
+        const client = await import("openid-client");
+        const codeVerifier = client.randomPKCECodeVerifier();
+        const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
+        const state = client.randomState();
+
+        const parameters = {
+            redirect_uri: `http://localhost:420/api/v1/auth/oidc/${provider}/callback`,
+            scope: "openid email profile",
+            response_type: "code",
+            code_challenge: codeChallenge,
+            code_challenge_method: "S256",
+        };
+
+        const providerClient = oidc.getClient(provider);
+        const authUrl = client.buildAuthorizationUrl(providerClient, parameters);
+        res.redirect(authUrl);
     });
 
     router.get("/auth/oidc/:provider/callback", (req, res, next) => {
         const provider = req.params.provider;
         assertProviderSupported(provider);
+
+        console.log(req);
     });
 };

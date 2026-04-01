@@ -37,6 +37,10 @@ const sessionMiddleware = session({
 
 const errorHandlerMiddleware = require("@middleware/error-handler");
 const requestLoggerMiddleware = require("@middleware/request-logger");
+const { initializeAvailableProviders } = require("@modules/oidc");
+
+// This initializes the available providers for logging into Formbar through OAuth
+initializeAvailableProviders();
 
 // Trust the first proxy (nginx) so that req.ip returns the real client IP
 // from the X-Forwarded-For header instead of nginx's loopback address.
