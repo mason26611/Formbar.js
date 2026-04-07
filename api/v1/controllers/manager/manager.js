@@ -1,6 +1,6 @@
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { getManagerDataPaginated } = require("@services/manager-service");
-const { hasPermission } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
 
@@ -125,7 +125,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.get("/manager", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/manager", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         req.infoEvent("manager.view", "Manager dashboard accessed");
 
         const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_MANAGER_LIMIT);

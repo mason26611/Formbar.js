@@ -1,4 +1,5 @@
-const { httpPermCheck } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { approveBreak } = require("@services/class-service");
 const { isAuthenticated } = require("@middleware/authentication");
@@ -63,7 +64,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, httpPermCheck("approveBreak"), async (req, res) => {
+    router.post("/class/:id/students/:userId/break/deny", isAuthenticated, hasClassScope(SCOPES.CLASS.BREAK.APPROVE), async (req, res) => {
         const classId = Number(req.params.id);
         const targetUserId = Number(req.params.userId);
         requireQueryParam(classId, "id");

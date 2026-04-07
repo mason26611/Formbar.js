@@ -1,25 +1,12 @@
-const { httpPermCheck } = require("@middleware/permission-check");
 const { leaveRoom } = require("@services/room-service");
 const { isAuthenticated } = require("@middleware/authentication");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
-    const leaveRoomHandler = async (req, res) => {
-        const classId = req.params.id;
-        req.infoEvent("room.leave.attempt", "User attempting to leave room", { classId });
-
-        await leaveRoom({ ...req.user, classId });
-
-        req.infoEvent("room.leave.success", "User left room successfully", { classId });
-        res.status(200).json({
-            success: true,
-            data: {},
-        });
-    };
-
     /**
      * @swagger
      * /api/v1/room/{id}/leave:
-     *   delete:
+     *   post:
      *     summary: Leave a classroom entirely
      *     tags:
      *       - Room
@@ -58,15 +45,19 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
-    router.delete("/room/:id/leave", isAuthenticated, httpPermCheck("leaveRoom"), leaveRoomHandler);
+    router.post("/room/:id/leave", isAuthenticated, async (req, res) => {
+        const classId = Number(req.params.id);
 
-    // Deprecated endpoint - kept for backwards compatibility, use DELETE /api/v1/room/:id/leave instead
-    router.post("/room/:id/leave", isAuthenticated, httpPermCheck("leaveRoom"), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use DELETE /api/v1/room/:id/leave instead");
-        res.setHeader(
-            "Warning",
-            '299 - "Deprecated API: Use DELETE /api/v1/room/:id/leave instead. This endpoint will be removed in a future version."'
-        );
-        await leaveRoomHandler(req, res);
+        requireQueryParam(classId, "classId");
+
+        req.infoEvent("room.leave.attempt", "User attempting to leave room", { classId });
+
+        await leaveRoom({ ...req.user, classId });
+
+        req.infoEvent("room.leave.success", "User left room successfully", { classId });
+        res.status(200).json({
+            success: true,
+            data: {},
+        });
     });
 };

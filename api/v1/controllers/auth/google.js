@@ -16,9 +16,37 @@ function checkEnabled(req, res, next) {
 }
 
 module.exports = (router) => {
-    // Initiate Google OAuth flow
-    // Accepts an optional `origin` query parameter which is stored in the session
-    // so the callback can redirect the browser back to the SPA with tokens.
+    /**
+     * @swagger
+     * /api/v1/auth/google:
+     *   get:
+     *     summary: Initiate Google OAuth flow
+     *     tags:
+     *       - Authentication
+     *     description: |
+     *       Redirects the user to Google's OAuth consent screen. An optional `origin`
+     *       query parameter can be provided so the callback can redirect back to the
+     *       SPA with tokens in the URL fragment.
+     *
+     *       **Note:** This endpoint returns a redirect (302), not JSON.
+     *     parameters:
+     *       - in: query
+     *         name: origin
+     *         required: false
+     *         schema:
+     *           type: string
+     *           example: "https://formbar.example.com/login"
+     *         description: URL to redirect back to after successful authentication
+     *     responses:
+     *       302:
+     *         description: Redirects to Google OAuth consent screen
+     *       403:
+     *         description: Google OAuth is not enabled on this server
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
     router.get(
         "/auth/google",
         checkEnabled,

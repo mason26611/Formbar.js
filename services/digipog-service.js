@@ -21,7 +21,10 @@ function cleanupOldAttempts() {
     }
 }
 
-setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupOldAttempts, 5 * 60 * 1000);
+if (typeof cleanupInterval.unref === "function") {
+    cleanupInterval.unref();
+}
 
 function checkRateLimit(accountId) {
     const now = Date.now();
@@ -140,6 +143,15 @@ async function isPoolOwnedByUser(poolId, userId) {
     return isUserOwner(userId, poolId);
 }
 
+/**
+ * Middleware-compatible ownership check for pools.
+ * @param {Object} req - Express request object
+ * @returns {Promise<boolean>} Whether the requesting user owns the pool
+ */
+function poolOwnerCheck(req) {
+    return isUserOwner(req.user.id, Number(req.params.id));
+}
+
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
     return dbRun("INSERT OR REPLACE INTO digipog_pool_users (pool_id, user_id, owner) VALUES (?, ?, ?)", [poolId, userId, ownerFlag ? 1 : 0]);
 }
@@ -162,7 +174,7 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag) {
 }
 
 async function addMemberToPool({ actingUserId, poolId, userId }) {
-    if (!Number.isInteger(poolId) || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
@@ -191,11 +203,11 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
 }
 
 async function removeMemberFromPool({ actingUserId, poolId, userId }) {
-    if (typeof poolId !== "number" || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    if (typeof userId !== "number" || userId <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0) {
         return { success: false, message: "Invalid user ID." };
     }
 
@@ -215,7 +227,7 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
 }
 
 async function payoutPool({ actingUserId, poolId }) {
-    if (typeof poolId !== "number" || poolId < 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
@@ -717,6 +729,7 @@ module.exports = {
     isUserInPool,
     isUserOwner,
     isPoolOwnedByUser,
+    poolOwnerCheck,
     addUserToPool,
     removeUserFromPool,
     setUserOwnerFlag,

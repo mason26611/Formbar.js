@@ -24,7 +24,7 @@ function buildManagerUserSearch(search) {
         };
     }
 
-    const searchTerm = `%${normalized}%`;
+    const searchTerm = normalized;
     return {
         clause: "WHERE INSTR(LOWER(COALESCE(displayName, email)), ?) > 0 OR INSTR(LOWER(email), ?) > 0",
         params: [searchTerm, searchTerm],
@@ -46,6 +46,7 @@ function buildPendingUser(decodedData) {
 }
 
 async function getPendingUsers(search = "", sortBy = "name") {
+    const unverifiedUsers = await dbGetAll("SELECT id, email, permissions, displayName, verified FROM users WHERE verified = 0");
     const tempUsers = await dbGetAll("SELECT token FROM temp_user_creation_data");
     const normalizedSearch = String(search || "")
         .trim()
@@ -62,19 +63,28 @@ async function getPendingUsers(search = "", sortBy = "name") {
         candidates.push(pendingUser);
     }
 
-    if (candidates.length === 0) {
-        return [];
-    }
+    const pendingUsers = normalizedSearch
+        ? unverifiedUsers.filter((user) => `${user.displayName || ""} ${user.email}`.toLowerCase().includes(normalizedSearch))
+        : [...unverifiedUsers];
+    const existingIdSet = new Set(pendingUsers.map((user) => String(user.id)));
+    const existingPendingEmailSet = new Set(pendingUsers.map((user) => user.email));
 
-    // Batch query to find emails that already exist in users.
+    // Batch query to find emails that already exist in users so we don't show
+    // duplicate legacy pending records alongside real user rows.
     const emails = candidates.map((u) => u.email);
-    const placeholders = emails.map(() => "?").join(", ");
-    const existingRows = await dbGetAll(`SELECT email FROM users WHERE email IN (${placeholders})`, emails);
-    const existingEmailSet = new Set(existingRows.map((row) => row.email));
+    const existingUserEmailSet =
+        emails.length > 0
+            ? new Set(
+                  (await dbGetAll(`SELECT email FROM users WHERE email IN (${emails.map(() => "?").join(", ")})`, emails)).map((row) => row.email)
+              )
+            : new Set();
 
-    const pendingUsers = [];
     for (const pendingUser of candidates) {
-        if (existingEmailSet.has(pendingUser.email)) {
+        if (
+            existingUserEmailSet.has(pendingUser.email) ||
+            existingPendingEmailSet.has(pendingUser.email) ||
+            existingIdSet.has(String(pendingUser.id))
+        ) {
             continue;
         }
 
@@ -86,6 +96,8 @@ async function getPendingUsers(search = "", sortBy = "name") {
         }
 
         pendingUsers.push(pendingUser);
+        existingIdSet.add(String(pendingUser.id));
+        existingPendingEmailSet.add(pendingUser.email);
     }
 
     pendingUsers.sort((a, b) => {
@@ -119,6 +131,14 @@ async function getManagerData() {
     //TODO DO NOT PUT ALL USERS IN MEMORY, THIS IS BAD, NEED TO PAGINATE OR SOMETHING
     const users = await dbGetAll("SELECT id, email, permissions, displayName, verified FROM users");
     const classrooms = await dbGetAll("SELECT * FROM classroom");
+    const pendingUserIds = new Set();
+    const existingEmails = new Set(users.map((user) => user.email));
+
+    for (const user of users) {
+        if (!user.verified) {
+            pendingUserIds.add(String(user.id));
+        }
+    }
 
     // Grab the unverified users from the database and insert them into the user data
     const tempUsers = await dbGetAll("SELECT * FROM temp_user_creation_data");
@@ -126,7 +146,7 @@ async function getManagerData() {
         // Grab the token, decode it, and check if they're already accounted for in the users table
         const token = tempUser.token;
         const decodedData = jwt.decode(token);
-        if (users[decodedData.email]) {
+        if (!decodedData || pendingUserIds.has(String(decodedData.newSecret)) || existingEmails.has(decodedData.email)) {
             continue;
         }
 

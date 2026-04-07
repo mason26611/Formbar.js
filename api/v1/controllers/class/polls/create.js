@@ -1,7 +1,7 @@
 const { createPoll } = require("@services/poll-service");
-const { hasClassPermission } = require("@middleware/permission-check");
+const { hasClassScope } = require("@middleware/permission-check");
 const { parseJson } = require("@middleware/parse-json");
-const { CLASS_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 
 module.exports = (router) => {
@@ -89,17 +89,12 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/class/:id/polls/create", isAuthenticated, hasClassPermission(CLASS_PERMISSIONS.CONTROL_POLLS), parseJson, async (req, res) => {
+    router.post("/class/:id/polls/create", isAuthenticated, hasClassScope(SCOPES.CLASS.POLL.CREATE), parseJson, async (req, res) => {
         const classId = req.params.id;
         const body = req.body || {};
         req.infoEvent("class.poll.create.attempt", "Attempting to create poll", { classId });
         const isLegacy =
-            body.pollPrompt != null ||
-            body.responseNumber != null ||
-            body.polls != null ||
-            body.blind != null ||
-            body.responseTextBox != null ||
-            body.multiRes != null;
+            body.pollPrompt != null || body.responseNumber != null || body.polls != null || body.responseTextBox != null || body.multiRes != null;
 
         // Check if the request is legacy and remap them if so
         const pollData = isLegacy

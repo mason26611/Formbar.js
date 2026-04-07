@@ -1,7 +1,7 @@
-const { hasPermission } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
-const { MANAGER_PERMISSIONS, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { managerUpdate } = require("@services/socket-updates-service");
 const NotFoundError = require("@errors/not-found-error");
@@ -99,10 +99,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/user/:id/ban", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), banUserHandler);
+    router.patch("/user/:id/ban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), banUserHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use PATCH /api/v1/user/:id/ban instead
-    router.get("/user/:id/ban", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/user/:id/ban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PATCH /api/v1/user/:id/ban instead");
         res.setHeader(
             "Warning",
@@ -153,10 +153,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.patch("/user/:id/unban", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), unbanUserHandler);
+    router.patch("/user/:id/unban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), unbanUserHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use PATCH /api/v1/user/:id/unban instead
-    router.get("/user/:id/unban", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/user/:id/unban", isAuthenticated, hasScope(SCOPES.GLOBAL.USERS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PATCH /api/v1/user/:id/unban instead");
         res.setHeader(
             "Warning",

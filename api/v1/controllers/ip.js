@@ -1,13 +1,27 @@
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { settings } = require("@modules/config");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { getIpAccess } = require("@services/ip-service");
-const { hasPermission } = require("@middleware/permission-check");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const authentication = require("@middleware/authentication");
 const fs = require("fs");
+const net = require("net");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
+
+function validateIp(ip) {
+    const cidrMatch = ip.match(/^(.+)\/(\d+)$/);
+    if (cidrMatch) {
+        const [, addr, prefixStr] = cidrMatch;
+        const ipVersion = net.isIP(addr);
+        if (!ipVersion) return false;
+        const prefix = Number(prefixStr);
+        const maxPrefix = ipVersion === 4 ? 32 : 128;
+        return prefix >= 0 && prefix <= maxPrefix;
+    }
+    return net.isIP(ip) !== 0;
+}
 
 module.exports = (router) => {
     /**
@@ -66,7 +80,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // List IPs
-    router.get("/ip/:type", isAuthenticated, isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.get("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const ipMode = req.params.type;
         req.infoEvent("ip.list.view.attempt", "Attempting to view IP access list", { listType: ipMode });
         if (ipMode !== "whitelist" && ipMode !== "blacklist") {
@@ -85,16 +99,96 @@ module.exports = (router) => {
         });
     });
 
-    // Add IP
-    router.post("/ip/:type", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    /**
+     * @swagger
+     * /api/v1/ip/{type}:
+     *   post:
+     *     summary: Add IP to access list
+     *     tags:
+     *       - IP Management
+     *     description: |
+     *       Adds an IP address to the whitelist or blacklist.
+     *
+     *       **Required Permission:** Global System Admin permission (level 5)
+     *     security:
+     *       - bearerAuth: []
+     *       - apiKeyAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: type
+     *         required: true
+     *         schema:
+     *           type: string
+     *           enum: [whitelist, blacklist]
+     *         description: Type of IP list
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - ip
+     *             properties:
+     *               ip:
+     *                 type: string
+     *                 example: "192.168.1.1"
+     *     responses:
+     *       201:
+     *         description: IP added successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     ok:
+     *                       type: boolean
+     *                       example: true
+     *       400:
+     *         description: Invalid type or missing IP
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       409:
+     *         description: IP already exists in the list
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
+    router.post("/ip/:type", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const { ip } = req.body || {};
         req.infoEvent("ip.list.add.attempt", "Attempting to add IP to access list", { listType: type });
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
         }
+
         if (!ip) {
             throw new ValidationError("Missing ip");
+        }
+
+        if (!validateIp(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
@@ -202,7 +296,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // Update IP
-    router.put("/ip/:type/:id", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.put("/ip/:type/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const id = req.params.id;
         const { ip } = req.body || {};
@@ -212,6 +306,10 @@ module.exports = (router) => {
         }
         if (type !== "whitelist" && type !== "blacklist") {
             throw new ValidationError("Invalid type");
+        }
+
+        if (!validateIp(ip)) {
+            throw new ValidationError("Invalid IP format");
         }
 
         const isWhitelist = type === "whitelist" ? 1 : 0;
@@ -298,7 +396,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.delete("/ip/:type/:id", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), async (req, res) => {
+    router.delete("/ip/:type/:id", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const type = req.params.type;
         const id = req.params.id;
         req.infoEvent("ip.list.remove.attempt", "Attempting to remove IP from access list", { listType: type, ipEntryId: id });
@@ -391,7 +489,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/Error'
      */
     // Toggle ip whitelist/blacklist
-    router.post("/ip/:type/toggle", isAuthenticated, hasPermission(MANAGER_PERMISSIONS), (req, res) => {
+    router.post("/ip/:type/toggle", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), (req, res) => {
         const type = req.params.type;
         req.infoEvent("ip.list.toggle.attempt", "Attempting to toggle IP access list", { listType: type });
         if (type !== "whitelist" && type !== "blacklist") {

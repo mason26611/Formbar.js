@@ -1,6 +1,7 @@
 const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
 const { TEACHER_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { settings } = require("@modules/config");
 
 // In-memory rate limit storage
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
@@ -30,13 +31,15 @@ async function rateLimiter(req, res, next) {
 
     const identifier = user.email;
     const currentTime = Date.now();
-    const timeFrame = 60000; // 1 minute
+    const timeFrame = settings.rateLimitWindowMs ?? 60000;
     let limit = 10; // Default limit for unauthenticated users
     if (user.permissions >= TEACHER_PERMISSIONS) {
         limit = 225;
     } else if (user.permissions > GUEST_PERMISSIONS) {
         limit = req.path.startsWith("/auth/") ? 10 : 120;
     }
+    // Apply the configurable multiplier so test runs can relax limits.
+    limit = Math.max(1, Math.round(limit * (settings.rateLimitMultiplier ?? 1)));
 
     // Initialize rate limit log for the user if it doesn't exist
     if (!rateLimits[identifier]) {

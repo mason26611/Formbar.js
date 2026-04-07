@@ -1,5 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { userHasScope } = require("@modules/scope-resolver");
 const { getUserDataFromDb } = require("@services/user-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
@@ -33,12 +34,6 @@ module.exports = (router) => {
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/User'
-     *       401:
-     *         description: Unauthorized
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/UnauthorizedError'
      *       404:
      *         description: User not found
      *         content:
@@ -64,7 +59,8 @@ module.exports = (router) => {
         }
 
         const requesterEmail = req.user?.email;
-        const isManager = requesterEmail && classStateStore.getUser(requesterEmail)?.permissions >= MANAGER_PERMISSIONS;
+        const requesterUser = requesterEmail ? classStateStore.getUser(requesterEmail) : null;
+        const isManager = requesterUser ? userHasScope(requesterUser, SCOPES.GLOBAL.USERS.MANAGE) : false;
         const isOwnProfile = String(req.user?.id) === String(userId);
         const emailVisible = isOwnProfile || isManager;
 

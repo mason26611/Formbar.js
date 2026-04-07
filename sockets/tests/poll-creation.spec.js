@@ -3,7 +3,6 @@ const { classStateStore } = require("@services/classroom-service");
 const { generateColors } = require("@modules/util");
 const { createTestUser, createTestClass, testData, createSocket, createSocketUpdates } = require("@modules/tests/tests");
 const { userSocketUpdates } = require("../init");
-// jest.mock("@modules/logger");
 jest.mock("@modules/util");
 
 describe("startPoll", () => {
@@ -21,11 +20,8 @@ describe("startPoll", () => {
         createTestUser(testData.email, testData.code, 5);
         classData.isActive = true;
 
-        // Simulate user.activeClass
         classData.students[testData.email].activeClass = classData.id;
-        // updateUser(testData.email, { activeClass: classData.id });
 
-        // Run the socket handler
         pollCreationRun(socket, socketUpdates);
         generateColors.mockReturnValue(["#ff0000", "#00ff00", "#0000ff"]);
         startPollHandler = socket.on.mock.calls.find((call) => call[0] === "startPoll")[1];

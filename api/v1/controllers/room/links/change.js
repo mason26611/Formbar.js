@@ -1,5 +1,5 @@
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { hasClassPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasClassScope } = require("@middleware/permission-check");
 const { dbRun } = require("@modules/database");
 const { isAuthenticated } = require("@middleware/authentication");
 const ValidationError = require("@errors/validation-error");
@@ -90,10 +90,10 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.put("/room/:id/links", isAuthenticated, hasClassPermission(TEACHER_PERMISSIONS), changeLinkHandler);
+    router.put("/room/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), changeLinkHandler);
 
     // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/room/:id/links instead
-    router.post("/room/:id/links/change", isAuthenticated, hasClassPermission(TEACHER_PERMISSIONS), async (req, res) => {
+    router.post("/room/:id/links/change", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PUT /api/v1/room/:id/links instead");
         res.setHeader(
             "Warning",

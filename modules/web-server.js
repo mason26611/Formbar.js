@@ -1,6 +1,7 @@
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
+const cors = require("cors");
 
 // Create the express server and attach socket.io to it
 function createServer() {
@@ -11,6 +12,9 @@ function createServer() {
             origin: "*",
         },
     });
+
+    // Enables CORS if not using nginx or if ENABLE_CORS is set to true. This allows the API to be accessed from other origins, which is useful for development and if the frontend is hosted separately from the backend.
+    process.env.ENABLE_CORS == "true" && app.use(cors({ origin: "*" }));
 
     const swaggerDocOptions = {
         definition: {
@@ -34,6 +38,9 @@ function createServer() {
                 { name: "IP Management", description: "IP whitelist/blacklist management", "x-order": 11 },
                 { name: "Manager", description: "Manager/admin functions", "x-order": 12 },
                 { name: "Notifications", description: "User notification management", "x-order": 13 },
+                { name: "OAuth", description: "OAuth 2.0 authorization flow", "x-order": 14 },
+                { name: "Apps", description: "Application registration and management", "x-order": 15 },
+                { name: "Pools", description: "Digipog pool management", "x-order": 16 },
             ],
             components: {
                 securitySchemes: {
@@ -49,6 +56,9 @@ function createServer() {
                         name: "X-API-Key",
                         description: "API key associated with your account. Can be retrieved from your user profile.",
                     },
+                },
+                "x-formbar": {
+                    nodeEnv: process.env.NODE_ENV || "production",
                 },
             },
         },
@@ -79,6 +89,10 @@ function createServer() {
             });
         specs.paths = sortedPaths;
     }
+
+    app.get(["/docs.json", "/docs/openapi.json"], (req, res) => {
+        res.json(specs);
+    });
 
     app.use(
         "/docs",

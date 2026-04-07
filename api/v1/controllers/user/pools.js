@@ -1,9 +1,10 @@
-const { dbGet } = require("@modules/database");
+const { dbGet, dbGetAll } = require("@modules/database");
 const { isAuthenticated, isVerified } = require("@middleware/authentication");
+const { isSelfOrHasScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { requireQueryParam } = require("@modules/error-wrapper");
 const pools = require("@services/digipog-service");
 const ValidationError = require("@errors/validation-error");
-const ForbiddenError = require("@errors/forbidden-error");
-const { requireQueryParam } = require("@modules/error-wrapper");
 
 const DEFAULT_POOL_LIMIT = 20;
 const MAX_POOL_LIMIT = 100;
@@ -88,11 +89,21 @@ module.exports = (router) => {
      *                           owners:
      *                             type: array
      *                             items:
-     *                               type: integer
+     *                               type: object
+     *                               properties:
+     *                                 id:
+     *                                   type: integer
+     *                                 displayName:
+     *                                   type: string
      *                           members:
      *                             type: array
      *                             items:
-     *                               type: integer
+     *                               type: object
+     *                               properties:
+     *                                 id:
+     *                                   type: integer
+     *                                 displayName:
+     *                                   type: string
      *                           created_at:
      *                             type: string
      *                             format: date-time
@@ -127,61 +138,82 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Handle displaying the pools management page
-    router.get("/user/:id/pools", isAuthenticated, isVerified, async (req, res) => {
-        const userId = Number(req.params.id);
-        requireQueryParam(userId, "id");
+    router.get(
+        "/user/:id/pools",
+        isAuthenticated,
+        isVerified,
+        isSelfOrHasScope(SCOPES.GLOBAL.USERS.MANAGE, "You do not have permission to view this user's pools."),
+        async (req, res) => {
+            const userId = Number(req.params.id);
+            requireQueryParam(userId, "id");
 
-        req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
-        if (req.user.id !== userId && req.user.permissions < 5) {
-            throw new ForbiddenError("You do not have permission to view this user's pools.");
-        }
+            req.infoEvent("user.pools.view.attempt", "Attempting to view user pools");
 
-        const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POOL_LIMIT);
-        const offset = parseIntegerQueryParam(req.query.offset, 0);
+            const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POOL_LIMIT);
+            const offset = parseIntegerQueryParam(req.query.offset, 0);
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_POOL_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_POOL_LIMIT}.`);
-        }
+            if (!Number.isInteger(limit) || limit < 1 || limit > MAX_POOL_LIMIT) {
+                throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_POOL_LIMIT}.`);
+            }
 
-        if (!Number.isInteger(offset) || offset < 0) {
-            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
-        }
+            if (!Number.isInteger(offset) || offset < 0) {
+                throw new ValidationError("Invalid offset. Expected a non-negative integer.");
+            }
 
-        const { pools: userPools, total } = await pools.getPoolsForUserPaginated(userId, limit, offset);
-        const poolObjs = await Promise.all(
-            userPools.map(async (poolData) => {
-                const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
-                if (pool) {
-                    const users = await pools.getUsersForPool(poolData.pool_id);
-                    pool.members = users.filter((userData) => !userData.owner).map((u) => u.user_id);
-                    pool.owners = users.filter((userData) => userData.owner).map((u) => u.user_id);
-                }
-                return pool;
-            })
-        );
+            const { pools: userPools, total } = await pools.getPoolsForUserPaginated(userId, limit, offset);
+            const poolObjs = await Promise.all(
+                userPools.map(async (poolData) => {
+                    const pool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [poolData.pool_id]);
+                    if (pool) {
+                        const users = await pools.getUsersForPool(poolData.pool_id);
+                        const userIds = users.map((u) => u.user_id);
+                        const displayNameMap = {};
+                        if (userIds.length > 0) {
+                            const placeholders = userIds.map(() => "?").join(",");
+                            const rows = await dbGetAll(`SELECT id, displayName FROM users WHERE id IN (${placeholders})`, userIds);
+                            for (const row of rows) {
+                                displayNameMap[row.id] = row.displayName;
+                            }
+                        }
+                        pool.members = users
+                            .filter((userData) => !userData.owner)
+                            .map((u) => ({
+                                id: u.user_id,
+                                displayName: displayNameMap[u.user_id] || "Unknown User",
+                            }));
+                        pool.owners = users
+                            .filter((userData) => userData.owner)
+                            .map((u) => ({
+                                id: u.user_id,
+                                displayName: displayNameMap[u.user_id] || "Unknown User",
+                            }));
+                    }
+                    return pool;
+                })
+            );
 
-        const filteredPools = poolObjs.filter((pool) => pool !== null);
-        const hasMore = offset + filteredPools.length < total;
+            const filteredPools = poolObjs.filter((pool) => pool !== null);
+            const hasMore = offset + filteredPools.length < total;
 
-        req.infoEvent("user.pools.view.success", "User pools returned", {
-            poolCount: filteredPools.length,
-            totalPoolCount: total,
-            limit,
-            offset,
-        });
+            req.infoEvent("user.pools.view.success", "User pools returned", {
+                poolCount: filteredPools.length,
+                totalPoolCount: total,
+                limit,
+                offset,
+            });
 
-        res.status(200).json({
-            success: true,
-            data: {
-                pools: filteredPools,
-                pagination: {
-                    total,
-                    limit,
-                    offset,
-                    hasMore,
+            res.status(200).json({
+                success: true,
+                data: {
+                    pools: filteredPools,
+                    pagination: {
+                        total,
+                        limit,
+                        offset,
+                        hasMore,
+                    },
                 },
-            },
-        });
-    });
+            });
+        }
+    );
 };

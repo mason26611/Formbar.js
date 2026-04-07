@@ -127,7 +127,9 @@ module.exports = {
     finalizeAuthentication,
     async run(socket, socketUpdates) {
         try {
-            const { api, authorization } = socket.request.headers;
+            const { api } = socket.request.headers;
+            const authorizationHeader = socket.request.headers.authorization;
+            const authorization = authorizationHeader ? authorizationHeader.replace(/Bearer\s+/i, "") : null;
 
             // Try API key authentication first
             if (api) {

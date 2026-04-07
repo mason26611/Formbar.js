@@ -1,5 +1,5 @@
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
-const { hasPermission } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const classService = require("@services/class-service");
 const ValidationError = require("@errors/validation-error");
@@ -77,7 +77,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    router.post("/class/create", isAuthenticated, hasPermission(TEACHER_PERMISSIONS), async (req, res) => {
+    router.post("/class/create", isAuthenticated, hasScope(SCOPES.GLOBAL.CLASS.CREATE), async (req, res) => {
         const { name } = req.body;
         if (!name) {
             throw new ValidationError("Class name is required", { event: "class.create.failed", reason: "missing_name" });
