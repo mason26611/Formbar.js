@@ -70,6 +70,7 @@ function getConfig() {
             whitelistActive: process.env.WHITELIST_ENABLED === "true",
             blacklistActive: process.env.BLACKLIST_ENABLED === "true",
             emailEnabled: process.env.EMAIL_ENABLED === "true",
+            googleOauthEnabled: process.env.GOOGLE_OAUTH_ENABLED === "true",
 
             // Sliding window length in milliseconds for rate limiting.
             // Reads RATE_LIMIT_WINDOW_SECONDS; falls back to 60 s if absent or invalid.

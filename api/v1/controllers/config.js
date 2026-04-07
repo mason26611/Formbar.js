@@ -1,4 +1,5 @@
 const { settings } = require("@modules/config");
+const { getAvailableProviders } = require("@modules/oidc");
 
 module.exports = (router) => {
     router.get("/config", (req, res) => {
@@ -9,6 +10,7 @@ module.exports = (router) => {
             data: {
                 emailEnabled: settings.emailEnabled,
                 googleOauthEnabled: settings.googleOauthEnabled,
+                oidcProviders: getAvailableProviders(),
             },
         });
     });

@@ -6,6 +6,27 @@ const authService = require("@services/auth-service");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
 
+function redirectToClientWithTokens(req, res, tokens) {
+    const clientOrigin = req.session?.oauthOrigin;
+    if (!clientOrigin) {
+        return false;
+    }
+
+    delete req.session.oauthOrigin;
+    req.infoEvent("auth.google.callback.redirect", "Redirecting to SPA after Google OAuth");
+    const redirect = new URL(clientOrigin);
+    const existingHash = redirect.hash ? redirect.hash.replace(/^#/, "") : "";
+    const hashParams = new URLSearchParams(existingHash);
+    hashParams.set("accessToken", tokens.accessToken);
+    hashParams.set("refreshToken", tokens.refreshToken);
+    if (tokens.legacyToken) {
+        hashParams.set("legacyToken", tokens.legacyToken);
+    }
+    redirect.hash = hashParams.toString();
+    res.redirect(redirect.toString());
+    return true;
+}
+
 // Middleware to check if Google OAuth is enabled
 function checkEnabled(req, res, next) {
     if (settings.googleOauthEnabled) {
@@ -94,7 +115,8 @@ module.exports = (router) => {
             req.infoEvent("auth.google.callback", "Google OAuth callback");
 
             // Authenticate the user via Google OAuth
-            const result = await authService.googleOAuth(email, displayName);
+            const emailVerified = user._json?.email_verified !== false;
+            const result = await authService.googleOAuth(email, displayName, { emailVerified });
             if (result.error) {
                 throw new ValidationError(result.error, { event: "auth.google.oauth_error", reason: "oauth_failed" });
             }
@@ -108,19 +130,8 @@ module.exports = (router) => {
             // If the request came from the SPA via a browser redirect (origin stored
             // in session), redirect back to the client login page with the tokens so
             // the SPA can complete the login flow without an extra round-trip.
-            const clientOrigin = req.session?.oauthOrigin;
-            if (clientOrigin) {
-                delete req.session.oauthOrigin;
-                req.infoEvent("auth.google.callback.redirect", "Redirecting to SPA after Google OAuth");
-                const redirect = new URL(clientOrigin);
-                // Place tokens in the URL fragment instead of query parameters to
-                // avoid leaking them via Referer headers and intermediary logs.
-                const existingHash = redirect.hash ? redirect.hash.replace(/^#/, "") : "";
-                const hashParams = new URLSearchParams(existingHash);
-                hashParams.set("accessToken", tokens.accessToken);
-                hashParams.set("refreshToken", tokens.refreshToken);
-                redirect.hash = hashParams.toString();
-                return res.redirect(redirect.toString());
+            if (redirectToClientWithTokens(req, res, tokens)) {
+                return;
             }
 
             // Fallback for direct API consumers: return tokens as JSON

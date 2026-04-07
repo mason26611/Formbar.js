@@ -47,6 +47,7 @@ jest.mock("@modules/mail", () => ({ sendMail: jest.fn() }));
 const {
     register,
     login,
+    oidcOAuth,
     refreshLogin,
     verifyToken,
     generateAuthorizationCode,
@@ -200,6 +201,52 @@ describe("login()", () => {
         const result = await login("nobody@example.com", VALID_PASSWORD);
         expect(result).toBeInstanceOf(Error);
         expect(result.code).toBe("INVALID_CREDENTIALS");
+    });
+
+    it("returns INVALID_CREDENTIALS for OAuth-only accounts without a password", async () => {
+        await oidcOAuth("microsoft", "oauth-only@example.com", VALID_DISPLAY, { emailVerified: true });
+
+        const result = await login("oauth-only@example.com", VALID_PASSWORD);
+        expect(result).toBeInstanceOf(Error);
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+    });
+});
+
+describe("oidcOAuth()", () => {
+    it("creates a verified user with a nullable password", async () => {
+        const result = await oidcOAuth("microsoft", "oauth@example.com", "OAuth User", { emailVerified: true });
+
+        expect(result.user.email).toBe("oauth@example.com");
+        expect(result.user.verified).toBe(1);
+        expect(result.user.password).toBeNull();
+        expect(result.tokens).toHaveProperty("legacyToken");
+    });
+
+    it("links to an existing email/password account instead of creating a duplicate", async () => {
+        const seeded = await seedUser();
+
+        const result = await oidcOAuth("google", VALID_EMAIL, "Different Name", { emailVerified: true });
+        const users = await mockDatabase.dbGetAll("SELECT * FROM users WHERE email = ?", [VALID_EMAIL]);
+
+        expect(users).toHaveLength(1);
+        expect(result.user.id).toBe(seeded.user.id);
+        expect(result.user.password).toBeTruthy();
+    });
+
+    it("marks an existing account as verified when the provider confirms the email", async () => {
+        const seeded = await seedUser();
+        await mockDatabase.dbRun("UPDATE users SET verified = 0 WHERE id = ?", [seeded.user.id]);
+
+        const result = await oidcOAuth("microsoft", VALID_EMAIL, VALID_DISPLAY, { emailVerified: true });
+        expect(result.user.verified).toBe(1);
+    });
+
+    it("generates a unique display name when the provider name already exists", async () => {
+        await seedUser({ displayName: "OAuth User" });
+
+        const result = await oidcOAuth("google", "another@example.com", "OAuth User", { emailVerified: true });
+        expect(result.user.displayName).not.toBe("OAuth User");
+        expect(result.user.displayName).toMatch(/^OAuth User_/);
     });
 });
 

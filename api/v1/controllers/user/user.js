@@ -56,7 +56,7 @@ module.exports = (router) => {
             throw new NotFoundError("User not found.", { event: "user.get.failed", reason: "user_not_found" });
         }
 
-        const { id, displayName, email, digipogs, API, pin, permissions, verified } = userData;
+        const { id, displayName, email, digipogs, API, pin, password, permissions, verified } = userData;
         if (!id || !displayName || !email || digipogs === undefined || !API) {
             throw new AppError("Unable to retrieve user information. Please try again.", {
                 event: "user.get.failed",
@@ -81,6 +81,7 @@ module.exports = (router) => {
                 displayName: displayName,
                 email: emailVisible ? email : undefined,
                 hasPin: isOwnProfile ? Boolean(pin) : undefined,
+                hasPassword: isOwnProfile ? Boolean(password) : undefined,
                 permissions: permissions,
                 verified: verified,
                 digipogs: digipogs,
