@@ -46,7 +46,7 @@ function getEmailFromClaims(provider, claims) {
     }
 
     if (provider === "microsoft") {
-        const preferredUsername = typeof claims?.preferred_username === "string" ? claims.preferred_username : null;
+        const preferredUsername = claims?.unique_name;
         if (preferredUsername && preferredUsername.includes("@")) {
             return preferredUsername;
         }
