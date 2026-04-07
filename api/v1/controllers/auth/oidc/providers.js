@@ -124,25 +124,17 @@ module.exports = (router) => {
 
         const client = await import("openid-client");
         const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
-        const tokens = await client.authorizationCodeGrant(
-            providerClient,
-            currentUrl,
-            {
-                pkceCodeVerifier: authSession.codeVerifier,
-                expectedState: authSession.state,
-                expectedNonce: authSession.nonce,
-            }
-        );
+        const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
+            pkceCodeVerifier: authSession.codeVerifier,
+            expectedState: authSession.state,
+            expectedNonce: authSession.nonce,
+        });
 
         delete req.session.oidcAuth;
 
         let claims = tokens.claims() || {};
         if ((!claims.email || claims.email_verified === undefined) && tokens.access_token) {
-            const userInfo = await client.fetchUserInfo(
-                providerClient,
-                tokens.access_token,
-                claims.sub || client.skipSubjectCheck
-            );
+            const userInfo = await client.fetchUserInfo(providerClient, tokens.access_token, claims.sub || client.skipSubjectCheck);
             claims = { ...userInfo, ...claims };
         }
 

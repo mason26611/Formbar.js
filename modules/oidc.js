@@ -53,5 +53,5 @@ async function initializeAvailableProviders() {
 module.exports = {
     getAvailableProviders,
     initializeAvailableProviders,
-    getClient
+    getClient,
 };
