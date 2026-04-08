@@ -17,7 +17,7 @@ module.exports = {
                 const email = socket.request.session.email;
                 const currentTime = Date.now();
                 const timeFrame = 1000; // 1 Second
-                const limit = isRoleAtLeast(getUserRoleName({ permissions: socket.request.session.permissions }), ROLE_NAMES.TEACHER) ? 100 : 30;
+                const limit = isRoleAtLeast(getUserRoleName(socket.request.session), ROLE_NAMES.TEACHER) ? 100 : 30;
                 const userRequests = socketStateStore.getUserRateLimits(email, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {

@@ -1,12 +1,11 @@
 -- Test database schema - represents the fully-migrated current state of all tables.
 -- Used exclusively by the test suite via an in-memory SQLite database.
 
--- Users table (final state: includes pin column, no username column)
+-- Users table (final state: no permissions or role columns)
 CREATE TABLE IF NOT EXISTS "users" (
     "id"          INTEGER NOT NULL UNIQUE,
     "email"       TEXT    NOT NULL UNIQUE,
     "password"    TEXT,
-    "permissions" INTEGER,
     "API"         TEXT    NOT NULL UNIQUE,
     "secret"      TEXT    NOT NULL UNIQUE,
     "tags"        TEXT,
@@ -14,7 +13,6 @@ CREATE TABLE IF NOT EXISTS "users" (
     "pin"         TEXT    DEFAULT NULL,
     "displayName" TEXT,
     "verified"    INTEGER NOT NULL DEFAULT 0,
-    "role"        TEXT    DEFAULT NULL,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);
@@ -41,35 +39,20 @@ CREATE TABLE IF NOT EXISTS "classroom" (
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
--- Class permissions (added in migration 05)
-CREATE TABLE IF NOT EXISTS "class_permissions" (
-    "classId"        INTEGER NOT NULL UNIQUE,
-    "manageClass"    INTEGER NOT NULL DEFAULT 4,
-    "manageStudents" INTEGER NOT NULL DEFAULT 4,
-    "controlPoll"    INTEGER NOT NULL DEFAULT 3,
-    "votePoll"       INTEGER NOT NULL DEFAULT 2,
-    "seePoll"        INTEGER NOT NULL DEFAULT 1,
-    "breakHelp"      INTEGER NOT NULL DEFAULT 3,
-    "auxiliary"      INTEGER NOT NULL DEFAULT 3,
-    "links"          INTEGER NOT NULL DEFAULT 3,
-    "userDefaults"   INTEGER NOT NULL DEFAULT 1
-);
-
--- Class users
+-- Class users(final state: no permissions or role columns)
 CREATE TABLE IF NOT EXISTS "classusers" (
     "classId"     INTEGER NOT NULL,
     "studentId"   INTEGER NOT NULL,
-    "permissions" INTEGER,
-    "digiPogs"    INTEGER,
-    "role"        TEXT    DEFAULT NULL
+    "digiPogs"    INTEGER
 );
 
--- Named roles
+-- Named roles (final state: includes color column)
 CREATE TABLE IF NOT EXISTS "roles" (
     "id"      INTEGER NOT NULL UNIQUE,
     "name"    TEXT    NOT NULL,
     "classId" INTEGER,
     "scopes"  TEXT    NOT NULL DEFAULT '[]',
+    "color"   TEXT    NOT NULL DEFAULT '#808080',
     PRIMARY KEY ("id" AUTOINCREMENT),
     UNIQUE ("name", "classId")
 );
@@ -83,13 +66,13 @@ CREATE TABLE IF NOT EXISTS "user_roles" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
 
--- Seed built-in roles
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Banned', NULL, '[]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Guest', NULL, '["class.poll.read","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Student', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Mod', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Teacher', NULL, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Manager', NULL, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
+-- Seed built-in roles (with colors)
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Banned', NULL, '[]', '#808080');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Guest', NULL, '["class.poll.read","class.links.read"]', '#95A5A6');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Student', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#3498DB');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Mod', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#2ECC71');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Teacher', NULL, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#F39C12');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Manager', NULL, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#E74C3C');
 
 -- Custom polls (final state: includes allowVoteChanges and allowMultipleResponses)
 CREATE TABLE IF NOT EXISTS "custom_polls" (

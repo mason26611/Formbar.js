@@ -2,6 +2,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { computePermissionLevel } = require("@modules/permissions");
 
 module.exports = (router) => {
     /**
@@ -60,9 +61,8 @@ module.exports = (router) => {
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,
                 displayName: req.user.displayName,
-                permissions: req.user.permissions,
+                permissions: computePermissionLevel([globalRole]),
                 classId: req.user.classId,
-                classPermissions: req.user.classPermissions,
                 role: globalRole,
                 globalScopes,
                 classRoles,

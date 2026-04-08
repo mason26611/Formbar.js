@@ -1,12 +1,11 @@
-const { ROLES, LEVEL_TO_ROLE, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
+const { ROLES, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
 
 /**
  * Resolves the effective global scopes for a user.
- * Works with both the new role-based system and the legacy numeric permissions.
+ * Uses the role-based system via user_roles table.
  *
  * @param {Object} user - User object from classStateStore or DB
- * @param {string} [user.role] - Named role (new system)
- * @param {number} [user.permissions] - Numeric permission level (legacy)
+ * @param {string} [user.role] - Named role
  * @returns {string[]} Array of granted scope strings
  */
 function resolveUserScopes(user) {
@@ -32,9 +31,8 @@ function resolveUserScopes(user) {
  *
  * @param {Object} classUser - The user's class-specific data (from classroom.students[email])
  * @param {Object} [classroom] - The classroom object (for per-class role overrides and custom roles)
- * @param {string[]} [classUser.classRoles] - Array of assigned role names (new multi-role system)
- * @param {string} [classUser.classRole] - Single role name (legacy, backward compat)
- * @param {number} [classUser.classPermissions] - Numeric class permission level (legacy)
+ * @param {string[]} [classUser.classRoles] - Array of assigned role names (multi-role system)
+ * @param {string} [classUser.classRole] - Single role name (backward compat)
  * @returns {string[]} Array of granted class scope strings
  */
 function resolveClassScopes(classUser, classroom) {
@@ -55,8 +53,9 @@ function resolveClassScopes(classUser, classroom) {
         }
     }
 
-    // Start with Guest scopes as implicit base
-    const allScopes = new Set(ROLES[ROLE_NAMES.GUEST].class);
+    // Start with Guest scopes as implicit base, preferring class-defined Guest when present.
+    const classGuestScopes = classroom && classroom.customRoles && classroom.customRoles[ROLE_NAMES.GUEST];
+    const allScopes = new Set(Array.isArray(classGuestScopes) ? classGuestScopes : ROLES[ROLE_NAMES.GUEST].class);
 
     for (const roleName of roleNames) {
         if (roleName === ROLE_NAMES.GUEST) continue; // Already included as base
@@ -69,18 +68,18 @@ function resolveClassScopes(classUser, classroom) {
             continue;
         }
 
-        // Built-in role
-        const roleDefinition = ROLES[roleName];
-        if (roleDefinition) {
-            for (const scope of roleDefinition.class) {
+        // Class-scoped role (includes modified defaults and custom roles)
+        if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
+            for (const scope of classroom.customRoles[roleName]) {
                 allScopes.add(scope);
             }
             continue;
         }
 
-        // Custom class role
-        if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
-            for (const scope of classroom.customRoles[roleName]) {
+        // Fallback to static built-in defaults
+        const roleDefinition = ROLES[roleName];
+        if (roleDefinition) {
+            for (const scope of roleDefinition.class) {
                 allScopes.add(scope);
             }
         }
@@ -119,29 +118,55 @@ function classUserHasScope(classUser, classroom, scope) {
 
 /**
  * Derives the role name from a user object.
- * Prefers the explicit `role` field, falls back to mapping from numeric permissions.
+ * Uses the classRoles array (populated from user_roles table).
+ * Returns the highest role in the hierarchy, or GUEST if none.
  * @param {Object} user
  * @returns {string} Role name
  */
 function getUserRoleName(user) {
+    if (!user) {
+        return ROLE_NAMES.GUEST;
+    }
+
+    const globalRoles = Array.isArray(user.globalRoles) ? user.globalRoles : Array.isArray(user.roles) ? user.roles : [];
+
+    if (globalRoles.length > 0) {
+        let highest = null;
+        let highestLevel = -1;
+        for (const roleName of globalRoles) {
+            const level = ROLE_TO_LEVEL[roleName];
+            if (level !== undefined && level > highestLevel) {
+                highest = roleName;
+                highestLevel = level;
+            }
+        }
+        return highest || globalRoles[0];
+    }
     if (user.role && ROLES[user.role]) {
         return user.role;
     }
-    if (typeof user.permissions === "number") {
-        return LEVEL_TO_ROLE[user.permissions] || ROLE_NAMES.GUEST;
+    if (typeof user.permissions === "number" && Number.isInteger(user.permissions)) {
+        for (const [roleName, level] of Object.entries(ROLE_TO_LEVEL)) {
+            if (level === user.permissions) {
+                return roleName;
+            }
+        }
     }
     return ROLE_NAMES.GUEST;
 }
 
 /**
  * Derives the class role name from a class user object (backward compat — returns primary role).
- * Prefers the explicit `classRole` field, falls back to highest role in classRoles,
- * then mapping from numeric classPermissions.
+ * Prefers the classRoles array (highest role in hierarchy),
+ * falls back to explicit classRole field.
  * @param {Object} classUser
  * @returns {string} Role name
  */
 function getClassRoleName(classUser) {
-    // If classRoles array exists and is populated, return the primary (highest) role
+    if (!classUser) {
+        return ROLE_NAMES.GUEST;
+    }
+
     if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
         let highest = null;
         let highestLevel = -1;
@@ -157,29 +182,36 @@ function getClassRoleName(classUser) {
     if (classUser.classRole) {
         return classUser.classRole;
     }
-    if (typeof classUser.classPermissions === "number") {
-        return LEVEL_TO_ROLE[classUser.classPermissions] || ROLE_NAMES.GUEST;
+    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
+        for (const [roleName, level] of Object.entries(ROLE_TO_LEVEL)) {
+            if (level === classUser.classPermissions) {
+                return roleName;
+            }
+        }
     }
     return ROLE_NAMES.GUEST;
 }
 
 /**
  * Returns all class role names for a class user.
- * Supports multi-role: returns the classRoles array if available,
- * falls back to single classRole, then numeric classPermissions.
+ * Uses the classRoles array if available, falls back to single classRole.
  * @param {Object} classUser
  * @returns {string[]} Array of role names
  */
 function getClassRoleNames(classUser) {
+    if (!classUser) {
+        return [];
+    }
+
     if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
         return classUser.classRoles;
     }
     if (classUser.classRole) {
         return [classUser.classRole];
     }
-    if (typeof classUser.classPermissions === "number") {
-        const roleName = LEVEL_TO_ROLE[classUser.classPermissions];
-        return roleName ? [roleName] : [];
+    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
+        const roleName = getClassRoleName(classUser);
+        return roleName === ROLE_NAMES.GUEST ? [] : [roleName];
     }
     return [];
 }

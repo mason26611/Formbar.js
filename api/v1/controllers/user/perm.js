@@ -1,7 +1,8 @@
 const { classStateStore } = require("@services/classroom-service");
 const { getEmailFromId } = require("@services/student-service");
-const { dbRun } = require("@modules/database");
+const { dbRun, dbGet } = require("@modules/database");
 const { SCOPES } = require("@modules/permissions");
+const { LEVEL_TO_ROLE } = require("@modules/roles");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
@@ -12,10 +13,10 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/user/{id}/perm:
      *   patch:
-     *     summary: Change user's global permissions
+     *     summary: Change user's global role by permission level
      *     tags:
      *       - Users
-     *     description: Updates a user's global permission level (requires manager permissions)
+     *     description: Updates a user's global role by numeric permission level for backward compatibility (requires manager permissions)
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -38,7 +39,7 @@ module.exports = (router) => {
      *               perm:
      *                 type: integer
      *                 example: 3
-     *                 description: New permission level
+     *                 description: New permission level (0=Banned, 1=Guest, 2=Student, 3=Mod, 4=Teacher, 5=Manager)
      *     responses:
      *       200:
      *         description: Permissions updated successfully
@@ -76,14 +77,20 @@ module.exports = (router) => {
         req.infoEvent("user.permissions.update.attempt", "Attempting to update user permissions", { targetUserId: id });
 
         perm = Number(perm);
-        if (!Number.isInteger(perm)) {
+        if (!Number.isInteger(perm) || perm < 0 || perm > 5) {
+            throw new ValidationError("Invalid permission value (must be 0-5)");
+        }
+
+        // Map numeric level to role name, then assign via user_roles
+        const roleName = LEVEL_TO_ROLE[perm];
+        if (!roleName) {
             throw new ValidationError("Invalid permission value");
         }
 
-        await dbRun("UPDATE users SET permissions=? WHERE id = ?", [perm, id]);
-        const email = await getEmailFromId(id);
-        if (email && classStateStore.getUser(email)) {
-            classStateStore.updateUser(email, { permissions: perm });
+        const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+        if (role) {
+            await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [id]);
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [id, role.id]);
         }
 
         req.infoEvent("user.permissions.update.success", "User permissions updated", { targetUserId: id, permissionLevel: perm });

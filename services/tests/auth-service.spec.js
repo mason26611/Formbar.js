@@ -92,15 +92,23 @@ describe("sha256()", () => {
 });
 
 describe("register()", () => {
-    it("creates the first user with MANAGER_PERMISSIONS (5)", async () => {
+    it("assigns the first user the Manager role", async () => {
         const result = await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
-        expect(result.user.permissions).toBe(5);
+        const role = await mockDatabase.dbGet(
+            "SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ? AND ur.classId IS NULL",
+            [result.user.id]
+        );
+        expect(role.name).toBe("Manager");
     });
 
-    it("creates subsequent users with STUDENT_PERMISSIONS (2)", async () => {
+    it("assigns subsequent users the Student role", async () => {
         await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
         const second = await register("second@example.com", VALID_PASSWORD, "SecondUser");
-        expect(second.user.permissions).toBe(2);
+        const role = await mockDatabase.dbGet(
+            "SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ? AND ur.classId IS NULL",
+            [second.user.id]
+        );
+        expect(role.name).toBe("Student");
     });
 
     it("returns accessToken and refreshToken", async () => {

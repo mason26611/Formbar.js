@@ -36,10 +36,6 @@ module.exports = {
                 if (!classStateStore.getUser(email)) {
                     // Get the user data from the database
                     userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
-                    userData.classPermissions = await dbGet("SELECT permissions FROM classUsers WHERE studentId=? AND classId=?", [
-                        userData.id,
-                        classId,
-                    ]);
                 }
 
                 // Try scope-based check first

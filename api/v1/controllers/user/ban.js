@@ -1,7 +1,8 @@
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
-const { SCOPES, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
+const { ROLE_NAMES } = require("@modules/roles");
 const { classStateStore } = require("@services/classroom-service");
 const { managerUpdate } = require("@services/socket-updates-service");
 const NotFoundError = require("@errors/not-found-error");
@@ -16,9 +17,11 @@ module.exports = (router) => {
             throw new NotFoundError("User not found", { event: "user.ban.failed", reason: "user_not_found" });
         }
 
-        await dbRun("UPDATE users SET permissions=? WHERE id=?", [BANNED_PERMISSIONS, userId]);
-        if (classStateStore.getUser(user.email)) {
-            classStateStore.updateUser(user.email, { permissions: BANNED_PERMISSIONS });
+        // Remove all global roles and assign the Banned role
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
+        const bannedRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [ROLE_NAMES.BANNED]);
+        if (bannedRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, bannedRole.id]);
         }
 
         await managerUpdate();
@@ -41,9 +44,11 @@ module.exports = (router) => {
             throw new NotFoundError("User not found", { event: "user.unban.failed", reason: "user_not_found" });
         }
 
-        await dbRun("UPDATE users SET permissions=? WHERE id=?", [STUDENT_PERMISSIONS, userId]);
-        if (classStateStore.getUser(user.email)) {
-            classStateStore.updateUser(user.email, { permissions: STUDENT_PERMISSIONS });
+        // Remove Banned role and assign Student role
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
+        const studentRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [ROLE_NAMES.STUDENT]);
+        if (studentRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, studentRole.id]);
         }
 
         await managerUpdate();
@@ -64,7 +69,7 @@ module.exports = (router) => {
      *     summary: Ban a user globally
      *     tags:
      *       - Users
-     *     description: Globally bans a user by setting their permissions to 0. Requires manager permissions.
+     *     description: Globally bans a user by assigning them the Banned role. Requires manager permissions.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -118,7 +123,7 @@ module.exports = (router) => {
      *     summary: Unban a user globally
      *     tags:
      *       - Users
-     *     description: Globally unbans a user by restoring their permissions to student level. Requires manager permissions.
+     *     description: Globally unbans a user by restoring their Student role. Requires manager permissions.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []

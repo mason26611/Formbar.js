@@ -1,4 +1,4 @@
-const { SCOPES } = require("@modules/permissions");
+const { SCOPES } = require("@modules/scopes");
 
 const ROLE_NAMES = {
     BANNED: "Banned",
@@ -7,6 +7,15 @@ const ROLE_NAMES = {
     MOD: "Mod",
     TEACHER: "Teacher",
     MANAGER: "Manager",
+};
+
+const DEFAULT_ROLE_COLORS = {
+    [ROLE_NAMES.BANNED]: "#808080",
+    [ROLE_NAMES.GUEST]: "#95A5A6",
+    [ROLE_NAMES.STUDENT]: "#3498DB",
+    [ROLE_NAMES.MOD]: "#2ECC71",
+    [ROLE_NAMES.TEACHER]: "#F39C12",
+    [ROLE_NAMES.MANAGER]: "#E74C3C",
 };
 
 const DEFAULT_BANNED_SCOPES = {
@@ -113,6 +122,7 @@ function isRoleAtLeast(roleName, minRoleName) {
 
 module.exports = {
     ROLE_NAMES,
+    DEFAULT_ROLE_COLORS,
     ROLES,
     LEVEL_TO_ROLE,
     ROLE_TO_LEVEL,

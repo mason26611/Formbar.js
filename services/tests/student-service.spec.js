@@ -67,7 +67,6 @@ async function seedUser(overrides = {}) {
     const defaults = {
         email: "student@test.com",
         password: "hashed",
-        permissions: 2,
         API: `api-${Date.now()}-${seedCounter}-${Math.random()}`,
         secret: `sec-${Date.now()}-${seedCounter}-${Math.random()}`,
         displayName: `Student_${Date.now()}_${seedCounter}`,
@@ -77,30 +76,30 @@ async function seedUser(overrides = {}) {
     };
     const u = { ...defaults, ...overrides };
     const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [u.email, u.password, u.permissions, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+        "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
+    // Assign global Student role (id=3) by default
+    const roleId = u.globalRoleId || 3;
+    await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [id, roleId]);
     return { id, ...u };
 }
 
 async function seedClassUser(classId, studentId, overrides = {}) {
-    const defaults = { permissions: 2, digiPogs: 0, role: null };
+    const defaults = { digiPogs: 0 };
     const cu = { ...defaults, ...overrides };
-    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-        classId,
-        studentId,
-        cu.permissions,
-        cu.digiPogs,
-        cu.role,
-    ]);
+    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classId, studentId, cu.digiPogs]);
+    // Assign class role via user_roles if roleId provided
+    if (cu.classRoleId) {
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [studentId, cu.classRoleId, classId]);
+    }
 }
 
 describe("Student class", () => {
     it("sets all properties with defaults", () => {
-        const s = new Student("a@b.com", 1, undefined, "key123");
+        const s = new Student("a@b.com", 1, "key123");
         expect(s.email).toBe("a@b.com");
         expect(s.id).toBe(1);
-        expect(s.permissions).toBe(2);
         expect(s.API).toBe("key123");
         expect(s.ownedPolls).toEqual([]);
         expect(s.sharedPolls).toEqual([]);
@@ -108,7 +107,6 @@ describe("Student class", () => {
         expect(s.displayName).toBeUndefined();
         expect(s.isGuest).toBe(false);
         expect(s.activeClass).toBeNull();
-        expect(s.classPermissions).toBeNull();
         expect(s.role).toBeNull();
         expect(s.classRole).toBeNull();
         expect(s.classRoles).toEqual([]);
@@ -119,10 +117,9 @@ describe("Student class", () => {
     });
 
     it("uses provided values when all arguments are given", () => {
-        const s = new Student("x@y.com", 42, 5, "apiKey", ["poll1"], ["poll2"], ["tag1", "tag2"], "Alice", true);
+        const s = new Student("x@y.com", 42, "apiKey", ["poll1"], ["poll2"], ["tag1", "tag2"], "Alice", true);
         expect(s.email).toBe("x@y.com");
         expect(s.id).toBe(42);
-        expect(s.permissions).toBe(5);
         expect(s.API).toBe("apiKey");
         expect(s.ownedPolls).toEqual(["poll1"]);
         expect(s.sharedPolls).toEqual(["poll2"]);
@@ -133,17 +130,15 @@ describe("Student class", () => {
 });
 
 describe("createStudentFromUserData()", () => {
-    it("creates student with correct email, id, and permissions", () => {
+    it("creates student with correct email, id, and API", () => {
         const s = createStudentFromUserData({
             email: "u@test.com",
             id: 7,
-            permissions: 3,
             API: "k",
             displayName: "U",
         });
         expect(s.email).toBe("u@test.com");
         expect(s.id).toBe(7);
-        expect(s.permissions).toBe(3);
         expect(s).toBeInstanceOf(Student);
     });
 
@@ -156,13 +151,13 @@ describe("createStudentFromUserData()", () => {
         expect(s.activeClass).toBe(99);
     });
 
-    it("sets classPermissions from userData", () => {
+    it("sets classRole from userData", () => {
         const s = createStudentFromUserData({
             email: "u@test.com",
             id: 1,
-            classPermissions: 4,
+            classRole: "Teacher",
         });
-        expect(s.classPermissions).toBe(4);
+        expect(s.classRole).toBe("Teacher");
     });
 
     it("sets role and classRole from userData", () => {
@@ -298,9 +293,9 @@ describe("createStudentFromUserData()", () => {
 });
 
 describe("getStudentsInClass()", () => {
-    it("returns students keyed by email with classPermissions and classRoles", async () => {
+    it("returns students keyed by email with classRoles", async () => {
         const user = await seedUser({ email: "stu@test.com" });
-        await seedClassUser(10, user.id, { permissions: 3, role: "helper" });
+        await seedClassUser(10, user.id);
 
         // Seed a custom role and user_roles entry for the multi-role system
         const roleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes) VALUES (?, ?, ?)", ["helper", 10, "[]"]);
@@ -313,7 +308,6 @@ describe("getStudentsInClass()", () => {
         expect(s).toBeInstanceOf(Student);
         expect(s.email).toBe("stu@test.com");
         expect(s.id).toBe(user.id);
-        expect(s.classPermissions).toBe(3);
         expect(s.classRoles).toEqual(["helper"]);
         expect(s.classRole).toBe("helper");
     });

@@ -1,6 +1,7 @@
 const { dbRun, dbGetAll, dbGet } = require("@modules/database");
 const { settings, frontendUrl } = require("@modules/config");
 const { SCOPES } = require("@modules/permissions");
+const { ROLE_NAMES } = require("@modules/roles");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
@@ -219,15 +220,25 @@ module.exports = (router) => {
             throw new NotFoundError("Pending user not found", { event: "user.verify.failed", reason: "user_not_found" });
         }
 
-        await dbRun("INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        await dbRun("INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)", [
             tempUser.email,
             tempUser.hashedPassword,
-            tempUser.permissions,
             tempUser.newAPI,
             tempUser.newSecret,
             tempUser.displayName,
             1,
         ]);
+
+        // Assign global role based on what was stored in the temp data
+        const newUser = await dbGet("SELECT id FROM users WHERE email = ?", [tempUser.email]);
+        if (newUser) {
+            const roleName = tempUser.permissions === 5 ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
+            const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+            if (role) {
+                await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [newUser.id, role.id]);
+            }
+        }
+
         await dbRun("DELETE FROM temp_user_creation_data WHERE secret=?", [tempUser.newSecret]);
 
         req.infoEvent("user.verify.success", "User verified successfully");

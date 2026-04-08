@@ -1,6 +1,7 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
 const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 
 let mockDatabase;
 
@@ -189,9 +190,14 @@ describe("PATCH /api/v1/user/:id/ban", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        // Verify the user's permissions are now 0 (banned)
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(0);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Banned");
     });
 
     it("returns 404 when banning a non-existent user", async () => {
@@ -228,17 +234,21 @@ describe("PATCH /api/v1/user/:id/unban", () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
 
-        // Ban first
-        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
 
         const res = await request(app).patch(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        // Verify permissions restored to STUDENT_PERMISSIONS (2)
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(2);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Student");
     });
 
     it("returns 404 when unbanning a non-existent user", async () => {
@@ -318,8 +328,14 @@ describe("PATCH /api/v1/user/:id/perm", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(4);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Teacher");
     });
 
     it("returns 400 when perm value is invalid", async () => {
@@ -380,7 +396,7 @@ describe("GET /api/v1/user/:id/unban (deprecated)", () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
 
-        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
 
         const res = await request(app).get(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 

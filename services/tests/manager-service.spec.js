@@ -7,6 +7,7 @@
  * unmock it so we can exercise the real implementation.
  */
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 const jwt = require("jsonwebtoken");
 
 // Restore the real manager-service (overrides the jest.setup.js mock)
@@ -54,10 +55,15 @@ async function seedUser(overrides = {}) {
     const email = overrides.email ?? `user${userCounter}@example.com`;
     const displayName = overrides.displayName ?? `User${userCounter}`;
     const permissions = overrides.permissions ?? 2;
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [email, "hashed", permissions, crypto.randomBytes(8).toString("hex"), crypto.randomBytes(8).toString("hex"), displayName, 1]
-    );
+    const id = await mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)", [
+        email,
+        "hashed",
+        crypto.randomBytes(8).toString("hex"),
+        crypto.randomBytes(8).toString("hex"),
+        displayName,
+        1,
+    ]);
+    await setGlobalPermissionLevel(mockDatabase, id, permissions);
     return { id, email, displayName, permissions };
 }
 
@@ -170,7 +176,8 @@ describe("getManagerDataPaginated()", () => {
 
     it("sorts by permission level (descending)", async () => {
         // Give one user elevated permissions
-        await mockDatabase.dbRun("UPDATE users SET permissions = 5 WHERE email = 'user1@test.com'");
+        const row = await mockDatabase.dbGet("SELECT id FROM users WHERE email = 'user1@test.com'");
+        await setGlobalPermissionLevel(mockDatabase, row.id, 5);
         const result = await getManagerDataPaginated({ sortBy: "permission" });
         expect(result.users[0].permissions).toBe(5);
     });

@@ -1,11 +1,12 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { computePermissionLevel } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
+const { ROLE_NAMES } = require("@modules/roles");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -14,6 +15,29 @@ const ConflictError = require("@errors/conflict-error");
 
 const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()\-_=+{}\[\]<>,.:;'"~?\/|\\]{5,20}$/;
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
+
+async function withComputedGlobalRole(userData) {
+    if (!userData || !userData.id) {
+        return userData;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.name
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NULL`,
+        [userData.id]
+    );
+    const globalRoles = roleRows.map((row) => row.name);
+    const role = getUserRoleName({ globalRoles });
+
+    return {
+        ...userData,
+        globalRoles,
+        role,
+        permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+    };
+}
 
 /**
  * Registers a new user with email and password
@@ -58,16 +82,14 @@ async function register(email, password, displayName) {
     const apiKey = crypto.randomBytes(64).toString("hex");
     const secret = crypto.randomBytes(256).toString("hex");
 
-    // Determine permissions
-    // The first user always gets manager permissions
+    // The first user gets the Manager role; subsequent users get Student
     const allUsers = await dbGetAll("SELECT * FROM users", []);
-    const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
+    const isFirstUser = allUsers.length === 0;
 
     // Create the new user in the database
-    const userId = await dbRun(`INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+    const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
         email,
         hashedPassword,
-        permissions,
         apiKey,
         secret,
         displayName,
@@ -75,7 +97,16 @@ async function register(email, password, displayName) {
     ]);
 
     // Get the new user's data
-    const userData = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
+    let userData = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
+
+    // Assign global role via user_roles table
+    const globalRoleName = isFirstUser ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
+    const globalRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [globalRoleName]);
+    if (globalRole) {
+        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userData.id, globalRole.id]);
+    }
+
+    userData = await withComputedGlobalRole(userData);
 
     // Generate tokens
     const tokens = generateAuthTokens(userData);
@@ -111,7 +142,7 @@ async function login(email, password) {
     // Normalize email to lowercase to prevent login issues
     email = email.trim().toLowerCase();
 
-    const userData = await dbGet("SELECT * FROM users WHERE email = ?", [email]);
+    const userData = await withComputedGlobalRole(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -229,7 +260,7 @@ function generateRefreshToken(userData) {
  * @param {number} userData.id - The user's unique identifier
  * @param {string} userData.email - The user's email address
  * @param {string} userData.displayName - The user's display name
- * @param {number} userData.permissions - The user's permission level
+ * @param {number} userData.permissions - The user's permission level (deprecated, may be undefined)
  * @returns {string} A signed JWT valid for 1 hour
  */
 function generateLegacyOAuthToken(userData) {
@@ -293,20 +324,25 @@ async function googleOAuth(email, displayName) {
         const apiKey = crypto.randomBytes(64).toString("hex");
         const secret = crypto.randomBytes(256).toString("hex");
 
-        // Determine permissions
-        // The first user always gets manager permissions
+        // The first user gets the Manager role; subsequent users get Student
         const allUsers = await dbGetAll("SELECT * FROM users", []);
-        const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
+        const isFirstUser = allUsers.length === 0;
 
-        // Insert the new user
-        // Users registered through google oauth will have no password
+        // Insert the new user (no permissions column)
         const result = await dbRun(
-            `INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [email, "", permissions, apiKey, secret, displayName, 1] // Automatically verified via Google
+            `INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`,
+            [email, "", apiKey, secret, displayName, 1] // Automatically verified via Google
         );
 
         // Get the newly created user
         userData = await dbGet("SELECT * FROM users WHERE id = ?", [result.lastID]);
+
+        // Assign global role via user_roles table
+        const globalRoleName = isFirstUser ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
+        const globalRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [globalRoleName]);
+        if (globalRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userData.id, globalRole.id]);
+        }
     }
 
     // Generate tokens
@@ -323,7 +359,7 @@ async function googleOAuth(email, displayName) {
         "auth",
     ]);
 
-    return { tokens, user: userData };
+    return { tokens, user: await withComputedGlobalRole(userData) };
 }
 
 /**
@@ -400,7 +436,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [authorizationCodeData.sub]);
+    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -442,7 +478,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         expires_in: 900,
         refresh_token: refreshToken,
         permissions: user.permissions,
-        role: getUserRoleName(user),
+        role: user.role,
         scopes: resolveUserScopes(user),
         classRoles,
         classScopes,
@@ -472,7 +508,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
+    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -503,7 +539,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         expires_in: 900,
         refresh_token: newRefreshToken,
         permissions: user.permissions,
-        role: getUserRoleName(user),
+        role: user.role,
         scopes: resolveUserScopes(user),
     };
 }

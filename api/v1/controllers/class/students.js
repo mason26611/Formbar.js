@@ -1,7 +1,7 @@
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES } = require("@modules/permissions");
+const { SCOPES, computePermissionLevel } = require("@modules/permissions");
 const { getUserRoleName } = require("@modules/scope-resolver");
 const { ROLE_NAMES } = require("@modules/roles");
 const { dbGetAll } = require("@modules/database");
@@ -72,7 +72,7 @@ module.exports = (router) => {
         // Get the students of the class
         // If an error occurs, log the error and return the error
         const classUsers = await dbGetAll(
-            "SELECT users.id, users.displayName, users.digipogs, classUsers.permissions AS classPermissions, classUsers.role AS classRole FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
+            "SELECT users.id, users.displayName, users.digipogs FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
             [classId]
         );
         if (classUsers.error) {
@@ -81,10 +81,12 @@ module.exports = (router) => {
 
         const classroom = classStateStore.getClassroom(classId);
         if (classroom) {
-            for (const cu of classUsers) {
-                const studentEntry = Object.values(classroom.students).find((s) => s.id === cu.id);
+            for (const classUser of classUsers) {
+                const studentEntry = Object.values(classroom.students).find((s) => s.id === classUser.id);
                 if (studentEntry) {
-                    cu.classRoles = studentEntry.classRoles || [];
+                    classUser.classRoles = studentEntry.classRoles || [];
+                    classUser.classRole = studentEntry.classRole || null;
+                    classUser.classPermissions = computePermissionLevel(classUser.classRoles);
                 }
             }
 
@@ -93,7 +95,9 @@ module.exports = (router) => {
                     classUsers.push({
                         id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
-                        classPermissions: 0,
+                        classRoles: [],
+                        classRole: null,
+                        classPermissions: computePermissionLevel([]),
                     });
                 }
             }

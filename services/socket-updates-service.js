@@ -361,8 +361,6 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           id: student.id,
                           displayName: student.displayName,
                           activeClass: student.activeClass,
-                          permissions: student.permissions,
-                          classPermissions: student.classPermissions,
                           classRole: student.classRole || null,
                           classRoles: student.classRoles || [],
                           tags: student.tags,
@@ -541,7 +539,7 @@ class SocketUpdates {
             if (!classId) return;
 
             database.all(
-                "SELECT users.id FROM classroom JOIN classusers ON classusers.classId = classroom.id AND classusers.permissions = 0 JOIN users ON users.id = classusers.studentId WHERE classusers.classId=?",
+                "SELECT users.id FROM user_roles JOIN roles ON roles.id = user_roles.roleId JOIN users ON users.id = user_roles.userId WHERE user_roles.classId = ? AND roles.name = 'Banned'",
                 classId,
                 (err, bannedStudents) => {
                     try {

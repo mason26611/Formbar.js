@@ -1,19 +1,16 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGet, dbGetAll } = require("@modules/database");
-const { STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { ROLE_TO_LEVEL, ROLE_NAMES } = require("@modules/roles");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
-    // Needs email, id from the database, and if permissions established already pass the updated value
-    // These will need to be put into the constructor in order to allow the creation of the object
-    constructor(email, id, permissions = STUDENT_PERMISSIONS, API, ownedPolls = [], sharedPolls = [], tags, displayName, isGuest = false) {
+    constructor(email, id, API, ownedPolls = [], sharedPolls = [], tags, displayName, isGuest = false) {
         this.email = email;
         this.id = id;
         this.activeClass = null;
-        this.permissions = permissions;
-        this.classPermissions = null;
         this.role = null;
+        this.globalRoles = [];
+        this.permissions = null;
         this.classRole = null;
         this.classRoles = [];
         this.tags = tags || [];
@@ -88,7 +85,6 @@ function createStudentFromUserData(userData, options = {}) {
     const student = new Student(
         userData.email,
         userData.id,
-        userData.permissions,
         userData.API,
         parseArrayField(userData.ownedPolls),
         parseArrayField(userData.sharedPolls),
@@ -101,12 +97,16 @@ function createStudentFromUserData(userData, options = {}) {
         student.activeClass = userData.activeClass;
     }
 
-    if (userData.classPermissions != null) {
-        student.classPermissions = userData.classPermissions;
-    }
-
     if (userData.role != null) {
         student.role = userData.role;
+    }
+
+    if (Array.isArray(userData.globalRoles)) {
+        student.globalRoles = userData.globalRoles;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(userData, "permissions")) {
+        student.permissions = userData.permissions;
     }
 
     if (userData.classRole != null) {
@@ -156,8 +156,6 @@ async function getStudentsInClass(classId) {
 
             const studentIdsAndPermissions = rows.map((row) => ({
                 id: row.studentId,
-                permissions: row.permissions,
-                classRole: row.role || null,
             }));
 
             resolve(studentIdsAndPermissions);
@@ -205,7 +203,6 @@ async function getStudentsInClass(classId) {
         const userData = studentsData[email];
         const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
-        student.classPermissions = classUserRow.permissions;
 
         // Load multi-role assignments from user_roles
         const roles = rolesByUserId[userData.id] || [];

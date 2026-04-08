@@ -79,7 +79,7 @@ module.exports = (router) => {
         }
 
         const rows = await dbGetAll(
-            "SELECT users.id, users.email, users.displayName FROM classusers JOIN users ON users.id = classusers.studentId WHERE classusers.classId=? AND classusers.permissions=0",
+            "SELECT users.id, users.email, users.displayName FROM user_roles JOIN roles ON roles.id = user_roles.roleId JOIN users ON users.id = user_roles.userId WHERE user_roles.classId = ? AND roles.name = 'Banned'",
             [classId]
         );
         res.status(200).json({

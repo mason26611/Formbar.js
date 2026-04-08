@@ -6,9 +6,10 @@
  * emits a deprecation warning so developers know to migrate.
  */
 
-const { dbGetAll, dbGet } = require("@modules/database");
+const { dbGetAll } = require("@modules/database");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { finalizeAuthentication } = require("./middleware/api");
 
@@ -38,11 +39,11 @@ module.exports = {
 
                 // Find the user whose hashed API key matches the provided plaintext key.
                 // Limit to users with an API key set and only fetch needed columns.
-                const users = await dbGetAll("SELECT id, email, API, permissions, tags, displayName FROM users WHERE API IS NOT NULL");
+                const users = await dbGetAll("SELECT id, email, API, tags, displayName FROM users WHERE API IS NOT NULL");
                 let userData = null;
                 for (const user of users) {
                     if (user.API && (await compare(apiKey, user.API))) {
-                        userData = user;
+                        userData = await getUserDataFromDb(user.id);
                         break;
                     }
                 }
@@ -93,7 +94,7 @@ module.exports = {
                     return socket.emit("error", "Invalid access token: missing required fields.");
                 }
 
-                const userData = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
+                const userData = await getUserDataFromDb(userId);
                 if (!userData) {
                     return socket.emit("error", "User not found.");
                 }

@@ -10,9 +10,9 @@ const {
 const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { MANAGER_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS, BANNED_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
-const { ROLE_NAMES, isRoleAtLeast, LEVEL_TO_ROLE } = require("@modules/roles");
+const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
@@ -26,7 +26,7 @@ const AppError = require("@errors/app-error");
 
 function getUserJoinedClasses(userId) {
     return dbGetAll(
-        "SELECT classroom.name, classroom.id, classusers.permissions FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
+        "SELECT classroom.name, classroom.id FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
         [userId]
     );
 }
@@ -72,21 +72,6 @@ function validateClassroomName(className) {
     }
 
     return { valid: true };
-}
-
-/**
- * Parses and normalizes class permissions from database row
- * @private
- * @param {Object} permissionsRow - The permissions row from the database
- * @returns {Object} Normalized permissions object with defaults applied
- */
-function parseClassPermissions(permissionsRow) {
-    const parsedPermissions = {};
-    for (let permission of Object.keys(DEFAULT_CLASS_PERMISSIONS)) {
-        parsedPermissions[permission] =
-            permissionsRow && permissionsRow[permission] != null ? permissionsRow[permission] : DEFAULT_CLASS_PERMISSIONS[permission];
-    }
-    return parsedPermissions;
 }
 
 /**
@@ -141,13 +126,6 @@ async function createClass(className, ownerId, ownerEmail) {
         tags: null,
     };
 
-    // Ensure class_permissions exists for the new class
-    let permissions = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [classroom.id]);
-    if (!permissions) {
-        permissions = { ...DEFAULT_CLASS_PERMISSIONS };
-        await dbRun("INSERT OR IGNORE INTO class_permissions (classId) VALUES (?)", [classroom.id]);
-    }
-
     // Initialize the classroom in memory
     await initializeClassroom(classroom.id);
 
@@ -173,33 +151,8 @@ async function initializeClassroom(id) {
         throw new NotFoundError(`Class with id ${id} does not exist`);
     }
 
-    // Fetch and normalize permissions
-    let permissionsRow = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [id]);
-    if (!permissionsRow) {
-        await dbRun("INSERT OR IGNORE INTO class_permissions (classId) VALUES (?)", [id]);
-        permissionsRow = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [id]);
-    }
-
-    const permissions = parseClassPermissions(permissionsRow);
-
     // Normalize classroom data (JSON parsing, tags, poll history)
     normalizeClassroomData(classroom);
-
-    // Validate and normalize permissions
-    if (Object.keys(permissions).sort().toString() !== Object.keys(DEFAULT_CLASS_PERMISSIONS).sort().toString()) {
-        for (let permission of Object.keys(permissions)) {
-            if (!DEFAULT_CLASS_PERMISSIONS[permission]) {
-                delete permissions[permission];
-            }
-        }
-
-        for (let permission of Object.keys(permissions)) {
-            if (typeof permissions[permission] != "number" || permissions[permission] < 1 || permissions[permission] > 5) {
-                permissions[permission] = DEFAULT_CLASS_PERMISSIONS[permission];
-            }
-            await dbRun(`UPDATE class_permissions SET ${permission} = ? WHERE classId=?`, [permissions[permission], id]);
-        }
-    }
 
     // Create or update classroom in memory
     const customRoles = await loadCustomRoles(id);
@@ -211,13 +164,11 @@ async function initializeClassroom(id) {
                 className: classroom.name,
                 key: classroom.key,
                 owner: classroom.owner,
-                permissions,
                 tags: classroom.tags,
                 customRoles,
             })
         );
     } else {
-        classStateStore.getClassroom(id).permissions = permissions;
         classStateStore.getClassroom(id).tags = classroom.tags;
         classStateStore.getClassroom(id).customRoles = customRoles;
     }
@@ -283,25 +234,6 @@ async function endClass(classId, userSession) {
 }
 
 /**
- * Checks if the user has the required permission level for a class action.
- * @param {string|number} userId - The user's ID to check permissions for.
- * @param {string|number} classId - The class ID to check against.
- * @param {string} permission - The class permission to check (e.g., CLASS_PERMISSIONS.MANAGE_CLASS).
- * @returns {Promise<boolean>} Resolves to true if the user has permission, false otherwise.
- */
-async function checkUserClassPermission(userId, classId, permission) {
-    const email = await getEmailFromId(userId);
-    const user = classStateStore.getUser(email);
-    const classroom = classStateStore.getClassroom(classId);
-
-    if (!user || !classroom) {
-        throw new NotFoundError("User or classroom not found in active sessions");
-    }
-
-    return user.classPermissions >= classroom.permissions[permission];
-}
-
-/**
  * Internal function to add a user to a classroom session in memory.
  * Does not perform authorization checks - caller must validate permissions.
  * @private
@@ -332,35 +264,30 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         throw new NotFoundError("Class not found");
     }
 
-    // If the user is the owner of the classroom, give them manager permissions
+    // If the user is the owner of the classroom, ensure they have a classUser entry
     if (classroomDb.owner === user.id) {
         if (!classUser) {
-            classUser = { permissions: MANAGER_PERMISSIONS, role: ROLE_NAMES.MANAGER, tags: "" };
-        } else {
-            classUser.permissions = MANAGER_PERMISSIONS;
-            classUser.role = ROLE_NAMES.MANAGER;
+            classUser = { tags: "" };
         }
     }
 
     if (classUser) {
-        // If the user is banned, don't let them join
-        if (getUserRoleName(classUser) === ROLE_NAMES.BANNED) {
-            throw new ForbiddenError("You are banned from that class");
-        }
-
         // Get the student's session data
         let currentUser = classStateStore.getUser(email);
 
-        // Set class permissions and active class
-        currentUser.classPermissions = classUser.permissions;
-
         // Load multi-role assignments from user_roles
         const roles = await getStudentRolesFromDb(classId, currentUser.id);
-        if (roles.length === 0 && classUser.role && classUser.role !== ROLE_NAMES.GUEST) {
-            roles.push(classUser.role);
+        // Owner gets Manager role in memory
+        if (classroomDb.owner === user.id && !roles.includes(ROLE_NAMES.MANAGER)) {
+            roles.push(ROLE_NAMES.MANAGER);
         }
         currentUser.classRoles = roles;
         currentUser.classRole = computePrimaryRole(roles);
+
+        // If the user is banned, don't let them join
+        if (currentUser.classRole === ROLE_NAMES.BANNED) {
+            throw new ForbiddenError("You are banned from that class");
+        }
         currentUser.activeClass = classId;
 
         // Load tags from classusers table
@@ -392,21 +319,31 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     } else {
         // If the user is not a guest, insert them into the database
         if (!user.isGuest) {
-            await dbRun("INSERT INTO classusers(classId, studentId, permissions) VALUES(?, ?, ?)", [
-                classId,
-                user.id,
-                classStateStore.getClassroom(classId).permissions.userDefaults,
-            ]);
+            await dbRun("INSERT INTO classusers(classId, studentId) VALUES(?, ?)", [classId, user.id]);
         }
 
         // Grab the user from the users list
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
-        currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
-        const defaultRole =
-            currentUser.id !== classData.owner ? LEVEL_TO_ROLE[classData.permissions.userDefaults] || ROLE_NAMES.GUEST : ROLE_NAMES.TEACHER;
-        // New joiners start with no explicit role assignments (Guest-only)
-        // unless they are the owner (Teacher)
+        const isOwner = currentUser.id === classData.owner;
+        const defaultRole = isOwner ? ROLE_NAMES.TEACHER : ROLE_NAMES.GUEST;
+
+        if (isOwner) {
+            const { ensureDefaultClassRoles } = require("@services/role-service");
+            await ensureDefaultClassRoles(classId);
+            const teacherRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId = ?", [ROLE_NAMES.TEACHER, classId]);
+            if (teacherRole) {
+                const existing = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [
+                    user.id,
+                    teacherRole.id,
+                    classId,
+                ]);
+                if (!existing) {
+                    await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, teacherRole.id, classId]);
+                }
+            }
+        }
+
         currentUser.classRoles = defaultRole === ROLE_NAMES.GUEST ? [] : [defaultRole];
         currentUser.classRole = defaultRole === ROLE_NAMES.GUEST ? null : defaultRole;
         currentUser.activeClass = classId;
@@ -566,7 +503,6 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
             user.help = false;
 
             if (options.ban) {
-                user.classPermissions = BANNED_PERMISSIONS;
                 user.classRoles = [ROLE_NAMES.BANNED];
                 user.classRole = ROLE_NAMES.BANNED;
             }
@@ -775,7 +711,8 @@ async function setTags(tags, userSession) {
     classStateStore.updateClassroom(classId, { tags });
 
     for (const student of Object.values(classroom.students)) {
-        if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
+        const roleName = student.classRole || (student.classRoles && student.classRoles[0]);
+        if (roleName === ROLE_NAMES.BANNED || roleName === ROLE_NAMES.MANAGER) continue;
         if (!student.tags) student.tags = [];
 
         let studentTags = [];
@@ -842,7 +779,7 @@ async function getClassUsers(user, key) {
     const userClassRole = getClassRoleName(user);
     const dbClassUsers = await new Promise((resolve, reject) => {
         database.all(
-            "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
+            "SELECT DISTINCT users.id, users.email FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
             [key],
             (err, rows) => {
                 if (err) return reject(err);
@@ -892,8 +829,6 @@ async function getClassUsers(user, key) {
         }
 
         if (!isRoleAtLeast(userClassRole, ROLE_NAMES.MOD)) {
-            delete classUsers[userRow.email].permissions;
-            delete classUsers[userRow.email].classPermissions;
             delete classUsers[userRow.email].help;
             delete classUsers[userRow.email].break;
             delete classUsers[userRow.email].pogMeter;
@@ -1123,7 +1058,6 @@ module.exports = {
     createClass,
     startClass,
     endClass,
-    checkUserClassPermission,
     joinClass,
     leaveClass,
     isClassActive,

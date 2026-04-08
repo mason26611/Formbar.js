@@ -10,8 +10,9 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName } = require("@modules/scope-resolver");
+const { getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { ROLE_NAMES } = require("@modules/roles");
+const { computePermissionLevel } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
@@ -180,7 +181,26 @@ function loadVerifyEmailTemplate() {
 
 async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
-    return user;
+    if (!user) {
+        return user;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.name
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NULL`,
+        [userId]
+    );
+    const globalRoles = roleRows.map((row) => row.name);
+    const role = getUserRoleName({ globalRoles });
+
+    return {
+        ...user,
+        globalRoles,
+        role,
+        permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+    };
 }
 
 async function requestPasswordReset(email) {
@@ -354,42 +374,23 @@ async function getUser(userIdentifier) {
         if (classId instanceof Error) throw classId;
 
         let dbUser = await new Promise((resolve, reject) => {
-            if (!classId) {
-                database.get("SELECT id, email, permissions, NULL AS classPermissions FROM users WHERE email = ?", [email], (err, dbUser) => {
-                    try {
-                        if (err) throw err;
-                        if (!dbUser) {
-                            resolve({ error: "user does not exist" });
-                            return;
-                        }
-                        resolve(dbUser);
-                    } catch (err) {
-                        reject(err);
+            database.get("SELECT id FROM users WHERE email = ?", [email], async (err, row) => {
+                try {
+                    if (err) throw err;
+                    if (!row) {
+                        resolve({ error: classId ? "user does not exist in this class" : "user does not exist" });
+                        return;
                     }
-                });
-                return;
-            }
-            database.get(
-                "SELECT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE classusers.permissions END AS classPermissions FROM users JOIN classroom ON classroom.id = ? LEFT JOIN classusers ON classusers.classId = classroom.id AND classusers.studentId = users.id WHERE users.email = ?;",
-                [classId, email],
-                (err, dbUser) => {
-                    try {
-                        if (err) throw err;
-                        if (!dbUser) {
-                            resolve({ error: "user does not exist in this class" });
-                            return;
-                        }
-                        resolve(dbUser);
-                    } catch (err) {
-                        reject(err);
-                    }
+                    resolve(await getUserDataFromDb(row.id));
+                } catch (error) {
+                    reject(error);
                 }
-            );
+            });
         });
 
         if (dbUser.error) return dbUser;
 
-        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: 0, classId };
+        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: 0, classId, classPermissions: null };
 
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && classroom.students[dbUser.email]) {
@@ -399,7 +400,18 @@ async function getUser(userIdentifier) {
                 userData.help = cdUser.help;
                 userData.break = cdUser.break;
                 userData.pogMeter = cdUser.pogMeter;
+                userData.classRole = cdUser.classRole || null;
+                userData.classRoles = cdUser.classRoles || [];
             }
+        }
+
+        if (classroom) {
+            const classRoleNames = new Set(getClassRoleNames(userData));
+            const classroomOwnerId = classroom.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [classId]))?.owner;
+            if (dbUser.id === classroomOwnerId) {
+                classRoleNames.add(ROLE_NAMES.MANAGER);
+            }
+            userData.classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
         }
 
         return userData;
@@ -444,7 +456,6 @@ function logout(socket) {
                     user.activeClass = null;
                     user.break = false;
                     user.help = false;
-                    user.classPermissions = null;
                 }
                 if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
                     classStateStore.removeUser(email);
