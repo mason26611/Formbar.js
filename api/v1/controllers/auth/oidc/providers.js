@@ -131,6 +131,36 @@ async function handleCallback(req, res) {
 }
 
 module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/auth/oidc/providers:
+     *   get:
+     *     summary: List available OIDC providers
+     *     tags:
+     *       - Authentication
+     *     description: Returns the configured OpenID Connect providers that can be used for login.
+     *     responses:
+     *       200:
+     *         description: OIDC providers returned successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     providers:
+     *                       type: array
+     *                       items:
+     *                         type: string
+     *                       example:
+     *                         - google
+     *                         - microsoft
+     */
     router.get("/auth/oidc/providers", (req, res) => {
         res.status(200).json({
             success: true,
@@ -140,6 +170,47 @@ module.exports = (router) => {
         });
     });
 
+    /**
+     * @swagger
+     * /api/v1/auth/oidc/{provider}:
+     *   get:
+     *     summary: Start OIDC login flow
+     *     tags:
+     *       - Authentication
+     *     description: |
+     *       Starts the OpenID Connect authorization code flow for the selected provider and
+     *       redirects the user to the provider's authorization page.
+     *     parameters:
+     *       - in: path
+     *         name: provider
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: OIDC provider identifier returned by `/api/v1/auth/oidc/providers`
+     *         example: google
+     *       - in: query
+     *         name: origin
+     *         schema:
+     *           type: string
+     *           format: uri
+     *         description: Optional frontend URL to redirect back to after authentication completes
+     *         example: http://localhost:3000/login?redirect=%2Fclasses
+     *     responses:
+     *       302:
+     *         description: Redirects to the provider's authorization URL
+     *       404:
+     *         description: Requested OIDC provider is not configured
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     *       500:
+     *         description: Server error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ServerError'
+     */
     router.get("/auth/oidc/:provider", async (req, res) => {
         const provider = req.params.provider;
         const providerClient = assertProviderSupported(provider);
@@ -174,6 +245,94 @@ module.exports = (router) => {
         res.redirect(authUrl.toString());
     });
 
+    /**
+     * @swagger
+     * /api/v1/auth/oidc/{provider}/callback:
+     *   get:
+     *     summary: Complete OIDC login flow
+     *     tags:
+     *       - Authentication
+     *     description: |
+     *       Handles the provider callback, exchanges the authorization code for tokens, and
+     *       signs the user into Formbar.
+     *
+     *       If an `origin` value was supplied when the flow started, the response redirects back
+     *       to that frontend URL with tokens appended in the fragment. Otherwise, a JSON payload
+     *       containing the issued tokens and user profile is returned.
+     *     parameters:
+     *       - in: path
+     *         name: provider
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: OIDC provider identifier returned by `/api/v1/auth/oidc/providers`
+     *         example: google
+     *       - in: query
+     *         name: code
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Authorization code returned by the provider
+     *       - in: query
+     *         name: state
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: State value returned by the provider
+     *     responses:
+     *       200:
+     *         description: OIDC login completed successfully and tokens returned as JSON
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *                   example: true
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     accessToken:
+     *                       type: string
+     *                     refreshToken:
+     *                       type: string
+     *                     legacyToken:
+     *                       type: string
+     *                     user:
+     *                       type: object
+     *                       properties:
+     *                         id:
+     *                           type: integer
+     *                           example: 7
+     *                         email:
+     *                           type: string
+     *                           format: email
+     *                           example: oidc@example.com
+     *                         displayName:
+     *                           type: string
+     *                           example: OIDC User
+     *       302:
+     *         description: Redirects to the frontend callback URL with issued tokens
+     *       400:
+     *         description: Authentication session is invalid, expired, or missing required provider claims
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       404:
+     *         description: Requested OIDC provider is not configured
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     *       500:
+     *         description: Server error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ServerError'
+     */
     router.get("/auth/oidc/callback", handleCallback);
     router.get("/auth/oidc/:provider/callback", handleCallback);
 };
