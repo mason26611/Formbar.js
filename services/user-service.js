@@ -20,6 +20,7 @@ const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
 
 let passwordResetTemplate;
@@ -204,11 +205,20 @@ async function getUserDataFromDb(userId) {
 }
 
 async function requestPasswordReset(email) {
+    requireInternalParam(email, "email");
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await dbGet("SELECT id FROM users WHERE email = ?", [normalizedEmail]);
+    if (!user) {
+        return true;
+    }
+
     const template = loadPasswordResetTemplate();
     const secret = crypto.randomBytes(256).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, email]);
+    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, normalizedEmail]);
 
-    sendMail(email, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
+    sendMail(normalizedEmail, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
+    return true;
 }
 
 async function requestVerificationEmail(userId, apiBaseUrl) {
@@ -260,6 +270,7 @@ async function verifyEmailFromCode(code) {
 async function resetPassword(password, token) {
     requireInternalParam(password, "password");
     requireInternalParam(token, "token");
+    assertValidPassword(password, { event: "user.password.reset.failed", reason: "invalid_password" });
 
     const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
     if (!user) {
@@ -271,6 +282,37 @@ async function resetPassword(password, token) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
+    return true;
+}
+
+async function updatePassword(userId, oldPassword, newPassword) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(newPassword, "newPassword");
+    assertValidPassword(newPassword, { event: "user.password.update.failed", reason: "invalid_password" });
+
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.password.update.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    if (user.password) {
+        requireInternalParam(oldPassword, "oldPassword");
+
+        const oldPasswordMatches = await bcrypt.compare(oldPassword, user.password);
+        if (!oldPasswordMatches) {
+            const AuthError = require("@errors/auth-error");
+            throw new AuthError("Current password is incorrect.", {
+                event: "user.password.update.failed",
+                reason: "incorrect_old_password",
+            });
+        }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
     return true;
 }
 
@@ -556,6 +598,7 @@ module.exports = {
     requestVerificationEmail,
     verifyEmailFromCode,
     resetPassword,
+    updatePassword,
     regenerateAPIKey,
     requestPinReset,
     resetPin,

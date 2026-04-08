@@ -4,6 +4,7 @@ const { privateKey, publicKey } = require("@modules/config");
 const { computePermissionLevel } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
+const { assertValidPassword } = require("@modules/password-validation");
 const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLE_NAMES } = require("@modules/roles");
@@ -13,7 +14,6 @@ const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
-const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()\-_=+{}\[\]<>,.:;'"~?\/|\\]{5,20}$/;
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 
 async function withComputedGlobalRole(userData) {
@@ -36,6 +36,93 @@ async function withComputedGlobalRole(userData) {
         globalRoles,
         role,
         permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+    }
+}
+
+function normalizeEmail(email) {
+    return String(email).trim().toLowerCase();
+}
+
+function sanitizeDisplayName(displayName, email) {
+    const fallback = String(email).split("@")[0] || "FormbarUser";
+    const collapsed = String(displayName || fallback)
+        .replace(/[^a-zA-Z0-9_ ]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    let normalized = collapsed || fallback.replace(/[^a-zA-Z0-9_ ]+/g, "").trim() || "FormbarUser";
+    if (normalized.length > 20) {
+        normalized = normalized.slice(0, 20).trim();
+    }
+
+    if (normalized.length < 5) {
+        normalized = `${normalized || "User"}_${crypto.randomBytes(4).toString("hex")}`.slice(0, 20);
+    }
+
+    normalized = normalized.replace(/\s+/g, " ").trim();
+
+    if (!displayRegex.test(normalized)) {
+        normalized = `User_${crypto.randomBytes(4).toString("hex")}`.slice(0, 20);
+    }
+
+    return normalized;
+}
+
+async function getUniqueDisplayName(displayName, email) {
+    const baseName = sanitizeDisplayName(displayName, email);
+
+    if (!(await dbGet("SELECT id FROM users WHERE displayName = ?", [baseName]))) {
+        return baseName;
+    }
+
+    for (let suffix = 1; suffix <= 9999; suffix++) {
+        const suffixText = String(suffix);
+        const maxBaseLength = Math.max(1, 20 - suffixText.length - 1);
+        const candidate = `${baseName.slice(0, maxBaseLength).trim() || "User"}_${suffixText}`;
+        const existing = await dbGet("SELECT id FROM users WHERE displayName = ?", [candidate]);
+        if (!existing) {
+            return candidate;
+        }
+    }
+
+    return `User_${crypto.randomBytes(4).toString("hex")}`.slice(0, 20);
+}
+
+async function createUser({ email, password, displayName, verified }) {
+    const apiKey = crypto.randomBytes(64).toString("hex");
+    const secret = crypto.randomBytes(256).toString("hex");
+
+    const allUsers = await dbGetAll("SELECT * FROM users", []);
+    const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
+    const uniqueDisplayName = await getUniqueDisplayName(displayName, email);
+
+    const userId = await dbRun(`INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        email,
+        password || null,
+        permissions,
+        apiKey,
+        secret,
+        uniqueDisplayName,
+        verified ? 1 : 0,
+    ]);
+
+    return dbGet("SELECT * FROM users WHERE id = ?", [userId]);
+}
+
+async function issueAuthTokens(userData) {
+    const tokens = generateAuthTokens(userData);
+    const decodedRefreshToken = jwt.decode(tokens.refreshToken);
+    const tokenHash = sha256(tokens.refreshToken);
+
+    await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
+        userData.id,
+        tokenHash,
+        decodedRefreshToken.exp,
+        "auth",
+    ]);
+
+    return {
+        ...tokens,
     };
 }
 
@@ -55,12 +142,7 @@ async function register(email, password, displayName) {
         });
     }
 
-    if (!passwordRegex.test(password)) {
-        throw new ValidationError("Password must be 5-20 characters long and can only contain letters, numbers, and special characters.", {
-            event: "auth.register.failed",
-            reason: "invalid_password",
-        });
-    }
+    assertValidPassword(password, { event: "auth.register.failed", reason: "invalid_password" });
 
     if (!displayRegex.test(displayName)) {
         throw new ValidationError("Display name must be 5-20 characters long and can only contain letters, numbers, spaces, and underscores.", {
@@ -70,7 +152,7 @@ async function register(email, password, displayName) {
     }
 
     // Normalize email to lowercase to prevent duplicate accounts
-    email = email.trim().toLowerCase();
+    email = normalizeEmail(email);
 
     // Check if user already exists
     const existingUser = await dbGet("SELECT * FROM users WHERE email = ? OR displayName = ?", [email, displayName]);
@@ -79,45 +161,15 @@ async function register(email, password, displayName) {
     }
 
     const hashedPassword = await hash(password, 10);
-    const apiKey = crypto.randomBytes(64).toString("hex");
-    const secret = crypto.randomBytes(256).toString("hex");
-
-    // The first user gets the Manager role; subsequent users get Student
-    const allUsers = await dbGetAll("SELECT * FROM users", []);
-    const isFirstUser = allUsers.length === 0;
-
-    // Create the new user in the database
-    const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
+    const userData = await createUser({
         email,
-        hashedPassword,
-        apiKey,
-        secret,
+        password: hashedPassword,
         displayName,
-        0,
-    ]);
-
-    // Get the new user's data
-    let userData = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
-
-    // Assign global role via user_roles table
-    const globalRoleName = isFirstUser ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
-    const globalRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [globalRoleName]);
-    if (globalRole) {
-        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userData.id, globalRole.id]);
-    }
-
-    userData = await withComputedGlobalRole(userData);
+        verified: 0,
+    });
 
     // Generate tokens
-    const tokens = generateAuthTokens(userData);
-    const decodedRefreshToken = jwt.decode(tokens.refreshToken);
-    const tokenHash = sha256(tokens.refreshToken);
-    await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
-        userData.id,
-        tokenHash,
-        decodedRefreshToken.exp,
-        "auth",
-    ]);
+    const tokens = await issueAuthTokens(userData);
 
     return { tokens, user: userData };
 }
@@ -140,33 +192,20 @@ async function login(email, password) {
     }
 
     // Normalize email to lowercase to prevent login issues
-    email = email.trim().toLowerCase();
+    email = normalizeEmail(email);
 
     const userData = await withComputedGlobalRole(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
     if (!userData) {
         return invalidCredentials();
     }
 
+    if (!userData.password) {
+        return invalidCredentials();
+    }
+
     const passwordMatches = await compare(password, userData.password);
     if (passwordMatches) {
-        const tokens = generateAuthTokens(userData);
-        const decodedRefreshToken = jwt.decode(tokens.refreshToken);
-        const tokenHash = sha256(tokens.refreshToken);
-
-        // Each refresh token includes a random `jti` so tokens generated in the
-        // same second will have different hashes and won't collide.
-        await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
-            userData.id,
-            tokenHash,
-            decodedRefreshToken.exp,
-            "auth",
-        ]);
-
-        // Generate a legacy OAuth token (includes permissions) for backwards-compatible
-        // third-party apps (e.g. Jukebar) that use the /oauth redirect flow.
-        const legacyToken = generateLegacyOAuthToken(userData);
-
-        return { tokens: { ...tokens, legacyToken }, user: userData };
+        return { tokens: await issueAuthTokens(userData), user: userData };
     } else {
         return invalidCredentials();
     }
@@ -231,6 +270,7 @@ function generateAuthTokens(userData) {
             id: userData.id,
             email: userData.email,
             displayName: userData.displayName,
+            permissions: userData.permissions,
         },
         privateKey,
         { algorithm: "RS256", expiresIn: "15m" }
@@ -247,33 +287,6 @@ function generateAuthTokens(userData) {
  */
 function generateRefreshToken(userData) {
     return jwt.sign({ id: userData.id, jti: crypto.randomBytes(16).toString("hex") }, privateKey, { algorithm: "RS256", expiresIn: "30d" });
-}
-
-/**
- * Generates a legacy OAuth token for backwards-compatible third-party apps (e.g. Jukebar).
- *
- * Includes `permissions` in the payload because legacy clients read that field directly
- * from the decoded JWT.  The token is still signed with RS256 so that the
- * backwards-compat socket handler can verify it with `verifyToken()`.
- *
- * @param {Object} userData - The user data object
- * @param {number} userData.id - The user's unique identifier
- * @param {string} userData.email - The user's email address
- * @param {string} userData.displayName - The user's display name
- * @param {number} userData.permissions - The user's permission level (deprecated, may be undefined)
- * @returns {string} A signed JWT valid for 1 hour
- */
-function generateLegacyOAuthToken(userData) {
-    return jwt.sign(
-        {
-            id: userData.id,
-            email: userData.email,
-            displayName: userData.displayName,
-            permissions: userData.permissions,
-        },
-        privateKey,
-        { algorithm: "RS256", expiresIn: "1h" }
-    );
 }
 
 /**
@@ -300,13 +313,13 @@ function invalidCredentials() {
 }
 
 /**
- * Authenticates or registers a user via Google OAuth
+ * Authenticates or registers a user via OpenID with services like Google and Microsoft
  * @async
  * @param {string} email - The user's email address from Google
  * @param {string} displayName - The user's display name from Google
  * @returns {Promise<{tokens: {accessToken: string, refreshToken: string}, user: Object}|{error: string}>} Returns an object with tokens and user data on success, or an error object on failure
  */
-async function googleOAuth(email, displayName) {
+async function oidcLogin(provider, email, displayName, options = {}) {
     if (!privateKey || !publicKey) {
         throw new AppError("Either the public key or private key is not available for JWT signing.", {
             statusCode: 500,
@@ -316,50 +329,37 @@ async function googleOAuth(email, displayName) {
     }
 
     // Normalize email to lowercase to prevent duplicate accounts
-    email = email.trim().toLowerCase();
+    email = normalizeEmail(email);
 
     let userData = await dbGet("SELECT * FROM users WHERE email = ?", [email]);
     if (!userData) {
-        // User doesn't exist, create a new one
-        const apiKey = crypto.randomBytes(64).toString("hex");
-        const secret = crypto.randomBytes(256).toString("hex");
+        userData = await createUser({
+            email,
+            password: null,
+            displayName,
+            verified: 1,
+        });
+    } else {
+        const updates = [];
+        const params = [];
 
-        // The first user gets the Manager role; subsequent users get Student
-        const allUsers = await dbGetAll("SELECT * FROM users", []);
-        const isFirstUser = allUsers.length === 0;
+        if (!userData.displayName) {
+            updates.push("displayName = ?");
+            params.push(await getUniqueDisplayName(displayName, email));
+        }
 
-        // Insert the new user (no permissions column)
-        const result = await dbRun(
-            `INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`,
-            [email, "", apiKey, secret, displayName, 1] // Automatically verified via Google
-        );
+        if (!userData.verified && options.emailVerified !== false) {
+            updates.push("verified = 1");
+        }
 
-        // Get the newly created user
-        userData = await dbGet("SELECT * FROM users WHERE id = ?", [result.lastID]);
-
-        // Assign global role via user_roles table
-        const globalRoleName = isFirstUser ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
-        const globalRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [globalRoleName]);
-        if (globalRole) {
-            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userData.id, globalRole.id]);
+        if (updates.length > 0) {
+            params.push(userData.id);
+            await dbRun(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
+            userData = await dbGet("SELECT * FROM users WHERE id = ?", [userData.id]);
         }
     }
 
-    // Generate tokens
-    const tokens = generateAuthTokens(userData);
-    const decodedRefreshToken = jwt.decode(tokens.refreshToken);
-
-    // Store refresh token (replace if exists for this user's auth tokens only)
-    const tokenHash = sha256(tokens.refreshToken);
-    await dbRun("DELETE FROM refresh_tokens WHERE user_id = ? AND token_type = 'auth'", [userData.id]);
-    await dbRun("INSERT INTO refresh_tokens (user_id, token_hash, exp, token_type) VALUES (?, ?, ?, ?)", [
-        userData.id,
-        tokenHash,
-        decodedRefreshToken.exp,
-        "auth",
-    ]);
-
-    return { tokens, user: await withComputedGlobalRole(userData) };
+    return { provider, tokens: await issueAuthTokens(userData), user: userData };
 }
 
 /**
@@ -575,11 +575,11 @@ module.exports = {
     login,
     refreshLogin,
     verifyToken,
-    googleOAuth,
+    googleOAuth: (email, displayName, options) => oidcLogin("google", email, displayName, options),
+    oidcOAuth: oidcLogin,
     generateAuthorizationCode,
     exchangeAuthorizationCodeForToken,
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
-    generateLegacyOAuthToken,
 };

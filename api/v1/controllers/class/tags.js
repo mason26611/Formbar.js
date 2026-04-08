@@ -8,7 +8,7 @@ const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
     const setTagsHandler = async (req, res) => {
-        const classId = req.user.classId || req.user.activeClass;
+        const classId = req.params.id;
         req.infoEvent("class.tags.update.attempt", "Attempting to update class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
@@ -61,8 +61,8 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/tags", isAuthenticated, async (req, res) => {
-        const classId = req.user.classId || req.user.activeClass;
+    router.get("/class/:id/tags", isAuthenticated, async (req, res) => {
+        const classId = req.params.id;
         req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {
             throw new NotFoundError("Class not found or not loaded.");
@@ -80,7 +80,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/tags:
+     * /api/v1/class/:id/tags:
      *   put:
      *     summary: Set class tags
      *     tags:
@@ -126,12 +126,15 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.put("/class/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), setTagsHandler);
+    router.put("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), setTagsHandler);
 
-    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/tags instead
-    router.post("/class/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
-        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/tags instead");
-        res.setHeader("Warning", '299 - "Deprecated API: Use PUT /api/v1/class/tags instead. This endpoint will be removed in a future version."');
+    // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/tags instead
+    router.post("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
+        res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/tags instead");
+        res.setHeader(
+            "Warning",
+            '299 - "Deprecated API: Use PUT /api/v1/class/:id/tags instead. This endpoint will be removed in a future version."'
+        );
         await setTagsHandler(req, res);
     });
 };
