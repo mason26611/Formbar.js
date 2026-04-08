@@ -7,11 +7,11 @@ const ValidationError = require("@errors/validation-error");
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/room/{id}/links/add:
+     * /api/v1/class/{id}/links/add:
      *   post:
-     *     summary: Add a link to a room
+     *     summary: Add a link to a class
      *     tags:
-     *       - Room - Links
+     *       - Class - Links
      *     description: Adds a new link to a classroom (requires teacher permissions)
      *     security:
      *       - bearerAuth: []
@@ -63,17 +63,17 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      */
-    router.post("/room/:id/links/add", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
+    router.post("/class/:id/links/add", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.MANAGE), async (req, res) => {
         const classId = req.params.id;
         const { name, url } = req.body;
-        req.infoEvent("room.links.add.attempt", "Attempting to add room link", { classId, linkName: name });
+        req.infoEvent("class.links.add.attempt", "Attempting to add class link", { classId, linkName: name });
         if (!name || !url) {
             throw new ValidationError("Name and URL are required.");
         }
 
         // Add the link to the database
         await dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, name, url]);
-        req.infoEvent("room.links.add.success", "Room link added", { classId, linkName: name });
+        req.infoEvent("class.links.add.success", "Class link added", { classId, linkName: name });
         res.status(200).json({
             success: true,
             data: {

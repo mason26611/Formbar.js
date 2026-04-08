@@ -3,7 +3,8 @@ const { classStateStore } = require("@services/classroom-service");
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
 const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { getClassRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES } = require("@modules/roles");
 const { userSocketUpdates } = require("../sockets/init");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
@@ -132,15 +133,6 @@ function updateStudentPollResponse(student, res, textRes, isRemoving, allowMulti
 }
 
 /**
- * Broadcasts a class update to all user sockets.
- * @param {string} email - The user's email.
- * @param {number} classId - The class ID.
- */
-function broadcastClassUpdate(email, classId) {
-    userUpdateSocket(email, "classUpdate", classId, { global: true });
-}
-
-/**
  * Creates a new poll in the class.
  * @param {number} classId - The ID of the class.
  * @param {Object} pollData - The data for the poll.
@@ -219,7 +211,7 @@ async function createPoll(classId, pollData, userData) {
     classroom.poll.allowMultipleResponses = allowMultipleResponses;
 
     resetStudentPollResponses(classroom);
-    broadcastClassUpdate(userData.email, classId);
+    userUpdateSocket(userData.email, "classUpdate", classId, { global: true });
 }
 
 /**
@@ -284,32 +276,55 @@ async function updatePoll(classId, options, userSession) {
 /**
  * Gets previous polls for a class from the database with pagination.
  * Post-processes results to ensure proper types (booleans as actual booleans, responses as parsed objects).
- * @param classId
- * @param index
- * @param limit
- * @returns {Promise<Array<Object>>}
+ * @param {number} classId - The ID of the class.
+ * @param {number} [offset=0] - The number of records to skip.
+ * @param {number} [limit=20] - The maximum number of records to return.
+ * @returns {Promise<Object>} An object containing polls array and total count.
  */
-async function getPreviousPolls(classId, index = 0, limit = 20) {
+async function getPreviousPolls(classId, offset = 0, limit = 20) {
     requireInternalParam(classId, "classId");
-    const polls = await dbGetAll("SELECT * FROM poll_history WHERE class = ? ORDER BY id DESC LIMIT ?, ?", [classId, index, limit]);
+    
+    const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM poll_history WHERE class = ?`, [classId]);
+    const polls = await dbGetAll(
+        `SELECT *, ROW_NUMBER() OVER (ORDER BY id) AS pollId
+         FROM poll_history
+         WHERE class = ?
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`,
+        [classId, limit, offset]
+    );
 
-    return polls.map((poll) => {
-        // Convert to booleans for API consistency
-        poll.allowMultipleResponses = !!poll.allowMultipleResponses;
-        poll.blind = !!poll.blind;
-        poll.allowTextResponses = !!poll.allowTextResponses;
-
-        // Parse responses from JSON string to object
+    const enrichedPolls = polls.map((poll) => {
+        // Parse responses into a predictable array for clients.
+        let parsedResponses = poll.responses;
         if (typeof poll.responses === "string") {
             try {
-                poll.responses = JSON.parse(poll.responses);
+                parsedResponses = JSON.parse(poll.responses);
             } catch (err) {
-                poll.responses = null;
+                parsedResponses = [];
             }
         }
 
-        return poll;
+        if (!Array.isArray(parsedResponses)) {
+            parsedResponses = [];
+        }
+
+        return {
+            globalPollId: poll.id,
+            classPollId: Number(poll.pollId),
+            prompt: poll.prompt,
+            responses: parsedResponses,
+            blind: !!poll.blind,
+            allowMultipleResponses: !!poll.allowMultipleResponses,
+            allowTextResponses: !!poll.allowTextResponses,
+            createdAt: poll.createdAt,
+        };
     });
+
+    return {
+        polls: enrichedPolls,
+        total: totalRow ? totalRow.count : 0,
+    };
 }
 
 /**
@@ -364,7 +379,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     // Adds data to the previous poll answers table upon clearing the poll
     if (!currentPollId) {
         if (updateClass && userSession) {
-            broadcastClassUpdate(userSession.email, classId);
+            userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
         }
         pollRuntimeStore.clearPogMeterTracker(classId);
         pollRuntimeStore.clearLastSavedPollId(classId);
@@ -373,7 +388,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     for (const student of Object.values(classroom.students)) {
-        if (student.classPermissions < MANAGER_PERMISSIONS) {
+        if (getClassRoleName(student) !== ROLE_NAMES.MANAGER) {
             const buttonRes = student.pollRes.buttonRes;
             let buttonResponse = null;
             if (Array.isArray(buttonRes) && buttonRes.length > 0) {
@@ -398,7 +413,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     if (updateClass && userSession) {
-        broadcastClassUpdate(userSession.email, classId);
+        userUpdateSocket(userSession.email, "classUpdate", classId, { global: true });
     }
 
     pollRuntimeStore.clearPogMeterTracker(classId);
@@ -488,7 +503,7 @@ function sendPollResponse(classId, res, textRes, userSession) {
         pollRuntimeStore.markPogMeterIncreased(classId, email);
     }
 
-    broadcastClassUpdate(email, classId);
+    userUpdateSocket(email, "classUpdate", classId, { global: true });
 }
 
 /**

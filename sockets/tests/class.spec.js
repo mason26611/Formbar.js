@@ -1,5 +1,5 @@
 jest.mock("@services/class-service");
-jest.mock("@services/room-service");
+jest.mock("@services/class-membership-service");
 jest.mock("@services/student-service");
 jest.mock("@services/socket-updates-service");
 jest.mock("@modules/util");
@@ -16,7 +16,7 @@ jest.mock("@stores/class-code-cache-store", () => ({
 const { run: classRun } = require("../class");
 const { classStateStore } = require("@services/classroom-service");
 const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
-const { joinRoom, leaveRoom } = require("@services/room-service");
+const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { generateKey } = require("@modules/util");
 const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
 
@@ -85,11 +85,11 @@ describe("class socket", () => {
     });
 
     describe("joinRoom event", () => {
-        it("should call joinRoom with the session and class code", () => {
+        it("should call enrollInClass with the session and class code", () => {
             const handler = socket.on.mock.calls.find((call) => call[0] === "joinRoom")[1];
             handler(testData.code);
 
-            expect(joinRoom).toHaveBeenCalledWith(socket.request.session, testData.code);
+            expect(enrollInClass).toHaveBeenCalledWith(socket.request.session, testData.code);
         });
     });
 
@@ -103,11 +103,11 @@ describe("class socket", () => {
     });
 
     describe("leaveRoom event", () => {
-        it("should call leaveRoom with the session", async () => {
+        it("should call unenrollFromClass with the session", async () => {
             const handler = socket.on.mock.calls.find((call) => call[0] === "leaveRoom")[1];
             await handler();
 
-            expect(leaveRoom).toHaveBeenCalledWith(socket.request.session);
+            expect(unenrollFromClass).toHaveBeenCalledWith(socket.request.session);
         });
     });
 

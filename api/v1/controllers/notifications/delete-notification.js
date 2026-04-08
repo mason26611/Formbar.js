@@ -5,7 +5,7 @@ const NotFoundError = require("@errors/not-found-error");
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/notifications/:
+     * /api/v1/notifications:
      *   delete:
      *     summary: Delete all notifications for the authenticated user
      *     tags:

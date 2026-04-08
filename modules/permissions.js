@@ -112,72 +112,6 @@ const DEFAULT_CLASS_PERMISSIONS = {
     votePoll: STUDENT_PERMISSIONS, // Vote in polls
 };
 
-// This defines global socket permissions that define who can use each socket event
-const GLOBAL_SOCKET_PERMISSIONS = {
-    deleteClass: TEACHER_PERMISSIONS,
-    getOwnedClasses: TEACHER_PERMISSIONS,
-    logout: GUEST_PERMISSIONS,
-    saveTags: TEACHER_PERMISSIONS,
-    setTags: TEACHER_PERMISSIONS,
-    joinClass: GUEST_PERMISSIONS,
-    joinRoom: GUEST_PERMISSIONS,
-    getActiveClass: GUEST_PERMISSIONS,
-    transferDigipogs: STUDENT_PERMISSIONS,
-    awardDigipogs: TEACHER_PERMISSIONS,
-    awardDigipogsResponse: TEACHER_PERMISSIONS,
-};
-
-// This defines socket permissions for the class that define who can use each socket event
-const CLASS_SOCKET_PERMISSIONS = {
-    help: STUDENT_PERMISSIONS,
-    pollResp: STUDENT_PERMISSIONS,
-    requestBreak: STUDENT_PERMISSIONS,
-    endBreak: STUDENT_PERMISSIONS,
-    leaveClass: GUEST_PERMISSIONS,
-    leaveRoom: GUEST_PERMISSIONS,
-    classUpdate: GUEST_PERMISSIONS,
-    setClassSetting: TEACHER_PERMISSIONS,
-    setClassPermissionSetting: MANAGER_PERMISSIONS,
-    classPoll: MOD_PERMISSIONS,
-    updatePoll: MOD_PERMISSIONS,
-    timer: TEACHER_PERMISSIONS,
-    timerOn: TEACHER_PERMISSIONS,
-    awardDigipogs: TEACHER_PERMISSIONS,
-    getPreviousPolls: TEACHER_PERMISSIONS,
-    updateExcludedRespondents: TEACHER_PERMISSIONS,
-};
-
-// This associates actions with the permissions of other actions
-// Example: To start a poll, you first need the controlPoll permission
-const CLASS_SOCKET_PERMISSION_MAPPER = {
-    startPoll: "controlPoll",
-    updatePoll: "controlPoll",
-    customPollUpdate: "controlPoll",
-    savePoll: "controlPoll",
-    deletePoll: "controlPoll",
-    setPublicPoll: "controlPoll",
-    sharePollToUser: "controlPoll",
-    removeUserPollShare: "controlPoll",
-    getPollShareIds: "controlPoll",
-    sharePollToClass: "controlPoll",
-    removeClassPollShare: "controlPoll",
-    classPermChange: "manageStudents",
-    classKickStudent: "manageStudents",
-    classKickStudents: "manageStudents",
-    classRemoveFromSession: "manageStudents",
-    approveBreak: "breakHelp",
-    deleteTicket: "breakHelp",
-    startClass: "manageClass",
-    endClass: "manageClass",
-    isClassActive: "manageClass",
-    regenerateClassCode: "manageClass",
-    changeClassName: "manageClass",
-    classBannedUsersUpdate: "manageStudents",
-    classBanUser: "manageStudents",
-    classUnbanUser: "manageStudents",
-    awardDigipogs: "userDefaults",
-};
-
 // Maps socket event names to scope strings for the new permission system.
 // Global events use global.* scopes; class events use class.* scopes.
 const SOCKET_EVENT_SCOPE_MAP = {
@@ -190,6 +124,8 @@ const SOCKET_EVENT_SCOPE_MAP = {
     joinClass: null,
     joinRoom: null,
     getActiveClass: null,
+    auth: null, // Backwards-compat: jukebar authentication
+    getClassroom: null, // Backwards-compat: classroom state pull
     transferDigipogs: SCOPES.GLOBAL.DIGIPOGS.TRANSFER,
     awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
     awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,
@@ -211,7 +147,7 @@ const SOCKET_EVENT_SCOPE_MAP = {
     getPreviousPolls: SCOPES.CLASS.POLL.READ,
     updateExcludedRespondents: SCOPES.CLASS.STUDENTS.READ,
 
-    // Mapped class socket events (previously via CLASS_SOCKET_PERMISSION_MAPPER)
+    // Mapped class socket events
     startPoll: SCOPES.CLASS.POLL.CREATE,
     customPollUpdate: SCOPES.CLASS.POLL.CREATE,
     savePoll: SCOPES.CLASS.POLL.CREATE,
@@ -253,9 +189,4 @@ module.exports = {
     // Page permissions (legacy)
     CLASS_PERMISSIONS,
     DEFAULT_CLASS_PERMISSIONS,
-
-    // Socket permissions (legacy)
-    GLOBAL_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSION_MAPPER,
 };

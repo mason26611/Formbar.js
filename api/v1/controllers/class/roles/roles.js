@@ -1,0 +1,344 @@
+const { isAuthenticated } = require("@middleware/authentication");
+const { hasClassScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
+const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
+const { classStateStore } = require("@services/classroom-service");
+const { getClassRoles, createClassRole, updateClassRole, deleteClassRole, getActingUser } = require("@services/role-service");
+const { broadcastClassUpdate } = require("@services/class-service");
+const NotFoundError = require("@errors/not-found-error");
+
+module.exports = (router) => {
+    /**
+     * @swagger
+     * /api/v1/class/{id}/roles:
+     *   get:
+     *     summary: List roles for a class
+     *     tags:
+     *       - Class Roles
+     *     description: |
+     *       Returns all built-in and custom roles available for the class,
+     *       including the scopes assigned to each role.
+     *
+     *       **Required:** Must be authenticated and a member of the class.
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The class ID
+     *     responses:
+     *       200:
+     *         description: List of roles
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 data:
+     *                   type: array
+     *                   items:
+     *                     type: object
+     *                     properties:
+     *                       id:
+     *                         type: integer
+     *                         nullable: true
+     *                       name:
+     *                         type: string
+     *                       scopes:
+     *                         type: array
+     *                         items:
+     *                           type: string
+     *                       builtIn:
+     *                         type: boolean
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       404:
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     */
+    router.get("/class/:id/roles", isAuthenticated, async (req, res) => {
+        const classId = req.params.id;
+        requireQueryParam(classId, "id");
+
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classroom) throw new NotFoundError("Class not found.");
+
+        const { id: userId, email } = req.user;
+        if (!classroom.students[email] && classroom.owner !== userId && classroom.owner !== email) {
+            throw new NotFoundError("Class not found.");
+        }
+
+        const roles = await getClassRoles(classId);
+        res.status(200).json({ success: true, data: roles });
+    });
+
+    /**
+     * @swagger
+     * /api/v1/class/{id}/roles:
+     *   post:
+     *     summary: Create a custom role
+     *     tags:
+     *       - Class Roles
+     *     description: |
+     *       Creates a new custom role for the class with the specified scopes.
+     *       You can only grant scopes you possess yourself (no privilege escalation).
+     *
+     *       **Required scope:** `class.session.settings`
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The class ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - name
+     *               - scopes
+     *             properties:
+     *               name:
+     *                 type: string
+     *                 example: CustomMod
+     *               scopes:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 example: ["class.poll.create", "class.poll.end"]
+     *     responses:
+     *       201:
+     *         description: Role created
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     id:
+     *                       type: integer
+     *                     name:
+     *                       type: string
+     *                     scopes:
+     *                       type: array
+     *                       items:
+     *                         type: string
+     *       400:
+     *         description: Invalid parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     */
+    router.post("/class/:id/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+        const classId = req.params.id;
+        requireQueryParam(classId, "id");
+
+        const { name, scopes } = req.body;
+        requireBodyParam(name, "name");
+        requireBodyParam(scopes, "scopes");
+
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classroom) throw new NotFoundError("Class not found.");
+        const actingClassUser = getActingUser(classroom, req.user);
+
+        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom);
+        await broadcastClassUpdate(classId);
+        res.status(201).json({ success: true, data: role });
+    });
+
+    /**
+     * @swagger
+     * /api/v1/class/{id}/roles/{roleId}:
+     *   patch:
+     *     summary: Update a custom role
+     *     tags:
+     *       - Class Roles
+     *     description: |
+     *       Updates the name and/or scopes of a custom role.
+     *       Built-in roles cannot be modified.
+     *       You can only grant scopes you possess yourself.
+     *
+     *       **Required scope:** `class.session.settings`
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The class ID
+     *       - in: path
+     *         name: roleId
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The custom role ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               name:
+     *                 type: string
+     *               scopes:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Role updated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 data:
+     *                   type: object
+     *                   properties:
+     *                     id:
+     *                       type: integer
+     *                     name:
+     *                       type: string
+     *                     scopes:
+     *                       type: array
+     *                       items:
+     *                         type: string
+     *       400:
+     *         description: Invalid parameters
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ValidationError'
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       404:
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     */
+    router.patch("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+        const { id: classId, roleId } = req.params;
+        requireQueryParam(classId, "id");
+        requireQueryParam(roleId, "roleId");
+
+        const updates = req.body;
+        const classroom = classStateStore.getClassroom(classId);
+        if (!classroom) throw new NotFoundError("Class not found.");
+        const actingClassUser = getActingUser(classroom, req.user);
+
+        const role = await updateClassRole(roleId, classId, updates, actingClassUser, classroom);
+        await broadcastClassUpdate(classId);
+        res.status(200).json({ success: true, data: role });
+    });
+
+    /**
+     * @swagger
+     * /api/v1/class/{id}/roles/{roleId}:
+     *   delete:
+     *     summary: Delete a custom role
+     *     tags:
+     *       - Class Roles
+     *     description: |
+     *       Deletes a custom role. Students assigned to this role are
+     *       reassigned to the Guest role.
+     *
+     *       **Required scope:** `class.session.settings`
+     *     security:
+     *       - bearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The class ID
+     *       - in: path
+     *         name: roleId
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The custom role ID
+     *     responses:
+     *       200:
+     *         description: Role deleted
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 message:
+     *                   type: string
+     *       401:
+     *         description: Not authenticated
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/UnauthorizedError'
+     *       403:
+     *         description: Insufficient permissions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Error'
+     *       404:
+     *         description: Not found
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/NotFoundError'
+     */
+    router.delete("/class/:id/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
+        const { id: classId, roleId } = req.params;
+        requireQueryParam(classId, "id");
+        requireQueryParam(roleId, "roleId");
+
+        await deleteClassRole(roleId, classId);
+        await broadcastClassUpdate(classId);
+        res.status(200).json({ success: true, data: { message: "Role deleted." } });
+    });
+};

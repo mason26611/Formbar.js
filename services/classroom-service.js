@@ -1,3 +1,16 @@
+/**
+ * Classroom Service — defines the Classroom model and the shared in-memory state store.
+ *
+ * The `Classroom` class represents a classroom that can be loaded into memory for
+ * an active session. The `classStateStore` singleton holds all currently-loaded
+ * classrooms and their connected users.
+ *
+ * This module is intentionally small and dependency-light so that both class-service
+ * (session logic) and room-service (persistent membership) can import it without
+ * circular-dependency issues.
+ *
+ * @module services/classroom-service
+ */
 const { database, dbGet } = require("@modules/database");
 const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
@@ -19,7 +32,7 @@ const DEFAULT_CLASS_SETTINGS = {
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, permissions, tags, settings } = {}) {
+    constructor({ id, className, key, owner, permissions, tags, settings, customRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -64,6 +77,8 @@ class Classroom {
         if (!this.tags.includes("Offline") && Array.isArray(this.tags)) {
             this.tags.push("Offline");
         }
+
+        this.customRoles = customRoles || {};
     }
 }
 
@@ -101,4 +116,5 @@ module.exports = {
     classStateStore,
     getClassroomFromDb,
     getClassIDFromCode,
+    DEFAULT_CLASS_SETTINGS,
 };

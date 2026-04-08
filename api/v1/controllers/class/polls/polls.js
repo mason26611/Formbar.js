@@ -78,27 +78,52 @@ module.exports = (router) => {
      *                   type: boolean
      *                   example: true
      *                 data:
-     *                   type: array
-     *                   items:
-     *                     type: object
-     *                     properties:
-     *                       id:
-     *                         type: integer
-     *                         description: Poll history entry ID
-     *                         example: 1
-     *                       class:
-     *                         type: integer
-     *                         description: Class ID
-     *                         example: 123
-     *                       data:
-     *                         type: string
-     *                         description: JSON string containing poll data and responses
-     *                         example: '{"prompt":"What is 2+2?","answers":["3","4","5"],"responses":{}}'
-     *                       date:
-     *                         type: string
-     *                         format: date-time
-     *                         description: Timestamp when the poll was saved
-     *                         example: '2026-02-10T10:30:00.000Z'
+     *                   type: object
+     *                   properties:
+     *                     polls:
+     *                       type: array
+     *                       items:
+     *                         type: object
+     *                         properties:
+     *                           pollId:
+     *                             type: integer
+     *                             description: Class-relative poll ID (increments within a class)
+     *                             example: 12
+     *                           prompt:
+     *                             type: string
+     *                             description: Poll prompt shown to students
+     *                             example: True/False
+     *                           responses:
+     *                             type: array
+     *                             description: Poll options and aggregate response counts
+     *                             items:
+     *                               type: object
+     *                               properties:
+     *                                 answer:
+     *                                   type: string
+     *                                   example: True
+     *                                 weight:
+     *                                   type: number
+     *                                   example: 1
+     *                                 color:
+     *                                   type: string
+     *                                   example: '#00ff00'
+     *                                 responses:
+     *                                   type: integer
+     *                                   example: 8
+     *                           allowMultipleResponses:
+     *                             type: boolean
+     *                             example: false
+     *                           blind:
+     *                             type: boolean
+     *                             example: false
+     *                           allowTextResponses:
+     *                             type: boolean
+     *                             example: false
+     *                           createdAt:
+     *                             type: integer
+     *                             description: Poll creation timestamp in milliseconds
+     *                             example: 1712428800000
      *       400:
      *         description: Invalid parameters
      *         content:
@@ -140,23 +165,31 @@ module.exports = (router) => {
         req.infoEvent("class.polls.view", "Viewing class polls", { classId });
 
         const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POLL_LIMIT);
-        const index = parseIntegerQueryParam(req.query.index, 0);
+        const offset = parseIntegerQueryParam(req.query.offset, 0);
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_POLL_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_POLL_LIMIT}.`);
+        if (!Number.isInteger(limit) || limit < 0 || limit > MAX_POLL_LIMIT) {
+            throw new ValidationError(`Invalid limit. Expected an integer between 0 and ${MAX_POLL_LIMIT}.`);
         }
 
-        if (!Number.isInteger(index) || index < 0) {
-            throw new ValidationError("Invalid index. Expected a non-negative integer.");
+        if (!Number.isInteger(offset) || offset < 0) {
+            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
         }
 
-        const polls = await getPreviousPolls(classId, index, limit);
+        const { polls, total } = await getPreviousPolls(classId, offset, limit);
 
-        req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, index });
+        req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });
 
         res.status(200).json({
             success: true,
-            data: polls,
+            data: {
+				polls,
+                pagination: {
+					total,
+					limit,
+					offset,
+					hasMore: offset + polls.length < total,
+				}
+            },
         });
     });
 };

@@ -1,18 +1,18 @@
 const { SCOPES } = require("@modules/permissions");
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
-const { isUserInRoom, getLinksInRoom } = require("@services/room-service");
+const { isUserEnrolled, getClassLinks } = require("@services/class-membership-service");
 const { requireQueryParam } = require("@modules/error-wrapper");
 const ForbiddenError = require("@errors/forbidden-error");
 
 module.exports = (router) => {
     /**
      * @swagger
-     * /api/v1/room/{id}/links:
+     * /api/v1/class/{id}/links:
      *   get:
-     *     summary: Get all links for a room
+     *     summary: Get all links for a class
      *     tags:
-     *       - Room - Links
+     *       - Class - Links
      *     description: Retrieves all links associated with a classroom. Requires authentication and membership in the classroom.
      *     security:
      *       - bearerAuth: []
@@ -23,7 +23,7 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Class (room) ID
+     *         description: Class ID
      *     responses:
      *       200:
      *         description: Links retrieved successfully
@@ -97,14 +97,14 @@ module.exports = (router) => {
      *         data:
      *           $ref: '#/components/schemas/LinksData'
      */
-    router.get("/room/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.READ), async (req, res) => {
+    router.get("/class/:id/links", isAuthenticated, hasClassScope(SCOPES.CLASS.LINKS.READ), async (req, res) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
-        req.infoEvent("room.links.view.attempt", "Attempting to view room links", { classId });
+        req.infoEvent("class.links.view.attempt", "Attempting to view class links", { classId });
 
-        const links = await getLinksInRoom(classId);
+        const links = await getClassLinks(classId);
         if (links) {
-            req.infoEvent("room.links.view.success", "Room links returned", { classId, linkCount: links.length });
+            req.infoEvent("class.links.view.success", "Class links returned", { classId, linkCount: links.length });
             res.status(200).json({
                 success: true,
                 data: { links },

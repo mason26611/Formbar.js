@@ -1,5 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES, isRoleAtLeast, LEVEL_TO_ROLE, ROLE_TO_LEVEL } = require("@modules/roles");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -134,13 +135,15 @@ async function isUserInPool(userId, poolId) {
     return !!row;
 }
 
-async function isUserOwner(userId, poolId) {
+/**
+ * Checks whether a specific user is an owner of a pool.
+ * @param {number} poolId - The pool to check.
+ * @param {number} userId - The user to check.
+ * @returns {Promise<boolean>} True if the user is an owner of the pool.
+ */
+async function isPoolOwnedByUser(poolId, userId) {
     const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!(row && row.owner);
-}
-
-async function isPoolOwnedByUser(poolId, userId) {
-    return isUserOwner(userId, poolId);
 }
 
 /**
@@ -149,7 +152,7 @@ async function isPoolOwnedByUser(poolId, userId) {
  * @returns {Promise<boolean>} Whether the requesting user owns the pool
  */
 function poolOwnerCheck(req) {
-    return isUserOwner(req.user.id, Number(req.params.id));
+    return isPoolOwnedByUser(Number(req.params.id), req.user.id);
 }
 
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
@@ -157,7 +160,7 @@ async function addUserToPool(poolId, userId, ownerFlag = 0) {
 }
 
 async function removeUserFromPool(poolId, userId) {
-    if (await isUserOwner(userId, poolId)) {
+    if (await isPoolOwnedByUser(poolId, userId)) {
         const poolUsers = await getUsersForPool(poolId);
         const otherOwners = poolUsers.filter((poolUser) => poolUser.user_id !== userId && poolUser.owner);
         if (otherOwners.length === 0) {
@@ -174,7 +177,7 @@ async function setUserOwnerFlag(poolId, userId, ownerFlag) {
 }
 
 async function addMemberToPool({ actingUserId, poolId, userId }) {
-    if (!Number.isInteger(poolId) || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
@@ -182,7 +185,7 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -203,15 +206,15 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
 }
 
 async function removeMemberFromPool({ actingUserId, poolId, userId }) {
-    if (typeof poolId !== "number" || poolId <= 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    if (typeof userId !== "number" || userId <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -227,11 +230,11 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
 }
 
 async function payoutPool({ actingUserId, poolId }) {
-    if (typeof poolId !== "number" || poolId < 0) {
+    if (!Number.isInteger(poolId) || poolId < 0) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -492,15 +495,15 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient class not found.");
             }
 
-            let classPermissions = 0;
+            let classRole = ROLE_NAMES.GUEST;
             if (classInfo.owner === from) {
-                classPermissions = TEACHER_PERMISSIONS;
+                classRole = ROLE_NAMES.TEACHER;
             } else {
-                const permRow = await dbGet("SELECT permissions FROM classusers WHERE classId = ? AND studentId = ?", [to.id, from]);
-                classPermissions = permRow ? permRow.permissions : 0;
+                const permRow = await dbGet("SELECT role, permissions FROM classusers WHERE classId = ? AND studentId = ?", [to.id, from]);
+                classRole = permRow ? permRow.role || LEVEL_TO_ROLE[permRow.permissions] || ROLE_NAMES.GUEST : ROLE_NAMES.GUEST;
             }
 
-            if (classPermissions < TEACHER_PERMISSIONS && fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(classRole, ROLE_NAMES.TEACHER) && !isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 return fail("Sender does not have permission to award to this class.");
             }
 
@@ -513,7 +516,7 @@ async function awardDigipogs(awardData, user) {
             if (!to.id) {
                 return fail("Missing pool identifier.");
             }
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 return fail("Sender does not have permission to award to pools.");
             }
             const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
@@ -527,11 +530,11 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient account not found.");
             }
 
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (!isRoleAtLeast(getUserRoleName(fromUser), ROLE_NAMES.TEACHER)) {
                 const hasPermission = await dbGet(
                     "SELECT 1 FROM classusers cu1 INNER JOIN classroom c ON c.id = cu1.classId WHERE cu1.studentId = ? AND (cu1.classId IN (SELECT classId FROM classusers cu2 WHERE cu2.studentId = ? AND cu2.permissions >= ?) OR c.owner = ?)",
 
-                    [to.id, from, TEACHER_PERMISSIONS, from]
+                    [to.id, from, ROLE_TO_LEVEL[ROLE_NAMES.TEACHER], from]
                 );
                 if (!hasPermission) {
                     return fail("Sender does not have permission to award to this user.");
@@ -727,7 +730,6 @@ module.exports = {
     getUsersForPool,
     getPoolById,
     isUserInPool,
-    isUserOwner,
     isPoolOwnedByUser,
     poolOwnerCheck,
     addUserToPool,

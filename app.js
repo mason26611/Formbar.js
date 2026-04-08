@@ -155,9 +155,9 @@ function getJSFiles(dir, base = dir) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
         const full = `${dir}/${entry.name}`;
-        if (entry.isDirectory()) {
+        if (entry.isDirectory() && entry.name !== "tests") {
             results = results.concat(getJSFiles(full, base));
-        } else if (entry.isFile() && entry.name.endsWith(".js")) {
+        } else if (entry.isFile() && entry.name.endsWith(".js") && !entry.name.endsWith(".spec.js")) {
             results.push(full.slice(base.length + 1)); // relative path from base folder
         }
     }

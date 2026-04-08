@@ -10,11 +10,12 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { GUEST_PERMISSIONS } = require("@modules/permissions");
+const { getUserRoleName } = require("@modules/scope-resolver");
+const { ROLE_NAMES } = require("@modules/roles");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
-const { deleteRooms } = require("@services/class-service");
+const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -322,7 +323,7 @@ async function regenerateAPIKey(userId) {
     return apiKey;
 }
 
-// ─── User lookup ──────────────────────────────────────────────────────────────
+// User lookup
 
 /**
  * Gets the class id for the given user by checking in-memory classrooms.
@@ -457,7 +458,7 @@ async function getUserOwnedClasses(email) {
     return dbGetAll("SELECT * FROM classroom WHERE owner=?", [userId]);
 }
 
-// ─── Session management ───────────────────────────────────────────────────────
+// Session Management
 
 /**
  * Logs a user out from a specific socket, cleaning up session state.
@@ -487,7 +488,7 @@ function logout(socket) {
                     user.help = false;
                     user.classPermissions = null;
                 }
-                if (user && user.permissions === GUEST_PERMISSIONS) {
+                if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
                     classStateStore.removeUser(email);
                 }
                 if (!classId) return;
@@ -555,7 +556,7 @@ async function deleteUser(userId, userSession) {
                     dbRun("DELETE FROM shared_polls WHERE userId=?", userId),
                 ]);
                 await deleteCustomPolls(userId);
-                await deleteRooms(userId);
+                await deleteClassrooms(userId);
 
                 const student = classStateStore.getUser(user.email);
                 if (student) {
