@@ -219,7 +219,6 @@ describe("oidcOAuth()", () => {
         expect(result.user.email).toBe("oauth@example.com");
         expect(result.user.verified).toBe(1);
         expect(result.user.password).toBeNull();
-        expect(result.tokens).toHaveProperty("legacyToken");
     });
 
     it("links to an existing email/password account instead of creating a duplicate", async () => {

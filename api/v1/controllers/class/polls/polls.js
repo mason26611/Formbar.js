@@ -182,13 +182,13 @@ module.exports = (router) => {
         res.status(200).json({
             success: true,
             data: {
-				polls,
+                polls,
                 pagination: {
-					total,
-					limit,
-					offset,
-					hasMore: offset + polls.length < total,
-				}
+                    total,
+                    limit,
+                    offset,
+                    hasMore: offset + polls.length < total,
+                },
             },
         });
     });

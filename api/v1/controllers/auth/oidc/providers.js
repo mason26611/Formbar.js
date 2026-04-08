@@ -32,9 +32,7 @@ function getRedirectTarget(req, tokens) {
     const hashParams = new URLSearchParams(existingHash);
     hashParams.set("accessToken", tokens.accessToken);
     hashParams.set("refreshToken", tokens.refreshToken);
-    if (tokens.legacyToken) {
-        hashParams.set("legacyToken", tokens.legacyToken);
-    }
+
     redirect.hash = hashParams.toString();
     return redirect.toString();
 }
@@ -67,6 +65,71 @@ function getDisplayNameFromClaims(claims, email) {
     return combinedName || email;
 }
 
+async function handleCallback(req, res) {
+    const provider = req.params.provider;
+    const providerClient = assertProviderSupported(provider);
+    const authSession = req.session?.oidcAuth;
+
+    if (!authSession || authSession.provider !== provider) {
+        throw new ValidationError("Authentication session is invalid or has expired.", {
+            event: "auth.oidc.callback.invalid_session",
+            reason: "missing_session",
+        });
+    }
+
+    const client = await import("openid-client");
+    const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
+    const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
+        pkceCodeVerifier: authSession.codeVerifier,
+        expectedState: authSession.state,
+        expectedNonce: authSession.nonce,
+    });
+
+    delete req.session.oidcAuth;
+
+    let claims = tokens.claims() || {};
+    if ((!claims.email || claims.email_verified === undefined) && tokens.access_token) {
+        const userInfo = await client.fetchUserInfo(providerClient, tokens.access_token, claims.sub || client.skipSubjectCheck);
+        claims = { ...userInfo, ...claims };
+    }
+
+    const email = getEmailFromClaims(provider, claims);
+    if (!email) {
+        throw new ValidationError("Could not retrieve email from OAuth account.", {
+            event: "auth.oidc.callback.no_email",
+            reason: "email_not_found",
+        });
+    }
+
+    const displayName = getDisplayNameFromClaims(claims, email);
+    const result = await authService.oidcOAuth(provider, email, displayName, {
+        emailVerified: claims.email_verified !== false,
+    });
+
+    const { user: userData } = result;
+    if (!classStateStore.getUser(userData.email)) {
+        classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
+    }
+
+    const redirectTarget = getRedirectTarget(req, result.tokens);
+    if (redirectTarget) {
+        req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
+        return res.redirect(redirectTarget);
+    }
+
+    res.status(200).json({
+        success: true,
+        data: {
+            ...result.tokens,
+            user: {
+                id: userData.id,
+                email: userData.email,
+                displayName: userData.displayName,
+            },
+        },
+    });
+}
+
 module.exports = (router) => {
     router.get("/auth/oidc/providers", (req, res) => {
         res.status(200).json({
@@ -93,6 +156,7 @@ module.exports = (router) => {
             state,
             nonce,
         };
+
         if (req.query.origin) {
             req.session.oauthOrigin = String(req.query.origin);
         }
@@ -110,68 +174,6 @@ module.exports = (router) => {
         res.redirect(authUrl.toString());
     });
 
-    router.get("/auth/oidc/:provider/callback", async (req, res) => {
-        const provider = req.params.provider;
-        const providerClient = assertProviderSupported(provider);
-        const authSession = req.session?.oidcAuth;
-
-        if (!authSession || authSession.provider !== provider) {
-            throw new ValidationError("Authentication session is invalid or has expired.", {
-                event: "auth.oidc.callback.invalid_session",
-                reason: "missing_session",
-            });
-        }
-
-        const client = await import("openid-client");
-        const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
-        const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
-            pkceCodeVerifier: authSession.codeVerifier,
-            expectedState: authSession.state,
-            expectedNonce: authSession.nonce,
-        });
-
-        delete req.session.oidcAuth;
-
-        let claims = tokens.claims() || {};
-        if ((!claims.email || claims.email_verified === undefined) && tokens.access_token) {
-            const userInfo = await client.fetchUserInfo(providerClient, tokens.access_token, claims.sub || client.skipSubjectCheck);
-            claims = { ...userInfo, ...claims };
-        }
-
-        const email = getEmailFromClaims(provider, claims);
-        if (!email) {
-            throw new ValidationError("Could not retrieve email from OAuth account.", {
-                event: "auth.oidc.callback.no_email",
-                reason: "email_not_found",
-            });
-        }
-
-        const displayName = getDisplayNameFromClaims(claims, email);
-        const result = await authService.oidcOAuth(provider, email, displayName, {
-            emailVerified: claims.email_verified !== false,
-        });
-
-        const { user: userData } = result;
-        if (!classStateStore.getUser(userData.email)) {
-            classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
-        }
-
-        const redirectTarget = getRedirectTarget(req, result.tokens);
-        if (redirectTarget) {
-            req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
-            return res.redirect(redirectTarget);
-        }
-
-        res.status(200).json({
-            success: true,
-            data: {
-                ...result.tokens,
-                user: {
-                    id: userData.id,
-                    email: userData.email,
-                    displayName: userData.displayName,
-                },
-            },
-        });
-    });
+    router.get("/auth/oidc/callback", handleCallback);
+    router.get("/auth/oidc/:provider/callback", handleCallback);
 };

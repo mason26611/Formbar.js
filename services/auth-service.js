@@ -99,7 +99,6 @@ async function issueAuthTokens(userData) {
 
     return {
         ...tokens,
-        legacyToken: generateLegacyOAuthToken(userData),
     };
 }
 
@@ -247,6 +246,7 @@ function generateAuthTokens(userData) {
             id: userData.id,
             email: userData.email,
             displayName: userData.displayName,
+            permissions: userData.permissions,
         },
         privateKey,
         { algorithm: "RS256", expiresIn: "15m" }
@@ -263,33 +263,6 @@ function generateAuthTokens(userData) {
  */
 function generateRefreshToken(userData) {
     return jwt.sign({ id: userData.id, jti: crypto.randomBytes(16).toString("hex") }, privateKey, { algorithm: "RS256", expiresIn: "30d" });
-}
-
-/**
- * Generates a legacy OAuth token for backwards-compatible third-party apps (e.g. Jukebar).
- *
- * Includes `permissions` in the payload because legacy clients read that field directly
- * from the decoded JWT.  The token is still signed with RS256 so that the
- * backwards-compat socket handler can verify it with `verifyToken()`.
- *
- * @param {Object} userData - The user data object
- * @param {number} userData.id - The user's unique identifier
- * @param {string} userData.email - The user's email address
- * @param {string} userData.displayName - The user's display name
- * @param {number} userData.permissions - The user's permission level
- * @returns {string} A signed JWT valid for 1 hour
- */
-function generateLegacyOAuthToken(userData) {
-    return jwt.sign(
-        {
-            id: userData.id,
-            email: userData.email,
-            displayName: userData.displayName,
-            permissions: userData.permissions,
-        },
-        privateKey,
-        { algorithm: "RS256", expiresIn: "1h" }
-    );
 }
 
 /**
@@ -585,5 +558,4 @@ module.exports = {
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
-    generateLegacyOAuthToken,
 };

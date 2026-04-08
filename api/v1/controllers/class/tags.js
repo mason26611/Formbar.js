@@ -131,7 +131,10 @@ module.exports = (router) => {
     // Deprecated endpoint - kept for backwards compatibility, use PUT /api/v1/class/:id/tags instead
     router.post("/class/:id/tags", isAuthenticated, hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (req, res) => {
         res.setHeader("X-Deprecated", "Use PUT /api/v1/class/:id/tags instead");
-        res.setHeader("Warning", '299 - "Deprecated API: Use PUT /api/v1/class/:id/tags instead. This endpoint will be removed in a future version."');
+        res.setHeader(
+            "Warning",
+            '299 - "Deprecated API: Use PUT /api/v1/class/:id/tags instead. This endpoint will be removed in a future version."'
+        );
         await setTagsHandler(req, res);
     });
 };

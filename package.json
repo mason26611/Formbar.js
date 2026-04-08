@@ -54,8 +54,6 @@
         "node-fetch": "^3.3.2",
         "nodemailer": "^7.0.12",
         "openid-client": "^6.8.2",
-        "passport": "^0.7.0",
-        "passport-google-oauth20": "^2.0.0",
         "prettier": "^3.6.2",
         "querystring": "^0.2.1",
         "socket.io": "^4.5.4",

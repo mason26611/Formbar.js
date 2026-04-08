@@ -1,7 +1,7 @@
 const ValidationError = require("@errors/validation-error");
 
 // Allowed characters (5–20 chars total)
-const PASSWORD_REGEX = /^[a-zA-Z0-9!@#$%^&*()_\-+=\{\}\[\]<>,.:;'" ~?\/\\|]+$/;
+const PASSWORD_REGEX = /^[a-zA-Z0-9!@#$%^&*()_\-+=\{\}\[\]<>,.:;'"~?\/\\|]+$/;
 const MIN_LENGTH = 5;
 const MAX_LENGTH = 20;
 
@@ -34,7 +34,7 @@ function assertValidPassword(password, options = {}) {
 
     const { event = "", reason = "invalid_password" } = options;
 
-    throw new ValidationError("Password must be 5–20 characters long and contain only allowed characters.", { event, reason });
+    throw new ValidationError("Password must be 5-20 characters long and contain only allowed characters.", { event, reason });
 }
 
 module.exports = {

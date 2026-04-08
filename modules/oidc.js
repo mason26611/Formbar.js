@@ -1,4 +1,5 @@
 const NotFoundError = require("@errors/not-found-error");
+const { logEvent, getLogger } = require("@modules/logger");
 
 let openIdClientPromise;
 function getOpenIdClient() {
@@ -41,12 +42,19 @@ async function initializeAvailableProviders() {
     const client = await getOpenIdClient();
     const providers = getAvailableProviders();
     for (const provider of providers) {
-        const issuer = process.env[`${provider.toUpperCase()}_OIDC_ISSUER`];
-        const clientId = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_ID`];
-        const clientSecret = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_SECRET`];
+        try {
+            const issuer = process.env[`${provider.toUpperCase()}_OIDC_ISSUER`];
+            const clientId = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_ID`];
+            const clientSecret = process.env[`${provider.toUpperCase()}_OIDC_CLIENT_SECRET`];
 
-        const config = await client.discovery(new URL(issuer), clientId, clientSecret);
-        clients.set(provider, config);
+            const config = await client.discovery(new URL(issuer), clientId, clientSecret);
+            clients.set(provider, config);
+        } catch (err) {
+            logEvent(getLogger(), "oidc.error", {
+                provider,
+                error: err.message,
+            });
+        }
     }
 }
 
@@ -54,4 +62,5 @@ module.exports = {
     getAvailableProviders,
     initializeAvailableProviders,
     getClient,
+    getOpenIdClient,
 };
