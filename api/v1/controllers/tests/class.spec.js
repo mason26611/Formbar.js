@@ -126,7 +126,7 @@ async function createClassAsTeacher(tokens, name = "Test Class") {
  * Returns the classroom id.
  */
 async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" } = {}) {
-    await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, settings) VALUES (?, ?, ?, ?)", [className, ownerId, key, JSON.stringify({})]);
+    await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", [className, ownerId, key]);
     const row = await mockDatabase.dbGet("SELECT * FROM classroom WHERE key = ?", [key]);
     const classroom = new Classroom({
         id: row.id,
@@ -135,7 +135,6 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
         owner: row.owner,
         permissions: null,
         tags: null,
-        settings: null,
     });
     classStateStore.setClassroom(row.id, classroom);
     return row.id;
@@ -582,39 +581,39 @@ describe("DELETE /api/v1/class/:id", () => {
     });
 });
 
-describe("GET /api/v1/class/tags", () => {
+describe("GET /api/v1/class/:id/tags", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).get("/api/v1/class/tags");
+        const res = await request(app).get("/api/v1/class/1/tags");
         expect(res.status).toBe(401);
     });
 
-    it("returns 404 when user has no active class", async () => {
+    it("returns 404 when class is not loaded", async () => {
         const { tokens } = await seedAuthenticatedUser(mockDatabase);
-        const res = await request(app).get("/api/v1/class/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get("/api/v1/class/9999/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(404);
     });
 
-    it("returns 200 with tags for an active class", async () => {
+    it("returns 200 with tags for a loaded class", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
             permissions: TEACHER_PERMISSIONS,
         });
         const classId = await seedClassroom(user.id);
-        enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
 
         classStateStore.updateUser(user.email, { activeClass: classId });
 
-        const res = await request(app).get("/api/v1/class/tags").set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/tags`).set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data.tags)).toBe(true);
     });
 });
 
-describe("PUT /api/v1/class/tags", () => {
+describe("PUT /api/v1/class/:id/tags", () => {
     it("returns 401 without authentication", async () => {
         const res = await request(app)
-            .put("/api/v1/class/tags")
+            .put("/api/v1/class/1/tags")
             .send({ tags: ["math"] });
         expect(res.status).toBe(401);
     });
@@ -629,7 +628,7 @@ describe("PUT /api/v1/class/tags", () => {
         classStateStore.updateUser(user.email, { activeClass: classId });
 
         const res = await request(app)
-            .put("/api/v1/class/tags")
+            .put(`/api/v1/class/${classId}/tags`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ tags: ["math"] });
         expect(res.status).toBe(403);
@@ -772,7 +771,7 @@ describe("DELETE /api/v1/class/:id/links", () => {
 // Deprecated endpoints (use /class/ paths)
 // ---------------------------------------------------------------------------
 
-describe("POST /api/v1/class/tags (deprecated)", () => {
+describe("POST /api/v1/class/:id/tags (deprecated)", () => {
     it("returns 200 with deprecation headers when a teacher sets tags", async () => {
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher@example.com",
@@ -783,7 +782,7 @@ describe("POST /api/v1/class/tags (deprecated)", () => {
         classStateStore.updateUser(user.email, { activeClass: classId });
 
         const res = await request(app)
-            .post("/api/v1/class/tags")
+            .post(`/api/v1/class/${classId}/tags`)
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ tags: ["science"] });
 

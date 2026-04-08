@@ -48,14 +48,8 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null, settings = null } = {}) {
-    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-        name,
-        owner,
-        key,
-        tags,
-        settings ? JSON.stringify(settings) : null,
-    ]);
+async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null } = {}) {
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", [name, owner, key, tags]);
     return { id, name, owner, key };
 }
 

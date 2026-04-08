@@ -7,7 +7,7 @@ const {
     userUpdateSocket,
     invalidateClassPollCache,
 } = require("@services/socket-updates-service");
-const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
+const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { MANAGER_PERMISSIONS, DEFAULT_CLASS_PERMISSIONS, BANNED_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
@@ -1082,17 +1082,15 @@ function clearVotesFromExcludedStudents(classId) {
 }
 
 /**
- * Updates a single class setting, persists to DB, and broadcasts via socket.
+ * Updates a single class setting in memory and broadcasts via socket.
  * @param {string|number} classId
  * @param {string} setting - The setting key (mute, filter, sort, isExcluded)
  * @param {*} value - The new value for the setting
  */
 async function updateClassSetting(classId, setting, value) {
     requireInternalParam(classId, "classId");
-
-    const validSettings = Object.keys(DEFAULT_CLASS_SETTINGS);
-    if (!validSettings.includes(setting)) {
-        throw new ValidationError(`Invalid setting "${setting}". Valid settings: ${validSettings.join(", ")}`);
+    if (value === undefined) {
+        throw new ValidationError("Value is required.");
     }
 
     const classroom = classStateStore.getClassroom(classId);
@@ -1100,17 +1098,21 @@ async function updateClassSetting(classId, setting, value) {
         throw new NotFoundError("Class not started");
     }
 
-    classStateStore.updateClassroom(classId, (c) => {
-        c.settings[setting] = value;
-    });
+    // When more settings are added, this should be refactored
+    if (setting === "name") {
+        const normalizedName = typeof value === "string" ? value.trim() : value;
+        const validation = validateClassroomName(normalizedName);
+        if (!validation.valid) {
+            throw new ValidationError(validation.error);
+        }
 
-    await dbRun("UPDATE classroom SET settings=? WHERE id=?", [JSON.stringify(classStateStore.getClassroom(classId).settings), classId]);
-
-    if (setting === "isExcluded") {
-        clearVotesFromExcludedStudents(classId);
+        await dbRun("UPDATE classroom SET name = ? WHERE id = ?", [normalizedName, classId]);
+        classStateStore.updateClassroom(classId, { className: normalizedName });
+        broadcastClassUpdate(classId);
+        return;
     }
 
-    broadcastClassUpdate(classId);
+    throw new ValidationError(`Invalid setting ${setting} provided.`);
 }
 
 module.exports = {

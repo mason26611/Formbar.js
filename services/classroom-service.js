@@ -18,21 +18,11 @@ const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { requireInternalParam } = require("@modules/error-wrapper");
 
 const classStateStore = new ClassStateStore();
-const DEFAULT_CLASS_SETTINGS = {
-    mute: false,
-    filter: "",
-    sort: "",
-    isExcluded: {
-        guests: false,
-        mods: true,
-        teachers: true,
-    },
-};
 
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, permissions, tags, settings, customRoles } = {}) {
+    constructor({ id, className, key, owner, permissions, tags, customRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -59,20 +49,12 @@ class Classroom {
         }
 
         this.tags = tags || ["Offline", "Excluded"];
-        this.settings = settings || DEFAULT_CLASS_SETTINGS;
         this.timer = {
             startTime: 0,
             endTime: 0,
             active: false,
             sound: false,
         };
-
-        // Ensure all default settings are present
-        for (const settingKey of Object.keys(DEFAULT_CLASS_SETTINGS)) {
-            if (!this.settings[settingKey]) {
-                this.settings[settingKey] = DEFAULT_CLASS_SETTINGS[settingKey];
-            }
-        }
 
         if (!this.tags.includes("Offline") && Array.isArray(this.tags)) {
             this.tags.push("Offline");
@@ -116,5 +98,4 @@ module.exports = {
     classStateStore,
     getClassroomFromDb,
     getClassIDFromCode,
-    DEFAULT_CLASS_SETTINGS,
 };

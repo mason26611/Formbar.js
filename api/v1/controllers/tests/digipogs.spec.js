@@ -157,7 +157,6 @@ describe("POST /api/v1/digipogs/award", () => {
             owner: teacher.id,
             permissions: null,
             tags: null,
-            settings: null,
         });
         classStateStore.setClassroom(1, classroom);
 

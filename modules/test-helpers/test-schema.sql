@@ -30,14 +30,13 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_type ON refresh_tokens (token_type
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_type ON refresh_tokens (user_id, token_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_token_hash_unique ON refresh_tokens (token_hash);
 
--- Classroom (final state: no permissions column, settings as JSON text)
+-- Classroom (final state: no permissions column, no settings column)
 CREATE TABLE IF NOT EXISTS "classroom" (
     "id"       INTEGER NOT NULL UNIQUE,
     "name"     TEXT    NOT NULL,
     "owner"    INTEGER NOT NULL,
     "key"      INTEGER NOT NULL,
     "tags"     TEXT,
-    "settings" TEXT,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
