@@ -124,6 +124,7 @@ const {
     requestVerificationEmail,
     verifyEmailFromCode,
     resetPassword,
+    updatePassword,
     regenerateAPIKey,
     requestPinReset,
     resetPin,
@@ -303,6 +304,48 @@ describe("resetPassword()", () => {
         expect(row.password.startsWith("$2b$")).toBe(true);
         const matches = await bcrypt.compare("NewPassword1!", row.password);
         expect(matches).toBe(true);
+    });
+
+    it("rejects passwords that do not meet validation requirements", async () => {
+        await seedUser({ secret: "resettoken2" });
+        await expect(resetPassword("bad", "resettoken2")).rejects.toThrow(/Password must be 5-20 characters/i);
+    });
+});
+
+describe("updatePassword()", () => {
+    it("sets a first password when the account does not have one yet", async () => {
+        const seeded = await seedUser({ password: null });
+        const result = await updatePassword(seeded.id, null, "NewPassword1!");
+        expect(result).toBe(true);
+
+        const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
+        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        expect(matches).toBe(true);
+    });
+
+    it("updates an existing password when the old password matches", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await updatePassword(seeded.id, "OldPassword1!", "NewPassword1!");
+
+        const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
+        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        expect(matches).toBe(true);
+    });
+
+    it("requires the current password when one already exists", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await expect(updatePassword(seeded.id, null, "NewPassword1!")).rejects.toThrow(AppError);
+    });
+
+    it("throws AuthError when the current password is incorrect", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await expect(updatePassword(seeded.id, "WrongPassword1!", "NewPassword1!")).rejects.toThrow(AuthError);
     });
 });
 

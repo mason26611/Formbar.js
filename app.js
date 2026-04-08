@@ -24,7 +24,6 @@ const { socketStateStore, INACTIVITY_LIMIT } = require("./sockets/middleware/ina
 const NotFoundError = require("@errors/not-found-error");
 
 const { logout } = require("@services/user-service");
-const { passport } = require("@modules/google-oauth.js");
 const { rateLimiter } = require("@middleware/rate-limiter");
 const { ensureFormbarDeveloperPool } = require("@services/bootstrap-service");
 
@@ -37,6 +36,13 @@ const sessionMiddleware = session({
 
 const errorHandlerMiddleware = require("@middleware/error-handler");
 const requestLoggerMiddleware = require("@middleware/request-logger");
+const { initializeAvailableProviders } = require("@modules/oidc");
+
+// Initialize the available providers for logging into Formbar through OAuth
+initializeAvailableProviders().catch((error) => {
+    console.error("Failed to initialize available OIDC providers during startup.", error);
+    process.exit(1);
+});
 
 // Trust the first proxy (nginx) so that req.ip returns the real client IP
 // from the X-Forwarded-For header instead of nginx's loopback address.
@@ -53,10 +59,6 @@ app.use(rateLimiter);
 
 // Connect session middleware to express
 app.use(sessionMiddleware);
-
-// Initialize passport for Google OAuth
-app.use(passport.initialize());
-app.use(passport.session());
 
 // For further uses on this use this link: https://socket.io/how-to/use-with-express-session
 // Uses a middleware function to successfully transmit data between the user and server
