@@ -165,24 +165,30 @@ module.exports = (router) => {
         req.infoEvent("class.polls.view", "Viewing class polls", { classId });
 
         const limit = parseIntegerQueryParam(req.query.limit, DEFAULT_POLL_LIMIT);
-        const index = parseIntegerQueryParam(req.query.index, 0);
+        const offset = parseIntegerQueryParam(req.query.offset, 0);
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_POLL_LIMIT) {
-            throw new ValidationError(`Invalid limit. Expected an integer between 1 and ${MAX_POLL_LIMIT}.`);
+        if (!Number.isInteger(limit) || limit < 0 || limit > MAX_POLL_LIMIT) {
+            throw new ValidationError(`Invalid limit. Expected an integer between 0 and ${MAX_POLL_LIMIT}.`);
         }
 
-        if (!Number.isInteger(index) || index < 0) {
-            throw new ValidationError("Invalid index. Expected a non-negative integer.");
+        if (!Number.isInteger(offset) || offset < 0) {
+            throw new ValidationError("Invalid offset. Expected a non-negative integer.");
         }
 
-        const polls = await getPreviousPolls(classId, index, limit);
+        const { polls, total } = await getPreviousPolls(classId, offset, limit);
 
-        req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, index });
+        req.infoEvent("class.polls.data_sent", "Poll data sent to client", { classId, pollCount: polls.length, limit, offset });
 
         res.status(200).json({
             success: true,
             data: {
-                polls,
+				polls,
+                pagination: {
+					total,
+					limit,
+					offset,
+					hasMore: offset + polls.length < total,
+				}
             },
         });
     });
