@@ -79,6 +79,8 @@ const addLinkController = require("../class/links/add");
 const changeLinkController = require("../class/links/change");
 const removeLinkController = require("../class/links/remove");
 const bannedController = require("../class/banned");
+const kickController = require("../class/kick");
+const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
@@ -100,7 +102,9 @@ const app = createTestApp(
     addLinkController,
     changeLinkController,
     removeLinkController,
-    bannedController
+    bannedController,
+    kickController,
+    regenerateCodeController
 );
 
 beforeAll(async () => {
@@ -879,5 +883,117 @@ describe("GET /api/v1/class/:id/banned", () => {
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data)).toBe(true);
         expect(res.body.data).toHaveLength(0);
+    });
+});
+
+describe("POST /api/v1/class/:id/students/:userId/kick", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).post("/api/v1/class/1/students/2/kick");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns 200 and removes the student from the class roster", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-kick@example.com",
+            displayName: "Teacher Kick",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "KICK1", className: "Kick Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-kick@example.com",
+            displayName: "Student Kick",
+            permissions: 2,
+        });
+        await enrollUserInClass(student, classId, 2);
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/kick`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const classUser = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, student.id]);
+        expect(classUser).toBeUndefined();
+    });
+});
+
+describe("POST /api/v1/class/:id/students/kick-all", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).post("/api/v1/class/1/students/kick-all");
+        expect(res.status).toBe(401);
+    });
+
+    it("kicks only users without teacher-related scopes", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-kickall@example.com",
+            displayName: "Teacher Kick All",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "KALL1", className: "Kick All Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: teacherScopedStudent } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-scope@example.com",
+            displayName: "Teacher Scoped",
+            permissions: 2,
+        });
+        await enrollUserInClass(teacherScopedStudent, classId, TEACHER_PERMISSIONS);
+
+        const { user: regularStudent } = await seedAuthenticatedUser(mockDatabase, {
+            email: "regular-scope@example.com",
+            displayName: "Regular Student",
+            permissions: 2,
+        });
+        await enrollUserInClass(regularStudent, classId, 2);
+
+        const res = await request(app).post(`/api/v1/class/${classId}/students/kick-all`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const teacherScopedMembership = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [
+            classId,
+            teacherScopedStudent.id,
+        ]);
+        const regularMembership = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [
+            classId,
+            regularStudent.id,
+        ]);
+
+        expect(teacherScopedMembership).toBeDefined();
+        expect(regularMembership).toBeUndefined();
+    });
+});
+
+describe("POST /api/v1/class/:id/code/regenerate", () => {
+    it("returns 401 without authentication", async () => {
+        const res = await request(app).post("/api/v1/class/1/code/regenerate");
+        expect(res.status).toBe(401);
+    });
+
+    it("returns 200 and regenerates the class code", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-regen@example.com",
+            displayName: "Teacher Regen",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "RGN01", className: "Regenerate Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const before = await mockDatabase.dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
+
+        const res = await request(app).post(`/api/v1/class/${classId}/code/regenerate`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(typeof res.body.data.key).toBe("string");
+        expect(res.body.data.key.length).toBe(4);
+
+        const after = await mockDatabase.dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
+        expect(after.key).not.toBe(before.key);
+        expect(after.key).toBe(res.body.data.key);
     });
 });

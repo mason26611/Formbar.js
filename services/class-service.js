@@ -580,16 +580,53 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 /**
  * Kicks all non-teacher students from a class.
  */
-function classKickStudents(classId) {
+async function classKickStudents(classId) {
     try {
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) return;
+
+        const kickOperations = [];
         for (const student of Object.values(classroom.students)) {
-            if (!hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
-                classKickStudent(student.id, classId);
+            if (hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
+                continue;
             }
+
+            kickOperations.push(classKickStudent(student.id, classId));
+        }
+
+        if (kickOperations.length > 0) {
+            await Promise.all(kickOperations);
         }
     } catch (err) {}
+}
+
+/**
+ * Regenerates the classroom join code and updates cache/state.
+ * @param {number|string} classId
+ * @returns {Promise<string>} The new classroom code.
+ */
+async function regenerateClassCode(classId) {
+    requireInternalParam(classId, "classId");
+
+    const classroom = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
+    if (!classroom) {
+        throw new NotFoundError("Classroom not found");
+    }
+
+    const accessCode = generateKey(4);
+    await dbRun("UPDATE classroom SET key=? WHERE id=?", [accessCode, classId]);
+
+    const loadedClassroom = classStateStore.getClassroom(classId);
+    if (loadedClassroom) {
+        classStateStore.updateClassroom(classId, { key: accessCode });
+    }
+
+    if (classroom.key) {
+        classCodeCacheStore.delete(classroom.key);
+    }
+    classCodeCacheStore.set(accessCode, Number(classId));
+
+    return accessCode;
 }
 
 /**
@@ -1108,5 +1145,6 @@ module.exports = {
     pauseTimer,
     clearVotesFromExcludedStudents,
     updateClassSetting,
+    regenerateClassCode,
     broadcastClassUpdate,
 };
