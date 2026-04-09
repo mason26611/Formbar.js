@@ -2,9 +2,29 @@ const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
 const { SOCKET_EVENT_SCOPE_MAP } = require("@modules/permissions");
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
+
+async function getSocketUserData(socket, email) {
+    const cachedUser = classStateStore.getUser(email);
+    if (cachedUser) {
+        return cachedUser;
+    }
+
+    const sessionUserId = socket.request.session?.userId;
+    if (sessionUserId != null) {
+        return getUserDataFromDb(sessionUserId);
+    }
+
+    if (!email) {
+        return null;
+    }
+
+    const userRow = await dbGet("SELECT id FROM users WHERE email=?", [email]);
+    return userRow ? getUserDataFromDb(userRow.id) : null;
+}
 
 module.exports = {
     order: 30,
@@ -13,7 +33,7 @@ module.exports = {
         socket.use(async ([event, ...args], next) => {
             try {
                 const email = socket.request.session.email;
-                let userData = classStateStore.getUser(email);
+                const userData = await getSocketUserData(socket, email);
 
                 // If the classId in the session is different from the user's active class, update it
                 const classId = userData && userData.activeClass != null ? userData.activeClass : socket.request.session.classId;
@@ -33,11 +53,6 @@ module.exports = {
                     return;
                 }
 
-                if (!classStateStore.getUser(email)) {
-                    // Get the user data from the database
-                    userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
-                }
-
                 // Try scope-based check first
                 const requiredScope = SOCKET_EVENT_SCOPE_MAP[event];
                 if (requiredScope !== undefined) {
@@ -54,7 +69,9 @@ module.exports = {
                     // Class scope check
                     if (requiredScope.startsWith("class.") && classId) {
                         const classroom = classStateStore.getClassroom(classId);
-                        const classUser = classroom?.students[email];
+                        const classUser =
+                            classroom?.students[email] ||
+                            (userData && classroom && Number(classroom.owner) === Number(userData.id) ? { ...userData, isClassOwner: true } : null);
                         if (classUser && classUserHasScope(classUser, classroom, requiredScope)) {
                             return next();
                         }

@@ -211,9 +211,9 @@ async function getStudentsInClass(classId) {
 
     // Create student class and return the data
     const students = {};
+    const availableRoles = classStateStore.getClassroom(classId)?.availableRoles || [];
     for (const email in studentsData) {
         const userData = studentsData[email];
-        const classUserRow = studentIdsAndPermissions.find((student) => student.id === userData.id);
         const student = createStudentFromUserData(userData, { isGuest: false });
 
         // Load multi-role assignments from user_roles
@@ -221,7 +221,7 @@ async function getStudentsInClass(classId) {
         const roles = getRoleNames(roleRefs);
         student.classRoleRefs = buildRoleReferences(roleRefs);
         student.classRoles = roles;
-        student.classRole = computePrimaryRole(roles);
+        student.classRole = computePrimaryRole(roleRefs, availableRoles);
 
         students[email] = student;
     }

@@ -1,12 +1,30 @@
 const { dbGetAll, dbGet } = require("@modules/database");
-const { computePermissionLevel } = require("@modules/permissions");
-const { getUserRoleName } = require("@modules/scope-resolver");
 const jwt = require("jsonwebtoken");
 
 const MANAGER_SORTS = {
     name: "LOWER(COALESCE(u.displayName, u.email)) ASC, u.id ASC",
     permission: "perm_level DESC, LOWER(COALESCE(u.displayName, u.email)) ASC, u.id ASC",
 };
+
+const GLOBAL_PERMISSION_LEVEL_SQL = `
+    CASE
+        WHEN COALESCE(SUM(CASE WHEN r.name = 'Banned' THEN 1 ELSE 0 END), 0) > 0 THEN 0
+        ELSE COALESCE(
+            MAX(
+                CASE r.name
+                    WHEN 'Manager' THEN 5
+                    WHEN 'Teacher' THEN 4
+                    WHEN 'Mod' THEN 3
+                    WHEN 'Student' THEN 2
+                    WHEN 'Guest' THEN 1
+                    WHEN 'Banned' THEN 0
+                    ELSE 1
+                END
+            ),
+            1
+        )
+    END
+`;
 
 function normalizeManagerSort(sortBy) {
     if (!sortBy) return "name";
@@ -52,17 +70,7 @@ async function getPendingUsers(search = "", sortBy = "name") {
     // Get unverified users and compute their permission levels from roles
     const unverifiedUsers = await dbGetAll(
         `SELECT u.id, u.email, u.displayName, u.verified,
-                COALESCE(MAX(
-                    CASE r.name
-                        WHEN 'Manager' THEN 5
-                        WHEN 'Teacher' THEN 4
-                        WHEN 'Mod' THEN 3
-                        WHEN 'Student' THEN 2
-                        WHEN 'Guest' THEN 1
-                        WHEN 'Banned' THEN 0
-                        ELSE 1
-                    END
-                ), 1) AS permissions
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS permissions
          FROM users u
          LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
          LEFT JOIN roles r ON ur.roleId = r.id
@@ -137,17 +145,7 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
     const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM users u ${clause}`, params);
     const users = await dbGetAll(
         `SELECT u.id, u.email, u.displayName, u.verified,
-                COALESCE(MAX(
-                    CASE r.name
-                        WHEN 'Manager' THEN 5
-                        WHEN 'Teacher' THEN 4
-                        WHEN 'Mod' THEN 3
-                        WHEN 'Student' THEN 2
-                        WHEN 'Guest' THEN 1
-                        WHEN 'Banned' THEN 0
-                        ELSE 1
-                    END
-                ), 1) AS perm_level
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS perm_level
          FROM users u
          LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
          LEFT JOIN roles r ON ur.roleId = r.id
@@ -173,17 +171,7 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
 async function getManagerData() {
     const users = await dbGetAll(
         `SELECT u.id, u.email, u.displayName, u.verified,
-                COALESCE(MAX(
-                    CASE r.name
-                        WHEN 'Manager' THEN 5
-                        WHEN 'Teacher' THEN 4
-                        WHEN 'Mod' THEN 3
-                        WHEN 'Student' THEN 2
-                        WHEN 'Guest' THEN 1
-                        WHEN 'Banned' THEN 0
-                        ELSE 1
-                    END
-                ), 1) AS permissions
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS permissions
          FROM users u
          LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
          LEFT JOIN roles r ON ur.roleId = r.id

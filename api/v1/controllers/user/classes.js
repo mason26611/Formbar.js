@@ -97,19 +97,25 @@ module.exports = (router) => {
             // Get joined classes and filter out banned users
             let joinedClasses = await getUserJoinedClasses(userId);
 
-            // For each joined class, check if user is banned via user_roles
+            const classRoleRows = joinedClasses.length
+                ? await dbGetAll(
+                      `SELECT ur.classId, r.scopes FROM user_roles ur
+                       JOIN roles r ON ur.roleId = r.id
+                       WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
+                      [userId]
+                  )
+                : [];
+
+            const classRolesByClassId = new Map();
             const bannedClassIds = new Set();
-            if (joinedClasses.length) {
-                const bannedRows = await dbGetAll(
-                    `SELECT ur.classId, r.scopes FROM user_roles ur
-                     JOIN roles r ON ur.roleId = r.id
-                     WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
-                    [userId]
-                );
-                for (const row of bannedRows) {
-                    if (computeClassPermissionLevel(parseStoredScopes(row.scopes)) === 0) {
-                        bannedClassIds.add(row.classId);
-                    }
+            for (const row of classRoleRows) {
+                if (!classRolesByClassId.has(row.classId)) {
+                    classRolesByClassId.set(row.classId, []);
+                }
+                classRolesByClassId.get(row.classId).push(row);
+
+                if (computeClassPermissionLevel(parseStoredScopes(row.scopes)) === 0) {
+                    bannedClassIds.add(row.classId);
                 }
             }
             joinedClasses = joinedClasses.filter((classroom) => !bannedClassIds.has(classroom.id));
@@ -134,13 +140,7 @@ module.exports = (router) => {
             // Add joined classes (mark as not owned unless already in map as owned)
             for (const joinedClass of joinedClasses) {
                 if (!classesMap.has(joinedClass.id)) {
-                    // Get user's class roles to compute permission level
-                    const classRoles = await dbGetAll(
-                        `SELECT r.scopes FROM user_roles ur
-                         JOIN roles r ON ur.roleId = r.id
-                         WHERE ur.userId = ? AND ur.classId = ?`,
-                        [userId, joinedClass.id]
-                    );
+                    const classRoles = classRolesByClassId.get(joinedClass.id) || [];
                     const classScopes = classRoles.flatMap((role) => parseStoredScopes(role.scopes));
                     const permissionLevel = computeClassPermissionLevel(classScopes);
                     classesMap.set(joinedClass.id, {

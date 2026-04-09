@@ -73,6 +73,11 @@ async function seedClassroom(name = "Test Class", ownerId = 1) {
     return { id, name, ownerId, key };
 }
 
+async function addGlobalRole(userId, roleName) {
+    const role = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+    await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
+}
+
 describe("getManagerData()", () => {
     it("returns empty users and classrooms arrays when DB is empty", async () => {
         const result = await getManagerData();
@@ -115,6 +120,16 @@ describe("getManagerData()", () => {
         expect(pendingUser).toBeDefined();
         expect(pendingUser.email).toBe(pendingEmail);
         expect(pendingUser.classPermissions).toBeNull();
+    });
+
+    it("treats banned as overriding other global roles", async () => {
+        const user = await seedUser({ email: "mixed@test.com", displayName: "MixedUser", permissions: 4 });
+        await addGlobalRole(user.id, "Banned");
+
+        const result = await getManagerData();
+        const mixedUser = result.users.find((candidate) => candidate.email === "mixed@test.com");
+
+        expect(mixedUser.permissions).toBe(0);
     });
 });
 
@@ -183,6 +198,17 @@ describe("getManagerDataPaginated()", () => {
         await setGlobalPermissionLevel(mockDatabase, row.id, 5);
         const result = await getManagerDataPaginated({ sortBy: "permission" });
         expect(result.users[0].permissions).toBe(5);
+    });
+
+    it("keeps banned users at permission 0 even if they also have teacher", async () => {
+        const row = await mockDatabase.dbGet("SELECT id FROM users WHERE email = 'user1@test.com'");
+        await setGlobalPermissionLevel(mockDatabase, row.id, 4);
+        await addGlobalRole(row.id, "Banned");
+
+        const result = await getManagerDataPaginated({ sortBy: "permission" });
+        const mixedUser = result.users.find((user) => user.email === "user1@test.com");
+
+        expect(mixedUser.permissions).toBe(0);
     });
 
     it("falls back to name sort for an unknown sortBy value", async () => {

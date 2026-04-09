@@ -88,16 +88,19 @@ module.exports = {
         // 3. Drop users.permissions and users.role via table recreation
         // ---------------------------------------------------------------
         if (hasRole || hasPermissions) {
+            const hasPin = usersColumns.some((col) => col.name === "pin");
+
+            await dbRun(`DROP TABLE IF EXISTS "users_new"`, [], database);
             await dbRun(
-                `CREATE TABLE IF NOT EXISTS "users_new" (
+                `CREATE TABLE "users_new" (
                     "id"          INTEGER NOT NULL UNIQUE,
-                    "username"    TEXT    NOT NULL,
                     "email"       TEXT    NOT NULL UNIQUE,
                     "password"    TEXT,
                     "API"         TEXT    NOT NULL UNIQUE,
                     "secret"      TEXT    NOT NULL UNIQUE,
                     "tags"        TEXT,
                     "digipogs"    INTEGER NOT NULL DEFAULT 0,
+                    "pin"         TEXT    DEFAULT NULL,
                     "displayName" TEXT,
                     "verified"    INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY ("id" AUTOINCREMENT)
@@ -107,8 +110,8 @@ module.exports = {
             );
 
             await dbRun(
-                `INSERT INTO "users_new" ("id", "username", "email", "password", "API", "secret", "tags", "digipogs", "displayName", "verified")
-                 SELECT "id", "username", "email", "password", "API", "secret", "tags", "digipogs", "displayName", "verified"
+                `INSERT INTO "users_new" ("id", "email", "password", "API", "secret", "tags", "digipogs", "pin", "displayName", "verified")
+                 SELECT "id", "email", "password", "API", "secret", "tags", "digipogs", ${hasPin ? '"pin"' : "NULL"}, "displayName", "verified"
                  FROM "users"`,
                 [],
                 database

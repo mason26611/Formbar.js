@@ -36,6 +36,7 @@ const mockUsers = {};
 jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getUser: jest.fn((email) => mockUsers[email] || null),
+        getClassroom: jest.fn(() => null),
         getAllUsers: jest.fn(() => mockUsers),
         setUser: jest.fn((email, u) => {
             mockUsers[email] = u;
@@ -310,6 +311,34 @@ describe("getStudentsInClass()", () => {
         expect(s.id).toBe(user.id);
         expect(s.classRoles).toEqual(["helper"]);
         expect(s.classRole).toBe("helper");
+    });
+
+    it("computes the primary role from full role assignments instead of plain role names", async () => {
+        const user = await seedUser({ email: "multi@test.com" });
+        await seedClassUser(11, user.id);
+
+        const globalStudentRole = await mockDatabase.dbGet("SELECT scopes, color FROM roles WHERE name = 'Student' AND classId IS NULL");
+        const classStudentRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+            "Student",
+            11,
+            globalStudentRole.scopes,
+            globalStudentRole.color,
+        ]);
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+            "Helper",
+            11,
+            JSON.stringify(["class.session.start"]),
+            "#123456",
+        ]);
+
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, classStudentRoleId, 11]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, helperRoleId, 11]);
+
+        const result = await getStudentsInClass(11);
+        const student = result["multi@test.com"];
+
+        expect(student.classRoles).toEqual(expect.arrayContaining(["Student", "Helper"]));
+        expect(student.classRole).toBe("Helper");
     });
 
     it("returns empty object when no students are in the class", async () => {
