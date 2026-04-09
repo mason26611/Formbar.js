@@ -1,4 +1,5 @@
 const { ROLES, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
+const { getRoleName, getRoleNames } = require("@modules/role-reference");
 
 /**
  * Resolves the effective global scopes for a user.
@@ -31,7 +32,7 @@ function resolveUserScopes(user) {
  *
  * @param {Object} classUser - The user's class-specific data (from classroom.students[email])
  * @param {Object} [classroom] - The classroom object (for per-class role overrides and custom roles)
- * @param {string[]} [classUser.classRoles] - Array of assigned role names (multi-role system)
+ * @param {Array<string|{id: number, name: string}>} [classUser.classRoles] - Array of assigned roles (multi-role system)
  * @param {string} [classUser.classRole] - Single role name (backward compat)
  * @returns {string[]} Array of granted class scope strings
  */
@@ -133,14 +134,15 @@ function getUserRoleName(user) {
     if (globalRoles.length > 0) {
         let highest = null;
         let highestLevel = -1;
-        for (const roleName of globalRoles) {
+        for (const role of globalRoles) {
+            const roleName = getRoleName(role);
             const level = ROLE_TO_LEVEL[roleName];
             if (level !== undefined && level > highestLevel) {
                 highest = roleName;
                 highestLevel = level;
             }
         }
-        return highest || globalRoles[0];
+        return highest || getRoleName(globalRoles[0]) || ROLE_NAMES.GUEST;
     }
     if (user.role && ROLES[user.role]) {
         return user.role;
@@ -170,14 +172,15 @@ function getClassRoleName(classUser) {
     if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
         let highest = null;
         let highestLevel = -1;
-        for (const roleName of classUser.classRoles) {
+        for (const role of classUser.classRoles) {
+            const roleName = getRoleName(role);
             const level = ROLE_TO_LEVEL[roleName];
             if (level !== undefined && level > highestLevel) {
                 highest = roleName;
                 highestLevel = level;
             }
         }
-        return highest || classUser.classRoles[0];
+        return highest || getRoleName(classUser.classRoles[0]) || ROLE_NAMES.GUEST;
     }
     if (classUser.classRole) {
         return classUser.classRole;
@@ -204,7 +207,7 @@ function getClassRoleNames(classUser) {
     }
 
     if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        return classUser.classRoles;
+        return getRoleNames(classUser.classRoles);
     }
     if (classUser.classRole) {
         return [classUser.classRole];

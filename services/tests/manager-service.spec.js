@@ -92,6 +92,7 @@ describe("getManagerData()", () => {
         const alpha = result.users.find((u) => u.email === "a@test.com");
         expect(alpha).toBeDefined();
         expect(alpha.permissions).toBe(5);
+        expect(alpha.classPermissions).toBeNull();
     });
 
     it("returns all classrooms", async () => {
@@ -113,6 +114,7 @@ describe("getManagerData()", () => {
         const pendingUser = result.users["secret123"];
         expect(pendingUser).toBeDefined();
         expect(pendingUser.email).toBe(pendingEmail);
+        expect(pendingUser.classPermissions).toBeNull();
     });
 });
 
@@ -130,6 +132,7 @@ describe("getManagerDataPaginated()", () => {
         expect(result).toHaveProperty("totalUsers");
         expect(result).toHaveProperty("classrooms");
         expect(result).toHaveProperty("pendingUsers");
+        expect(result.users[0].classPermissions).toBeNull();
     });
 
     it("returns the correct total count", async () => {

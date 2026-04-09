@@ -152,13 +152,13 @@ describe("getActingUser()", () => {
     it("returns synthetic Manager for class owner not in students map", () => {
         const classroom = { students: {}, owner: 5 };
         const result = getActingUser(classroom, { email: "owner@test.com", id: 5 });
-        expect(result).toEqual({ classRoles: ["Manager"], classRole: "Manager" });
+        expect(result).toEqual({ classRoles: ["Manager"], classRoleRefs: [], classRole: "Manager" });
     });
 
     it("returns synthetic Manager when owner matched by email", () => {
         const classroom = { students: {}, owner: "owner@test.com" };
         const result = getActingUser(classroom, { email: "owner@test.com", id: 5 });
-        expect(result).toEqual({ classRoles: ["Manager"], classRole: "Manager" });
+        expect(result).toEqual({ classRoles: ["Manager"], classRoleRefs: [], classRole: "Manager" });
     });
 
     it("returns null for non-member non-owner", () => {

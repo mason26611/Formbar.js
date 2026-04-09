@@ -3,6 +3,7 @@ const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { computePermissionLevel } = require("@modules/permissions");
+const { ROLE_NAMES } = require("@modules/roles");
 
 module.exports = (router) => {
     /**
@@ -42,14 +43,24 @@ module.exports = (router) => {
 
         let classRoles = [];
         let classScopes = [];
+        let classPermissions = null;
         const liveUser = classStateStore.getUser(req.user.email);
         if (liveUser && liveUser.activeClass) {
             const classroom = classStateStore.getClassroom(liveUser.activeClass);
             const classStudent = classroom?.students?.[req.user.email];
+            const classRoleNames = new Set(classStudent ? getClassRoleNames(classStudent) : []);
+
+            const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
+            if (req.user.id === classroomOwnerId) {
+                classRoleNames.add(ROLE_NAMES.MANAGER);
+            }
+
             if (classStudent) {
-                classRoles = getClassRoleNames(classStudent);
+                classRoles = classStudent.classRoleRefs || [];
                 classScopes = resolveClassScopes(classStudent, classroom);
             }
+
+            classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
         }
 
         res.status(200).json({
@@ -63,6 +74,7 @@ module.exports = (router) => {
                 displayName: req.user.displayName,
                 permissions: computePermissionLevel([globalRole]),
                 classId: req.user.classId,
+                classPermissions,
                 role: globalRole,
                 globalScopes,
                 classRoles,

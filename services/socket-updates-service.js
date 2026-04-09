@@ -349,10 +349,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         key: hasTeacherPermissions ? classData.key : undefined,
         tags: hasTeacherPermissions ? classData.tags : undefined,
         settings: classData.settings,
-        roles:
-            hasTeacherPermissions && classData.customRoles
-                ? Object.entries(classData.customRoles).map(([name, scopes]) => ({ name, scopes }))
-                : undefined,
+        roles: hasTeacherPermissions ? classData.availableRoles || [] : undefined,
         students: hasTeacherPermissions
             ? Object.fromEntries(
                   Object.entries(classData.students).map(([email, student]) => [
@@ -362,7 +359,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           displayName: student.displayName,
                           activeClass: student.activeClass,
                           classRole: student.classRole || null,
-                          classRoles: student.classRoles || [],
+                          classRoles: student.classRoleRefs || [],
                           tags: student.tags,
                           pollRes: student.pollRes,
                           help: student.help,
@@ -381,7 +378,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         result.myTags = student.tags || [];
         result.myId = student.id;
         result.myRole = student.classRole || null;
-        result.myRoles = student.classRoles || [];
+        result.myRoles = student.classRoleRefs || [];
     }
 
     return result;

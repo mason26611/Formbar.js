@@ -31,7 +31,7 @@ const DEFAULT_CLASS_SETTINGS = {
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, tags, settings, customRoles } = {}) {
+    constructor({ id, className, key, owner, tags, settings, customRoles, availableRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -92,6 +92,7 @@ class Classroom {
         }
 
         this.customRoles = customRoles || {};
+        this.availableRoles = Array.isArray(availableRoles) ? availableRoles : [];
     }
 }
 

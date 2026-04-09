@@ -201,6 +201,7 @@ async function getUserDataFromDb(userId) {
         globalRoles,
         role,
         permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+        classPermissions: null,
     };
 }
 
@@ -443,7 +444,7 @@ async function getUser(userIdentifier) {
                 userData.break = cdUser.break;
                 userData.pogMeter = cdUser.pogMeter;
                 userData.classRole = cdUser.classRole || null;
-                userData.classRoles = cdUser.classRoles || [];
+                userData.classRoles = cdUser.classRoleRefs || [];
             }
         }
 

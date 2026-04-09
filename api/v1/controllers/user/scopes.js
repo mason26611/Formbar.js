@@ -91,7 +91,7 @@ module.exports = (router) => {
                 const classroom = classStateStore.getClassroom(liveUser.activeClass);
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
-                    result.classRoles = getClassRoleNames(classStudent);
+                    result.classRoles = classStudent.classRoleRefs || [];
                     result.classScopes = resolveClassScopes(classStudent, classroom);
                 }
             }

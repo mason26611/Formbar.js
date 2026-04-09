@@ -9,6 +9,7 @@ const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { ROLE_NAMES } = require("@modules/roles");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { buildRoleReferences } = require("@modules/role-reference");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -290,8 +291,10 @@ module.exports = {
                 }
 
                 if (classStateStore.getClassroomStudent(classId, email)) {
+                    const bannedRole = classStateStore.getClassroom(classId)?.availableRoles?.find((role) => role.name === ROLE_NAMES.BANNED);
                     classStateStore.updateClassroomStudent(classId, email, {
                         classRoles: [ROLE_NAMES.BANNED],
+                        classRoleRefs: buildRoleReferences([bannedRole]),
                         classRole: ROLE_NAMES.BANNED,
                     });
                 }
@@ -332,6 +335,7 @@ module.exports = {
                 if (classStateStore.getClassroomStudent(classId, email)) {
                     classStateStore.updateClassroomStudent(classId, email, {
                         classRoles: [],
+                        classRoleRefs: [],
                         classRole: null,
                     });
                 }

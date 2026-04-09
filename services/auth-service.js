@@ -1,13 +1,13 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { computePermissionLevel } = require("@modules/permissions");
+const { computePermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
 const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { ROLE_NAMES } = require("@modules/roles");
+const { ROLE_NAMES, LEVEL_TO_ROLE } = require("@modules/roles");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -36,7 +36,36 @@ async function withComputedGlobalRole(userData) {
         globalRoles,
         role,
         permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+        classPermissions: null,
+    };
+}
+
+async function getActiveClassContext(user) {
+    let classRoles = [];
+    let classScopes = [];
+    let classPermissions = null;
+
+    const liveUser = classStateStore.getUser(user.email);
+    if (!liveUser || !liveUser.activeClass) {
+        return { classRoles, classScopes, classPermissions };
     }
+
+    const classroom = classStateStore.getClassroom(liveUser.activeClass);
+    const classStudent = classroom?.students?.[user.email];
+    const classRoleNames = new Set(classStudent ? getClassRoleNames(classStudent) : []);
+    const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
+
+    if (user.id === classroomOwnerId) {
+        classRoleNames.add(ROLE_NAMES.MANAGER);
+    }
+
+    if (classStudent) {
+        classRoles = classStudent.classRoleRefs || [];
+        classScopes = resolveClassScopes(classStudent, classroom);
+    }
+
+    classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
+    return { classRoles, classScopes, classPermissions };
 }
 
 function normalizeEmail(email) {
@@ -94,17 +123,22 @@ async function createUser({ email, password, displayName, verified }) {
 
     const allUsers = await dbGetAll("SELECT * FROM users", []);
     const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
+    const roleName = LEVEL_TO_ROLE[permissions] || ROLE_NAMES.STUDENT;
     const uniqueDisplayName = await getUniqueDisplayName(displayName, email);
 
-    const userId = await dbRun(`INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+    const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
         email,
         password || null,
-        permissions,
         apiKey,
         secret,
         uniqueDisplayName,
         verified ? 1 : 0,
     ]);
+
+    const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+    if (role) {
+        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
+    }
 
     return dbGet("SELECT * FROM users WHERE id = ?", [userId]);
 }
@@ -161,12 +195,14 @@ async function register(email, password, displayName) {
     }
 
     const hashedPassword = await hash(password, 10);
-    const userData = await createUser({
-        email,
-        password: hashedPassword,
-        displayName,
-        verified: 0,
-    });
+    const userData = await withComputedGlobalRole(
+        await createUser({
+            email,
+            password: hashedPassword,
+            displayName,
+            verified: 0,
+        })
+    );
 
     // Generate tokens
     const tokens = await issueAuthTokens(userData);
@@ -233,7 +269,7 @@ async function refreshLogin(refreshToken) {
     }
 
     // Load user data to include email and displayName in the new token
-    const userData = await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]);
+    const userData = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -359,6 +395,7 @@ async function oidcLogin(provider, email, displayName, options = {}) {
         }
     }
 
+    userData = await withComputedGlobalRole(userData);
     return { provider, tokens: await issueAuthTokens(userData), user: userData };
 }
 
@@ -460,17 +497,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
-    let classRoles = [];
-    let classScopes = [];
-    const liveUser = classStateStore.getUser(user.email);
-    if (liveUser && liveUser.activeClass) {
-        const classroom = classStateStore.getClassroom(liveUser.activeClass);
-        const classStudent = classroom?.students?.[user.email];
-        if (classStudent) {
-            classRoles = getClassRoleNames(classStudent);
-            classScopes = resolveClassScopes(classStudent, classroom);
-        }
-    }
+    const { classRoles, classScopes, classPermissions } = await getActiveClassContext(user);
 
     return {
         access_token: accessToken,
@@ -478,6 +505,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         expires_in: 900,
         refresh_token: refreshToken,
         permissions: user.permissions,
+        classPermissions,
         role: user.role,
         scopes: resolveUserScopes(user),
         classRoles,
@@ -533,12 +561,15 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         "oauth",
     ]);
 
+    const { classPermissions } = await getActiveClassContext(user);
+
     return {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: newRefreshToken,
         permissions: user.permissions,
+        classPermissions,
         role: user.role,
         scopes: resolveUserScopes(user),
     };

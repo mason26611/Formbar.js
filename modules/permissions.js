@@ -1,5 +1,6 @@
 const { ROLE_TO_LEVEL, ROLE_NAMES } = require("@modules/roles");
 const { SCOPES, SOCKET_EVENT_SCOPE_MAP } = require("@modules/scopes");
+const { getRoleName } = require("@modules/role-reference");
 
 const BANNED_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.BANNED];
 const GUEST_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.GUEST];
@@ -21,7 +22,8 @@ function computePermissionLevel(roleNames) {
     }
 
     let highest = 0;
-    for (const name of roleNames) {
+    for (const role of roleNames) {
+        const name = getRoleName(role);
         const level = ROLE_TO_LEVEL[name];
         if (level !== undefined && level > highest) {
             highest = level;

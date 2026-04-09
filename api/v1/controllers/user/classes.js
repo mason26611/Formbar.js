@@ -54,6 +54,8 @@ module.exports = (router) => {
      *                         type: boolean
      *                       permissions:
      *                         type: number
+     *                       classPermissions:
+     *                         type: number
      *       404:
      *         description: User not found
      *         content:
@@ -106,6 +108,7 @@ module.exports = (router) => {
                     owner: ownedClass.owner,
                     isOwner: true,
                     permissions: 5,
+                    classPermissions: 5,
                     tags: ownedClass.tags,
                 });
             }
@@ -126,6 +129,7 @@ module.exports = (router) => {
                         name: joinedClass.name,
                         isOwner: false,
                         permissions: computePermissionLevel(roleNames.length ? roleNames : [ROLE_NAMES.GUEST]),
+                        classPermissions: computePermissionLevel(roleNames.length ? roleNames : [ROLE_NAMES.GUEST]),
                     });
                 }
             }

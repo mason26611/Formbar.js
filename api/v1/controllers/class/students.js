@@ -84,9 +84,9 @@ module.exports = (router) => {
             for (const classUser of classUsers) {
                 const studentEntry = Object.values(classroom.students).find((s) => s.id === classUser.id);
                 if (studentEntry) {
-                    classUser.classRoles = studentEntry.classRoles || [];
+                    classUser.classRoles = studentEntry.classRoleRefs || [];
                     classUser.classRole = studentEntry.classRole || null;
-                    classUser.classPermissions = computePermissionLevel(classUser.classRoles);
+                    classUser.classPermissions = computePermissionLevel(studentEntry.classRoles || []);
                 }
             }
 

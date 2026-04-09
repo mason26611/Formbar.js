@@ -42,6 +42,7 @@ function buildPendingUser(decodedData) {
         id: decodedData.newSecret,
         email: decodedData.email,
         permissions: decodedData.permissions || 0,
+        classPermissions: null,
         displayName: decodedData.displayName,
         verified: 0,
     };
@@ -159,6 +160,7 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
     // Map perm_level to permissions for API compat
     for (const user of users) {
         user.permissions = user.perm_level;
+        user.classPermissions = null;
         delete user.perm_level;
     }
 
@@ -192,6 +194,7 @@ async function getManagerData() {
     const existingEmails = new Set(users.map((user) => user.email));
 
     for (const user of users) {
+        user.classPermissions = null;
         if (!user.verified) {
             pendingUserIds.add(String(user.id));
         }
@@ -209,6 +212,7 @@ async function getManagerData() {
             id: decodedData.newSecret,
             email: decodedData.email,
             permissions: decodedData.permissions || 0,
+            classPermissions: null,
             displayName: decodedData.displayName,
             verified: false,
         };
