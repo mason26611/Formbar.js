@@ -1,11 +1,11 @@
 const { classStateStore } = require("@services/classroom-service");
 const { getEmailFromId } = require("@services/student-service");
-const { dbRun, dbGet } = require("@modules/database");
+const { dbRun } = require("@modules/database");
 const { SCOPES } = require("@modules/permissions");
-const { LEVEL_TO_ROLE } = require("@modules/roles");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const ValidationError = require("@errors/validation-error");
 
 module.exports = (router) => {
@@ -81,13 +81,7 @@ module.exports = (router) => {
             throw new ValidationError("Invalid permission value (must be 0-5)");
         }
 
-        // Map numeric level to role name, then assign via user_roles
-        const roleName = LEVEL_TO_ROLE[perm];
-        if (!roleName) {
-            throw new ValidationError("Invalid permission value");
-        }
-
-        const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+        const role = await findRoleByPermissionLevel(perm, null);
         if (role) {
             await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [id]);
             await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [id, role.id]);

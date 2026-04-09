@@ -10,9 +10,8 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
-const { ROLE_NAMES } = require("@modules/roles");
-const { computePermissionLevel } = require("@modules/permissions");
+const { getUserRoleName, resolveUserScopes, resolveClassScopes } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
@@ -187,20 +186,21 @@ async function getUserDataFromDb(userId) {
     }
 
     const roleRows = await dbGetAll(
-        `SELECT r.name
+        `SELECT r.id, r.name, r.scopes
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
          WHERE ur.userId = ? AND ur.classId IS NULL`,
         [userId]
     );
-    const globalRoles = roleRows.map((row) => row.name);
+    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const role = getUserRoleName({ globalRoles });
+    const globalScopes = resolveUserScopes({ globalRoles });
 
     return {
         ...user,
         globalRoles,
         role,
-        permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+        permissions: computeGlobalPermissionLevel(globalScopes),
         classPermissions: null,
     };
 }
@@ -449,12 +449,23 @@ async function getUser(userIdentifier) {
         }
 
         if (classroom) {
-            const classRoleNames = new Set(getClassRoleNames(userData));
             const classroomOwnerId = classroom.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [classId]))?.owner;
-            if (dbUser.id === classroomOwnerId) {
-                classRoleNames.add(ROLE_NAMES.MANAGER);
+            const activeClassUser = classroom.students[dbUser.email];
+            const effectiveClassUser = activeClassUser
+                ? {
+                      ...activeClassUser,
+                      isClassOwner: activeClassUser.isClassOwner === true || dbUser.id === classroomOwnerId,
+                  }
+                : dbUser.id === classroomOwnerId
+                  ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
+                  : null;
+            if (effectiveClassUser) {
+                const classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                userData.classPermissions = computeClassPermissionLevel(classScopes, {
+                    isOwner: Boolean(effectiveClassUser.isClassOwner),
+                    globalScopes: resolveUserScopes(effectiveClassUser),
+                });
             }
-            userData.classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
         }
 
         return userData;
@@ -500,7 +511,7 @@ function logout(socket) {
                     user.break = false;
                     user.help = false;
                 }
-                if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
+                if (user && (user.isGuest || user.permissions === GUEST_PERMISSIONS)) {
                     classStateStore.removeUser(email);
                 }
                 if (!classId) return;

@@ -6,7 +6,7 @@ const { io } = require("@modules/web-server");
 const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
 const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
-const { ROLE_NAMES } = require("@modules/roles");
+const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { buildRoleReferences } = require("@modules/role-reference");
@@ -283,23 +283,29 @@ module.exports = {
                 }
 
                 // Assign the Banned role via user_roles
-                const { ensureDefaultClassRoles, assignStudentRole } = require("@services/role-service");
+                const { ensureDefaultClassRoles, findRoleByPermissionLevel } = require("@services/role-service");
                 await ensureDefaultClassRoles(classId);
                 const userId = await getIdFromEmail(email);
+                const blockedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classId);
                 if (userId) {
-                    await assignStudentRole(classId, userId, ROLE_NAMES.BANNED);
+                    if (blockedRole) {
+                        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
+                        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, blockedRole.id, classId]);
+                    }
                 }
 
                 if (classStateStore.getClassroomStudent(classId, email)) {
-                    const bannedRole = classStateStore.getClassroom(classId)?.availableRoles?.find((role) => role.name === ROLE_NAMES.BANNED);
+                    const bannedRole = blockedRole
+                        ? classStateStore.getClassroom(classId)?.availableRoles?.find((role) => Number(role.id) === Number(blockedRole.id)) || null
+                        : null;
                     classStateStore.updateClassroomStudent(classId, email, {
-                        classRoles: [ROLE_NAMES.BANNED],
-                        classRoleRefs: buildRoleReferences([bannedRole]),
-                        classRole: ROLE_NAMES.BANNED,
+                        classRoles: bannedRole ? [bannedRole.name] : [],
+                        classRoleRefs: bannedRole ? buildRoleReferences([bannedRole]) : [],
+                        classRole: bannedRole ? bannedRole.name : null,
                     });
                 }
 
-                classKickStudent(email, classId);
+                classKickStudent(userId, classId, { exitRoom: true, ban: true });
                 socketUpdates.classBannedUsersUpdate();
                 socketUpdates.classUpdate();
                 socket.emit("message", `Banned ${email}`);

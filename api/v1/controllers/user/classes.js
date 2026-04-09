@@ -2,10 +2,26 @@ const { dbGet, dbGetAll } = require("@modules/database");
 const { getUserOwnedClasses } = require("@services/user-service");
 const { getUserJoinedClasses } = require("@services/class-service");
 const { isSelfOrHasScope } = require("@middleware/permission-check");
-const { SCOPES, computePermissionLevel } = require("@modules/permissions");
-const { ROLE_NAMES } = require("@modules/roles");
+const { SCOPES, computeClassPermissionLevel, MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
+
+function parseStoredScopes(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
 
 module.exports = (router) => {
     /**
@@ -85,13 +101,15 @@ module.exports = (router) => {
             const bannedClassIds = new Set();
             if (joinedClasses.length) {
                 const bannedRows = await dbGetAll(
-                    `SELECT ur.classId FROM user_roles ur
+                    `SELECT ur.classId, r.scopes FROM user_roles ur
                      JOIN roles r ON ur.roleId = r.id
-                     WHERE ur.userId = ? AND r.name = ? AND ur.classId IS NOT NULL`,
-                    [userId, ROLE_NAMES.BANNED]
+                     WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
+                    [userId]
                 );
                 for (const row of bannedRows) {
-                    bannedClassIds.add(row.classId);
+                    if (computeClassPermissionLevel(parseStoredScopes(row.scopes)) === 0) {
+                        bannedClassIds.add(row.classId);
+                    }
                 }
             }
             joinedClasses = joinedClasses.filter((classroom) => !bannedClassIds.has(classroom.id));
@@ -107,8 +125,8 @@ module.exports = (router) => {
                     key: ownedClass.key,
                     owner: ownedClass.owner,
                     isOwner: true,
-                    permissions: 5,
-                    classPermissions: 5,
+                    permissions: MANAGER_PERMISSIONS,
+                    classPermissions: MANAGER_PERMISSIONS,
                     tags: ownedClass.tags,
                 });
             }
@@ -118,18 +136,19 @@ module.exports = (router) => {
                 if (!classesMap.has(joinedClass.id)) {
                     // Get user's class roles to compute permission level
                     const classRoles = await dbGetAll(
-                        `SELECT r.name FROM user_roles ur
+                        `SELECT r.scopes FROM user_roles ur
                          JOIN roles r ON ur.roleId = r.id
                          WHERE ur.userId = ? AND ur.classId = ?`,
                         [userId, joinedClass.id]
                     );
-                    const roleNames = classRoles.map((r) => r.name);
+                    const classScopes = classRoles.flatMap((role) => parseStoredScopes(role.scopes));
+                    const permissionLevel = computeClassPermissionLevel(classScopes);
                     classesMap.set(joinedClass.id, {
                         id: joinedClass.id,
                         name: joinedClass.name,
                         isOwner: false,
-                        permissions: computePermissionLevel(roleNames.length ? roleNames : [ROLE_NAMES.GUEST]),
-                        classPermissions: computePermissionLevel(roleNames.length ? roleNames : [ROLE_NAMES.GUEST]),
+                        permissions: permissionLevel,
+                        classPermissions: permissionLevel,
                     });
                 }
             }

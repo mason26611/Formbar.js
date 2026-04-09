@@ -1,10 +1,10 @@
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet, dbRun } = require("@modules/database");
-const { SCOPES } = require("@modules/permissions");
-const { ROLE_NAMES } = require("@modules/roles");
+const { SCOPES, BANNED_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { managerUpdate } = require("@services/socket-updates-service");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {
@@ -19,7 +19,7 @@ module.exports = (router) => {
 
         // Remove all global roles and assign the Banned role
         await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
-        const bannedRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [ROLE_NAMES.BANNED]);
+        const bannedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, null);
         if (bannedRole) {
             await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, bannedRole.id]);
         }
@@ -46,7 +46,7 @@ module.exports = (router) => {
 
         // Remove Banned role and assign Student role
         await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId IS NULL", [userId]);
-        const studentRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [ROLE_NAMES.STUDENT]);
+        const studentRole = await findRoleByPermissionLevel(STUDENT_PERMISSIONS, null);
         if (studentRole) {
             await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, studentRole.id]);
         }

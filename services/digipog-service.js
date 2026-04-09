@@ -1,6 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { getUserRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
+const { resolveUserScopes } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -91,6 +91,23 @@ function recordAttempt(accountId, success) {
     failedAttempts.set(accountId, userAttempts);
 }
 
+function parseStoredScopes(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
 async function getComputedGlobalUser(userId) {
     const user = await dbGet("SELECT id, email FROM users WHERE id = ?", [userId]);
     if (!user) {
@@ -98,7 +115,7 @@ async function getComputedGlobalUser(userId) {
     }
 
     const roleRows = await dbGetAll(
-        `SELECT r.name
+        `SELECT r.id, r.name, r.scopes
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
          WHERE ur.userId = ? AND ur.classId IS NULL`,
@@ -107,7 +124,7 @@ async function getComputedGlobalUser(userId) {
 
     return {
         ...user,
-        globalRoles: roleRows.map((row) => row.name),
+        globalRoles: roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes })),
     };
 }
 
@@ -499,7 +516,7 @@ async function awardDigipogs(awardData, user) {
         if (!fromUser || !fromUser.email) {
             return fail("Sender account not found.");
         }
-        const senderRole = getUserRoleName(fromUser);
+        const senderPermissionLevel = computeGlobalPermissionLevel(resolveUserScopes(fromUser));
 
         if (to.type === "class") {
             if (to.code) {
@@ -516,30 +533,20 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient class not found.");
             }
 
-            let classRole = ROLE_NAMES.GUEST;
+            let classPermissionLevel = 1;
             if (classInfo.owner === from) {
-                classRole = ROLE_NAMES.TEACHER;
+                classPermissionLevel = TEACHER_PERMISSIONS;
             } else {
-                const roleRow = await dbGet(
-                    `SELECT r.name FROM user_roles ur
+                const roleRows = await dbGetAll(
+                    `SELECT r.scopes FROM user_roles ur
                      JOIN roles r ON ur.roleId = r.id
-                     WHERE ur.userId = ? AND ur.classId = ?
-                     ORDER BY CASE r.name
-                         WHEN 'Manager' THEN 5
-                         WHEN 'Teacher' THEN 4
-                         WHEN 'Mod' THEN 3
-                         WHEN 'Student' THEN 2
-                         WHEN 'Guest' THEN 1
-                         WHEN 'Banned' THEN 0
-                         ELSE 1
-                     END DESC
-                     LIMIT 1`,
+                     WHERE ur.userId = ? AND ur.classId = ?`,
                     [from, to.id]
                 );
-                classRole = roleRow ? roleRow.name : ROLE_NAMES.GUEST;
+                classPermissionLevel = computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
             }
 
-            if (!isRoleAtLeast(classRole, ROLE_NAMES.TEACHER) && !isRoleAtLeast(senderRole, ROLE_NAMES.TEACHER)) {
+            if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
                 return fail("Sender does not have permission to award to this class.");
             }
 
@@ -552,7 +559,7 @@ async function awardDigipogs(awardData, user) {
             if (!to.id) {
                 return fail("Missing pool identifier.");
             }
-            if (!isRoleAtLeast(senderRole, ROLE_NAMES.TEACHER)) {
+            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
                 return fail("Sender does not have permission to award to pools.");
             }
             const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
@@ -566,21 +573,42 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient account not found.");
             }
 
-            if (!isRoleAtLeast(senderRole, ROLE_NAMES.TEACHER)) {
-                const hasPermission = await dbGet(
-                    `SELECT 1 FROM classusers cu1
-                     INNER JOIN classroom c ON c.id = cu1.classId
-                     WHERE cu1.studentId = ?
-                     AND (
-                         cu1.classId IN (
-                             SELECT ur.classId FROM user_roles ur
-                             JOIN roles r ON ur.roleId = r.id
-                             WHERE ur.userId = ? AND r.name IN ('Teacher', 'Manager')
-                         )
-                         OR c.owner = ?
-                     )`,
-                    [to.id, from, from]
+            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
+                const senderRoleRows = await dbGetAll(
+                    `SELECT ur.classId, r.scopes
+                     FROM user_roles ur
+                     JOIN roles r ON ur.roleId = r.id
+                     WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
+                    [from]
                 );
+                const senderClassLevels = new Map();
+                for (const row of senderRoleRows) {
+                    const scopes = parseStoredScopes(row.scopes);
+                    const existingScopes = senderClassLevels.get(row.classId) || [];
+                    senderClassLevels.set(row.classId, existingScopes.concat(scopes));
+                }
+                const teacherClassIds = [...senderClassLevels.entries()]
+                    .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
+                    .map(([classId]) => classId);
+
+                let hasPermission = false;
+                if (teacherClassIds.length > 0) {
+                    const placeholders = teacherClassIds.map(() => "?").join(",");
+                    hasPermission = await dbGet(`SELECT 1 FROM classusers WHERE studentId = ? AND classId IN (${placeholders}) LIMIT 1`, [
+                        to.id,
+                        ...teacherClassIds,
+                    ]);
+                }
+                if (!hasPermission) {
+                    hasPermission = await dbGet(
+                        `SELECT 1 FROM classusers cu1
+                         INNER JOIN classroom c ON c.id = cu1.classId
+                         WHERE cu1.studentId = ?
+                         AND c.owner = ?
+                         LIMIT 1`,
+                        [to.id, from]
+                    );
+                }
                 if (!hasPermission) {
                     return fail("Sender does not have permission to award to this user.");
                 }

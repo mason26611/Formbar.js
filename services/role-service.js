@@ -1,6 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { ROLES, ROLE_NAMES, ROLE_TO_LEVEL, DEFAULT_ROLE_COLORS } = require("@modules/roles");
+const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS } = require("@modules/roles");
+const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { resolveClassScopes, getAllClassScopes } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -30,11 +31,8 @@ function getDefaultClassRoleScopes(roleName) {
 async function ensureDefaultClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
-    const existingRows = await dbGetAll("SELECT name FROM roles WHERE classId = ?", [classId]);
-    const existingNames = new Set(existingRows.map((row) => row.name));
-    const hasAnyDefaultRole = DEFAULT_CLASS_ROLE_NAMES.some((name) => existingNames.has(name));
-
-    if (hasAnyDefaultRole) {
+    const existingRows = await dbGetAll("SELECT id FROM roles WHERE classId = ?", [classId]);
+    if (existingRows.length > 0) {
         return;
     }
 
@@ -92,6 +90,14 @@ function buildRoleResponse(role) {
     };
 }
 
+function getAvailableRoleById(classroom, roleId) {
+    if (!classroom || !Array.isArray(classroom.availableRoles)) {
+        return null;
+    }
+
+    return classroom.availableRoles.find((role) => Number(role.id) === Number(roleId)) || null;
+}
+
 function getAvailableRoleByName(classroom, roleName) {
     if (!classroom || !Array.isArray(classroom.availableRoles)) {
         return null;
@@ -100,9 +106,29 @@ function getAvailableRoleByName(classroom, roleName) {
     return classroom.availableRoles.find((role) => role.name === roleName) || null;
 }
 
+function buildScopesKey(scopes) {
+    return [...new Set(parseStoredScopes(scopes))].sort().join("|");
+}
+
+function getClassRolePermissionLevel(role) {
+    return computeClassPermissionLevel(parseStoredScopes(role.scopes));
+}
+
+function getGlobalRolePermissionLevel(role) {
+    return computeGlobalPermissionLevel(parseStoredScopes(role.scopes));
+}
+
+function isImplicitGuestRole(role) {
+    return (
+        getClassRolePermissionLevel(role) === GUEST_PERMISSIONS &&
+        buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || [])
+    );
+}
+
 /**
  * Resolves a role by ID for a specific class.
- * Accepts class-scoped role IDs and maps legacy global IDs to their class-scoped default role by name.
+ * Accepts class-scoped role IDs and maps legacy global IDs to the closest
+ * class-scoped role by scopes rather than by name.
  * @param {string|number} classId
  * @param {string|number} roleId
  * @returns {Promise<{id: number, name: string, classId: number|null, scopes: string}|null>}
@@ -124,7 +150,14 @@ async function getRoleByIdForClass(classId, roleId) {
         return null;
     }
 
-    return dbGet("SELECT id, name, classId, scopes, color FROM roles WHERE classId = ? AND name = ?", [classId, globalRole.name]);
+    const classRoles = await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId = ?", [classId]);
+    const globalScopesKey = buildScopesKey(globalRole.scopes);
+    const exactMatch = classRoles.find((candidate) => buildScopesKey(candidate.scopes) === globalScopesKey);
+    if (exactMatch) {
+        return exactMatch;
+    }
+
+    return classRoles.find((candidate) => getClassRolePermissionLevel(candidate) === getGlobalRolePermissionLevel(globalRole)) || null;
 }
 
 /**
@@ -139,6 +172,20 @@ async function getClassRoles(classId) {
 
     const rows = await dbGetAll("SELECT id, name, scopes, color FROM roles WHERE classId = ? ORDER BY id", [classId]);
     return rows.map((row) => buildRoleResponse(row));
+}
+
+async function findRoleByPermissionLevel(permissionLevel, classId = null) {
+    if (classId != null) {
+        await ensureDefaultClassRoles(classId);
+    }
+
+    const rows =
+        classId == null
+            ? await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId IS NULL ORDER BY id")
+            : await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId = ? ORDER BY id", [classId]);
+
+    const matcher = classId == null ? getGlobalRolePermissionLevel : getClassRolePermissionLevel;
+    return rows.find((row) => matcher(row) === permissionLevel) || null;
 }
 
 /**
@@ -168,11 +215,11 @@ async function createClassRole(classId, name, scopes, actingClassUser, classroom
     const scopesJson = JSON.stringify(scopes);
     const id = await dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [name, classId, scopesJson, "#808080"]);
 
-    // Update in-memory custom roles
+    // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj) {
         if (!classroomObj.customRoles) classroomObj.customRoles = {};
-        classroomObj.customRoles[name] = scopes;
+        classroomObj.customRoles[id] = [...scopes];
         if (!Array.isArray(classroomObj.availableRoles)) classroomObj.availableRoles = [];
         classroomObj.availableRoles.push(buildRoleResponse({ id, name, scopes, color: "#808080" }));
     }
@@ -230,13 +277,10 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
     const scopesJson = JSON.stringify(newScopes);
     await dbRun("UPDATE roles SET name = ?, scopes = ?, color = ? WHERE id = ?", [newName, scopesJson, newColor, roleId]);
 
-    // Update in-memory custom roles
+    // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj && classroomObj.customRoles) {
-        if (oldName !== newName) {
-            delete classroomObj.customRoles[oldName];
-        }
-        classroomObj.customRoles[newName] = newScopes;
+        classroomObj.customRoles[roleId] = [...newScopes];
     }
 
     if (classroomObj && Array.isArray(classroomObj.availableRoles)) {
@@ -252,9 +296,6 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
     if (oldName !== newName) {
         if (classroomObj) {
             for (const student of Object.values(classroomObj.students)) {
-                if (student.classRole === oldName) {
-                    student.classRole = newName;
-                }
                 // Update multi-role array
                 if (Array.isArray(student.classRoles)) {
                     const idx = student.classRoles.indexOf(oldName);
@@ -268,6 +309,7 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
                         roleRef.name = newName;
                     }
                 }
+                student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
             }
         }
     }
@@ -292,8 +334,6 @@ async function deleteClassRole(roleId, classId) {
         throw new NotFoundError("Role not found in this class.");
     }
 
-    const roleName = role.name;
-
     // Find users affected by this role deletion before removing assignments
     const affectedUsers = await dbGetAll("SELECT DISTINCT ur.userId FROM user_roles ur WHERE ur.roleId = ? AND ur.classId = ?", [roleId, classId]);
 
@@ -315,7 +355,7 @@ async function deleteClassRole(roleId, classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (classroom) {
         if (classroom.customRoles) {
-            delete classroom.customRoles[roleName];
+            delete classroom.customRoles[roleId];
         }
         if (Array.isArray(classroom.availableRoles)) {
             classroom.availableRoles = classroom.availableRoles.filter((availableRole) => Number(availableRole.id) !== Number(roleId));
@@ -323,18 +363,15 @@ async function deleteClassRole(roleId, classId) {
         for (const student of Object.values(classroom.students)) {
             // Remove from multi-role array
             if (Array.isArray(student.classRoles)) {
-                const idx = student.classRoles.indexOf(roleName);
+                const idx = student.classRoles.indexOf(role.name);
                 if (idx !== -1) {
                     student.classRoles.splice(idx, 1);
-                    student.classRole = computePrimaryRole(student.classRoles);
                 }
-            } else if (student.classRole === roleName) {
-                student.classRole = ROLE_NAMES.GUEST;
-                student.classRoles = [];
             }
             if (Array.isArray(student.classRoleRefs)) {
                 student.classRoleRefs = student.classRoleRefs.filter((assignedRole) => Number(assignedRole.id) !== Number(roleId));
             }
+            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroom.availableRoles || []);
         }
     }
 }
@@ -358,9 +395,8 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
     if (!role) {
         throw new ValidationError(`Role "${roleId}" does not exist in this class.`);
     }
-
-    if (role.name === ROLE_NAMES.GUEST) {
-        throw new ValidationError("Guest is an implicit base role and cannot be assigned.");
+    if (isImplicitGuestRole(role)) {
+        throw new ValidationError("The implicit member role cannot be assigned explicitly.");
     }
 
     // Privilege escalation check
@@ -397,7 +433,7 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
             if (!student.classRoleRefs.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
                 student.classRoleRefs.push(buildRoleReference(role));
             }
-            student.classRole = computePrimaryRole(student.classRoles);
+            student.classRole = computePrimaryRole(student.classRoleRefs, classroomObj.availableRoles || []);
         }
     }
 }
@@ -419,9 +455,8 @@ async function removeStudentRole(classId, userId, roleId) {
     if (!role) {
         throw new ValidationError(`Role "${roleId}" does not exist in this class.`);
     }
-
-    if (role.name === ROLE_NAMES.GUEST) {
-        throw new ValidationError("Guest is an implicit base role and cannot be removed.");
+    if (isImplicitGuestRole(role)) {
+        throw new ValidationError("The implicit member role cannot be removed explicitly.");
     }
 
     // Check the assignment exists
@@ -446,7 +481,7 @@ async function removeStudentRole(classId, userId, roleId) {
             if (Array.isArray(student.classRoleRefs)) {
                 student.classRoleRefs = student.classRoleRefs.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
             }
-            student.classRole = computePrimaryRole(student.classRoles || []);
+            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
         }
     }
 }
@@ -548,10 +583,10 @@ async function assignStudentRole(classId, userId, roleName) {
 async function loadCustomRoles(classId) {
     await ensureDefaultClassRoles(classId);
 
-    const rows = await dbGetAll("SELECT name, scopes FROM roles WHERE classId = ?", [classId]);
+    const rows = await dbGetAll("SELECT id, scopes FROM roles WHERE classId = ?", [classId]);
     const customRoles = {};
     for (const row of rows) {
-        customRoles[row.name] = parseStoredScopes(row.scopes);
+        customRoles[row.id] = parseStoredScopes(row.scopes);
     }
     return customRoles;
 }
@@ -606,15 +641,12 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
  * Ensures the acting user isn't assigning a role whose scopes exceed their own.
  */
 function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) {
-    // Get the scopes the role would grant
-    const roleName = role.name;
     const roleScopes = buildRoleResponse(role).scopes;
 
-    // Also check hierarchy: can't assign a built-in role at or above your own level
-    const actorLevel = getActorLevel(actingClassUser);
-    const roleLevel = ROLE_TO_LEVEL[roleName];
-    if (roleLevel !== undefined && roleLevel >= actorLevel) {
-        throw new ForbiddenError(`Cannot assign the "${roleName}" role — it is at or above your level.`);
+    const actorLevel = getActorLevel(actingClassUser, classroom);
+    const roleLevel = computeClassPermissionLevel(roleScopes);
+    if (roleLevel >= actorLevel) {
+        throw new ForbiddenError(`Cannot assign the "${role.name}" role — it is at or above your level.`);
     }
 
     validateNoPrivilegeEscalation(roleScopes, actingClassUser, classroom);
@@ -625,19 +657,12 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
  * @param {Object} classUser - The class user object.
  * @returns {number} The highest hierarchy level (0=Banned, 1=Guest, 2=Student, 3=Mod, 4=Teacher, 5=Manager).
  */
-function getActorLevel(classUser) {
-    if (!classUser) return 0;
-
-    // Get the highest role a user has
-    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        let highest = 0;
-        for (const role of classUser.classRoles) {
-            highest = Math.max(highest, ROLE_TO_LEVEL[role] ?? 0);
-        }
-        return highest;
-    }
-
-    return ROLE_TO_LEVEL[ROLE_NAMES.GUEST] ?? 0;
+function getActorLevel(classUser, classroom) {
+    if (!classUser) return GUEST_PERMISSIONS;
+    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+        isOwner: Boolean(classUser.isClassOwner),
+        globalScopes: classUser.globalRoles || [],
+    });
 }
 
 /**
@@ -664,9 +689,13 @@ function getActingUser(classroom, reqUser) {
 
     if (classroom.owner === reqUser.id || classroom.owner === reqUser.email) {
         return {
-            classRoles: ["Manager"],
-            classRoleRefs: buildRoleReferences([getAvailableRoleByName(classroom, ROLE_NAMES.MANAGER)]),
-            classRole: "Manager",
+            id: reqUser.id,
+            email: reqUser.email,
+            globalRoles: reqUser.globalRoles || [],
+            classRoles: [],
+            classRoleRefs: [],
+            classRole: null,
+            isClassOwner: true,
         };
     }
     return null;
@@ -684,6 +713,7 @@ module.exports = {
     assignStudentRole,
     loadCustomRoles,
     getActingUser,
+    findRoleByPermissionLevel,
     BUILT_IN_ROLE_NAMES,
     ensureDefaultClassRoles,
 };

@@ -16,10 +16,17 @@ const SCOPES = {
         },
         SYSTEM: {
             ADMIN: "global.system.admin",
+            MODERATE: "global.system.moderate",
+            BLOCKED: "global.system.blocked",
         },
     },
 
     CLASS: {
+        SYSTEM: {
+            ADMIN: "class.system.admin",
+            BLOCKED: "class.system.blocked",
+        },
+
         POLL: {
             READ: "class.poll.read",
             VOTE: "class.poll.vote",

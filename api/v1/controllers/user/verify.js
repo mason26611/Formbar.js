@@ -1,11 +1,11 @@
 const { dbRun, dbGetAll, dbGet } = require("@modules/database");
 const { settings, frontendUrl } = require("@modules/config");
-const { SCOPES } = require("@modules/permissions");
-const { ROLE_NAMES } = require("@modules/roles");
+const { SCOPES, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { hasScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const userService = require("@services/user-service");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -232,8 +232,10 @@ module.exports = (router) => {
         // Assign global role based on what was stored in the temp data
         const newUser = await dbGet("SELECT id FROM users WHERE email = ?", [tempUser.email]);
         if (newUser) {
-            const roleName = tempUser.permissions === 5 ? ROLE_NAMES.MANAGER : ROLE_NAMES.STUDENT;
-            const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+            const role = await findRoleByPermissionLevel(
+                tempUser.permissions === MANAGER_PERMISSIONS ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS,
+                null
+            );
             if (role) {
                 await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [newUser.id, role.id]);
             }

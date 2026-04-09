@@ -1,9 +1,8 @@
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES, computePermissionLevel } = require("@modules/permissions");
-const { getUserRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES } = require("@modules/roles");
+const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
+const { resolveClassScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -86,18 +85,21 @@ module.exports = (router) => {
                 if (studentEntry) {
                     classUser.classRoles = studentEntry.classRoleRefs || [];
                     classUser.classRole = studentEntry.classRole || null;
-                    classUser.classPermissions = computePermissionLevel(studentEntry.classRoles || []);
+                    classUser.classPermissions = computeClassPermissionLevel(resolveClassScopes(studentEntry, classroom), {
+                        isOwner: Boolean(studentEntry.isClassOwner),
+                        globalScopes: studentEntry.globalRoles || [],
+                    });
                 }
             }
 
             for (const [, studentInfo] of Object.entries(classroom.students)) {
-                if (getUserRoleName(studentInfo) === ROLE_NAMES.GUEST && !classUsers.find((user) => user.id === studentInfo.id)) {
+                if (studentInfo.isGuest && !classUsers.find((user) => user.id === studentInfo.id)) {
                     classUsers.push({
                         id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
                         classRoles: [],
                         classRole: null,
-                        classPermissions: computePermissionLevel([]),
+                        classPermissions: computeClassPermissionLevel(resolveClassScopes(studentInfo, classroom)),
                     });
                 }
             }

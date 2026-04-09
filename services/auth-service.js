@@ -1,13 +1,13 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { computePermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { ROLE_NAMES, LEVEL_TO_ROLE } = require("@modules/roles");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -22,20 +22,21 @@ async function withComputedGlobalRole(userData) {
     }
 
     const roleRows = await dbGetAll(
-        `SELECT r.name
+        `SELECT r.id, r.name, r.scopes
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
          WHERE ur.userId = ? AND ur.classId IS NULL`,
         [userData.id]
     );
-    const globalRoles = roleRows.map((row) => row.name);
+    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const role = getUserRoleName({ globalRoles });
+    const globalScopes = resolveUserScopes({ globalRoles });
 
     return {
         ...userData,
         globalRoles,
         role,
-        permissions: computePermissionLevel(globalRoles.length ? globalRoles : [ROLE_NAMES.GUEST]),
+        permissions: computeGlobalPermissionLevel(globalScopes),
         classPermissions: null,
     };
 }
@@ -52,19 +53,28 @@ async function getActiveClassContext(user) {
 
     const classroom = classStateStore.getClassroom(liveUser.activeClass);
     const classStudent = classroom?.students?.[user.email];
-    const classRoleNames = new Set(classStudent ? getClassRoleNames(classStudent) : []);
     const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
-
-    if (user.id === classroomOwnerId) {
-        classRoleNames.add(ROLE_NAMES.MANAGER);
-    }
+    const effectiveClassUser = classStudent
+        ? {
+              ...classStudent,
+              isClassOwner: classStudent.isClassOwner === true || user.id === classroomOwnerId,
+          }
+        : user.id === classroomOwnerId
+          ? { id: user.id, email: user.email, globalRoles: user.globalRoles || [], isClassOwner: true }
+          : null;
 
     if (classStudent) {
         classRoles = classStudent.classRoleRefs || [];
-        classScopes = resolveClassScopes(classStudent, classroom);
     }
 
-    classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
+    if (effectiveClassUser) {
+        classScopes = resolveClassScopes(effectiveClassUser, classroom);
+        classPermissions = computeClassPermissionLevel(classScopes, {
+            isOwner: Boolean(effectiveClassUser.isClassOwner),
+            globalScopes: resolveUserScopes(effectiveClassUser),
+        });
+    }
+
     return { classRoles, classScopes, classPermissions };
 }
 
@@ -123,7 +133,6 @@ async function createUser({ email, password, displayName, verified }) {
 
     const allUsers = await dbGetAll("SELECT * FROM users", []);
     const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
-    const roleName = LEVEL_TO_ROLE[permissions] || ROLE_NAMES.STUDENT;
     const uniqueDisplayName = await getUniqueDisplayName(displayName, email);
 
     const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
@@ -135,7 +144,7 @@ async function createUser({ email, password, displayName, verified }) {
         verified ? 1 : 0,
     ]);
 
-    const role = await dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+    const role = await findRoleByPermissionLevel(permissions, null);
     if (role) {
         await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
     }

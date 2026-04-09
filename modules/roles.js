@@ -19,8 +19,8 @@ const DEFAULT_ROLE_COLORS = {
 };
 
 const DEFAULT_BANNED_SCOPES = {
-    global: [],
-    class: [],
+    global: [SCOPES.GLOBAL.SYSTEM.BLOCKED],
+    class: [SCOPES.CLASS.SYSTEM.BLOCKED],
 };
 
 const DEFAULT_GUEST_SCOPES = {
@@ -34,7 +34,7 @@ const DEFAULT_STUDENT_SCOPES = {
 };
 
 const DEFAULT_MOD_SCOPES = {
-    global: [...DEFAULT_STUDENT_SCOPES.global],
+    global: [SCOPES.GLOBAL.SYSTEM.MODERATE, ...DEFAULT_STUDENT_SCOPES.global],
     class: [
         SCOPES.CLASS.POLL.CREATE,
         SCOPES.CLASS.POLL.END,
@@ -77,7 +77,7 @@ const DEFAULT_TEACHER_SCOPES = {
 
 const DEFAULT_MANAGER_SCOPES = {
     global: [SCOPES.GLOBAL.SYSTEM.ADMIN, SCOPES.GLOBAL.USERS.MANAGE, ...DEFAULT_TEACHER_SCOPES.global],
-    class: [...DEFAULT_TEACHER_SCOPES.class],
+    class: [SCOPES.CLASS.SYSTEM.ADMIN, ...DEFAULT_TEACHER_SCOPES.class],
 };
 
 // Maps role names to their default scope sets

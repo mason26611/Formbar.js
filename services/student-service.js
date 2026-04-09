@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGet, dbGetAll } = require("@modules/database");
-const { ROLE_TO_LEVEL, ROLE_NAMES } = require("@modules/roles");
-const { buildRoleReferences, getRoleNames } = require("@modules/role-reference");
+const { computeClassPermissionLevel, getScopesFromRoleLike } = require("@modules/permissions");
+const { buildRoleReferences, getRoleName, getRoleNames } = require("@modules/role-reference");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
@@ -191,7 +191,7 @@ async function getStudentsInClass(classId) {
 
     // Batch-load all role assignments for this class from user_roles
     const roleAssignments = await dbGetAll(
-        `SELECT ur.userId, r.id AS roleId, r.name AS roleName
+        `SELECT ur.userId, r.id AS roleId, r.name AS roleName, r.scopes AS roleScopes
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
          WHERE ur.classId = ?`,
@@ -205,6 +205,7 @@ async function getStudentsInClass(classId) {
         rolesByUserId[row.userId].push({
             id: row.roleId,
             name: row.roleName,
+            scopes: row.roleScopes,
         });
     }
 
@@ -280,21 +281,24 @@ async function getEmailFromId(userId) {
  * @param {Array<string|{id: number, name: string}>} roles
  * @returns {string|null}
  */
-function computePrimaryRole(roles) {
+function computePrimaryRole(roles, availableRoles = []) {
     if (!roles || roles.length === 0) return null;
 
     let highest = null;
     let highestLevel = -1;
 
     const customRoles = [];
-    for (const roleName of getRoleNames(roles)) {
-        const level = ROLE_TO_LEVEL[roleName];
-        if (level !== undefined) {
-            if (level > highestLevel) {
-                highest = roleName;
-                highestLevel = level;
-            }
-        } else if (roleName) {
+    for (const role of roles) {
+        const roleName = getRoleName(role);
+        if (!roleName) {
+            continue;
+        }
+
+        const level = computeClassPermissionLevel(getScopesFromRoleLike(role, "class", { availableRoles }));
+        if (level > highestLevel) {
+            highest = roleName;
+            highestLevel = level;
+        } else if (level === 1) {
             customRoles.push(roleName);
         }
     }

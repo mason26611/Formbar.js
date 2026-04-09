@@ -1,9 +1,8 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
-const { computePermissionLevel } = require("@modules/permissions");
-const { ROLE_NAMES } = require("@modules/roles");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
 module.exports = (router) => {
     /**
@@ -48,19 +47,27 @@ module.exports = (router) => {
         if (liveUser && liveUser.activeClass) {
             const classroom = classStateStore.getClassroom(liveUser.activeClass);
             const classStudent = classroom?.students?.[req.user.email];
-            const classRoleNames = new Set(classStudent ? getClassRoleNames(classStudent) : []);
-
             const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
-            if (req.user.id === classroomOwnerId) {
-                classRoleNames.add(ROLE_NAMES.MANAGER);
-            }
+            const effectiveClassUser = classStudent
+                ? {
+                      ...classStudent,
+                      isClassOwner: classStudent.isClassOwner === true || req.user.id === classroomOwnerId,
+                  }
+                : req.user.id === classroomOwnerId
+                  ? { id: req.user.id, email: req.user.email, globalRoles: req.user.globalRoles || [], isClassOwner: true }
+                  : null;
 
             if (classStudent) {
                 classRoles = classStudent.classRoleRefs || [];
-                classScopes = resolveClassScopes(classStudent, classroom);
             }
 
-            classPermissions = computePermissionLevel(classRoleNames.size ? [...classRoleNames] : [ROLE_NAMES.GUEST]);
+            if (effectiveClassUser) {
+                classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                classPermissions = computeClassPermissionLevel(classScopes, {
+                    isOwner: Boolean(effectiveClassUser.isClassOwner),
+                    globalScopes: resolveUserScopes(effectiveClassUser),
+                });
+            }
         }
 
         res.status(200).json({
@@ -72,7 +79,7 @@ module.exports = (router) => {
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,
                 displayName: req.user.displayName,
-                permissions: computePermissionLevel([globalRole]),
+                permissions: computeGlobalPermissionLevel(globalScopes),
                 classId: req.user.classId,
                 classPermissions,
                 role: globalRole,
