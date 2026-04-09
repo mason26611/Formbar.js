@@ -926,6 +926,23 @@ describe("POST /api/v1/class/:id/students/kick-all", () => {
         expect(res.status).toBe(401);
     });
 
+    it("supports the compatibility route with userId in the path", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-kickall-compat@example.com",
+            displayName: "KickCompat",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "KALC1", className: "Kick All Compat Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${teacher.id}/kick-all`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
     it("kicks only users without teacher-related scopes", async () => {
         const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
             email: "teacher-kickall@example.com",
