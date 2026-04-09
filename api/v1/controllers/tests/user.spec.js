@@ -1,6 +1,8 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
-const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+const { classStateStore } = require("@services/classroom-service");
+const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 
 let mockDatabase;
 
@@ -171,6 +173,34 @@ describe("GET /api/v1/user/me", () => {
         });
     });
 
+    it("returns classPermissions for the authenticated user's active class", async () => {
+        const { tokens, user } = await seedStudent();
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Test Class", user.id + 1000, "test-key"]);
+        const classroom = await mockDatabase.dbGet("SELECT id, owner FROM classroom WHERE name = ?", ["Test Class"]);
+        await seedClassMembership(mockDatabase, user.id, classroom.id, 4);
+
+        const student = classStateStore.getUser(user.email);
+        student.activeClass = classroom.id;
+
+        classStateStore.setClassroom(classroom.id, {
+            id: classroom.id,
+            owner: classroom.owner,
+            students: {
+                [user.email]: {
+                    email: user.email,
+                    classRole: "Teacher",
+                    classRoles: ["Teacher"],
+                },
+            },
+        });
+
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.classPermissions).toBe(4);
+    });
+
     it("returns 401 without auth", async () => {
         const res = await request(app).get("/api/v1/user/me");
 
@@ -189,9 +219,14 @@ describe("PATCH /api/v1/user/:id/ban", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        // Verify the user's permissions are now 0 (banned)
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(0);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Banned");
     });
 
     it("returns 404 when banning a non-existent user", async () => {
@@ -228,17 +263,21 @@ describe("PATCH /api/v1/user/:id/unban", () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
 
-        // Ban first
-        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
 
         const res = await request(app).patch(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        // Verify permissions restored to STUDENT_PERMISSIONS (2)
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(2);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Student");
     });
 
     it("returns 404 when unbanning a non-existent user", async () => {
@@ -318,8 +357,14 @@ describe("PATCH /api/v1/user/:id/perm", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        const row = await mockDatabase.dbGet("SELECT permissions FROM users WHERE id = ?", [target.id]);
-        expect(row.permissions).toBe(4);
+        const row = await mockDatabase.dbGet(
+            `SELECT r.name
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ? AND ur.classId IS NULL`,
+            [target.id]
+        );
+        expect(row.name).toBe("Teacher");
     });
 
     it("returns 400 when perm value is invalid", async () => {
@@ -380,7 +425,7 @@ describe("GET /api/v1/user/:id/unban (deprecated)", () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
 
-        await mockDatabase.dbRun("UPDATE users SET permissions = 0 WHERE id = ?", [target.id]);
+        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
 
         const res = await request(app).get(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
 
@@ -414,6 +459,28 @@ describe("GET /api/v1/user/:id/classes", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data)).toBe(true);
+    });
+
+    it("returns classPermissions on joined class entries", async () => {
+        const { tokens, user } = await seedStudent();
+        const ownerId = user.id + 1000;
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Joined Class", ownerId, 5678]);
+        const classroom = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = ?", ["Joined Class"]);
+        await seedClassMembership(mockDatabase, user.id, classroom.id, 3);
+
+        const res = await request(app).get(`/api/v1/user/${user.id}/classes`).set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: classroom.id,
+                    permissions: 3,
+                    classPermissions: 3,
+                }),
+            ])
+        );
     });
 
     it("returns 200 when a manager views another user's classes", async () => {
@@ -465,7 +532,7 @@ describe("GET /api/v1/user/:id/scopes", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toHaveProperty("role");
         expect(res.body.data).toHaveProperty("globalScopes");
-        expect(res.body.data).toHaveProperty("classRole");
+        expect(res.body.data).toHaveProperty("classRoles");
         expect(res.body.data).toHaveProperty("classScopes");
     });
 

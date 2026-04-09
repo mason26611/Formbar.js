@@ -1,5 +1,8 @@
 const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
+const { classStateStore } = require("@services/classroom-service");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
 module.exports = (router) => {
     /**
@@ -9,7 +12,9 @@ module.exports = (router) => {
      *     summary: Get current user information
      *     tags:
      *       - Users
-     *     description: Returns information about the currently authenticated user based on their session.
+     *     description: |
+     *       Returns information about the currently authenticated user, including
+     *       their resolved global/class scopes and roles.
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -27,11 +32,44 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Gets the current user's information
     router.get("/user/me", isAuthenticated, async (req, res) => {
         req.infoEvent("user.me.view", "Fetching user information");
 
         const { digipogs } = await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]);
+
+        const globalRole = getUserRoleName(req.user);
+        const globalScopes = resolveUserScopes(req.user);
+
+        let classRoles = [];
+        let classScopes = [];
+        let classPermissions = null;
+        const liveUser = classStateStore.getUser(req.user.email);
+        if (liveUser && liveUser.activeClass) {
+            const classroom = classStateStore.getClassroom(liveUser.activeClass);
+            const classStudent = classroom?.students?.[req.user.email];
+            const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
+            const effectiveClassUser = classStudent
+                ? {
+                      ...classStudent,
+                      isClassOwner: classStudent.isClassOwner === true || req.user.id === classroomOwnerId,
+                  }
+                : req.user.id === classroomOwnerId
+                  ? { id: req.user.id, email: req.user.email, globalRoles: req.user.globalRoles || [], isClassOwner: true }
+                  : null;
+
+            if (classStudent) {
+                classRoles = classStudent.classRoleRefs || [];
+            }
+
+            if (effectiveClassUser) {
+                classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                classPermissions = computeClassPermissionLevel(classScopes, {
+                    isOwner: Boolean(effectiveClassUser.isClassOwner),
+                    globalScopes: resolveUserScopes(effectiveClassUser),
+                });
+            }
+        }
+
         res.status(200).json({
             success: true,
             data: {
@@ -41,9 +79,13 @@ module.exports = (router) => {
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,
                 displayName: req.user.displayName,
-                permissions: req.user.permissions,
+                permissions: computeGlobalPermissionLevel(globalScopes),
                 classId: req.user.classId,
-                classPermissions: req.user.classPermissions,
+                classPermissions,
+                role: globalRole,
+                globalScopes,
+                classRoles,
+                classScopes,
             },
         });
     });

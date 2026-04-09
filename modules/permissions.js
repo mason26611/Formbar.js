@@ -1,261 +1,206 @@
-// Permissions range from highest to lowest
-const MANAGER_PERMISSIONS = 5;
-const TEACHER_PERMISSIONS = 4;
-const MOD_PERMISSIONS = 3;
-const STUDENT_PERMISSIONS = 2;
-const GUEST_PERMISSIONS = 1;
-const BANNED_PERMISSIONS = 0;
+const { ROLE_TO_LEVEL, ROLE_NAMES, ROLES } = require("@modules/roles");
+const { SCOPES, SOCKET_EVENT_SCOPE_MAP } = require("@modules/scopes");
+const { getRoleId, getRoleName } = require("@modules/role-reference");
 
-const SCOPES = {
-    GLOBAL: {
-        CLASS: {
-            CREATE: "global.class.create",
-            DELETE: "global.class.delete",
-        },
-        USERS: {
-            MANAGE: "global.users.manage",
-        },
-        DIGIPOGS: {
-            AWARD: "global.digipogs.award",
-            TRANSFER: "global.digipogs.transfer",
-        },
-        POOLS: {
-            MANAGE: "global.pools.manage",
-        },
-        SYSTEM: {
-            ADMIN: "global.system.admin",
-        },
-    },
+const BANNED_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.BANNED];
+const GUEST_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.GUEST];
+const STUDENT_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.STUDENT];
+const MOD_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.MOD];
+const TEACHER_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.TEACHER];
+const MANAGER_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.MANAGER];
 
-    CLASS: {
-        POLL: {
-            READ: "class.poll.read",
-            VOTE: "class.poll.vote",
-            CREATE: "class.poll.create",
-            END: "class.poll.end",
-            DELETE: "class.poll.delete",
-            SHARE: "class.poll.share",
-        },
+const GLOBAL_STUDENT_SCOPES = [SCOPES.GLOBAL.POOLS.MANAGE, SCOPES.GLOBAL.DIGIPOGS.TRANSFER];
+const GLOBAL_MOD_SCOPES = [SCOPES.GLOBAL.SYSTEM.MODERATE];
+const GLOBAL_TEACHER_SCOPES = [SCOPES.GLOBAL.CLASS.CREATE, SCOPES.GLOBAL.CLASS.DELETE, SCOPES.GLOBAL.DIGIPOGS.AWARD];
+const GLOBAL_MANAGER_SCOPES = [SCOPES.GLOBAL.SYSTEM.ADMIN, SCOPES.GLOBAL.USERS.MANAGE];
+const GLOBAL_BLOCKED_SCOPES = [SCOPES.GLOBAL.SYSTEM.BLOCKED];
 
-        STUDENTS: {
-            READ: "class.students.read",
-            KICK: "class.students.kick",
-            BAN: "class.students.ban",
-            PERM_CHANGE: "class.students.perm_change",
-        },
+const CLASS_STUDENT_SCOPES = [SCOPES.CLASS.POLL.VOTE, SCOPES.CLASS.BREAK.REQUEST, SCOPES.CLASS.HELP.REQUEST];
+const CLASS_MOD_SCOPES = [
+    SCOPES.CLASS.POLL.CREATE,
+    SCOPES.CLASS.POLL.END,
+    SCOPES.CLASS.POLL.DELETE,
+    SCOPES.CLASS.POLL.SHARE,
+    SCOPES.CLASS.BREAK.APPROVE,
+    SCOPES.CLASS.HELP.APPROVE,
+    SCOPES.CLASS.AUXILIARY.CONTROL,
+    SCOPES.CLASS.GAMES.ACCESS,
+    SCOPES.CLASS.TAGS.MANAGE,
+    SCOPES.CLASS.LINKS.MANAGE,
+];
+const CLASS_TEACHER_SCOPES = [
+    SCOPES.CLASS.STUDENTS.READ,
+    SCOPES.CLASS.STUDENTS.KICK,
+    SCOPES.CLASS.STUDENTS.BAN,
+    SCOPES.CLASS.STUDENTS.PERM_CHANGE,
+    SCOPES.CLASS.SESSION.START,
+    SCOPES.CLASS.SESSION.END,
+    SCOPES.CLASS.SESSION.RENAME,
+    SCOPES.CLASS.SESSION.SETTINGS,
+    SCOPES.CLASS.SESSION.REGENERATE_CODE,
+    SCOPES.CLASS.TIMER.CONTROL,
+    SCOPES.CLASS.DIGIPOGS.AWARD,
+];
+const CLASS_MANAGER_SCOPES = [SCOPES.CLASS.SYSTEM.ADMIN];
+const CLASS_BLOCKED_SCOPES = [SCOPES.CLASS.SYSTEM.BLOCKED];
 
-        SESSION: {
-            START: "class.session.start",
-            END: "class.session.end",
-            RENAME: "class.session.rename",
-            SETTINGS: "class.session.settings",
-            REGENERATE_CODE: "class.session.regenerate_code",
-        },
+function parseScopesField(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
 
-        BREAK: {
-            REQUEST: "class.break.request",
-            APPROVE: "class.break.approve",
-        },
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
 
-        HELP: {
-            REQUEST: "class.help.request",
-            APPROVE: "class.help.approve",
-        },
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
 
-        TIMER: {
-            CONTROL: "class.timer.control",
-        },
+function hasAnyScope(scopeSet, candidateScopes) {
+    return candidateScopes.some((scope) => scopeSet.has(scope));
+}
 
-        AUXILIARY: {
-            CONTROL: "class.auxiliary.control",
-        },
+function normalizeScopes(input, options = {}) {
+    if (!Array.isArray(input) || input.length === 0) {
+        return [];
+    }
 
-        GAMES: {
-            ACCESS: "class.games.access",
-        },
+    const domain = options.domain === "global" ? "global" : "class";
+    const scopes = new Set();
 
-        TAGS: {
-            MANAGE: "class.tags.manage",
-        },
+    for (const entry of input) {
+        if (typeof entry === "string" && entry.includes(".")) {
+            scopes.add(entry);
+            continue;
+        }
 
-        DIGIPOGS: {
-            AWARD: "class.digipogs.award",
-        },
+        const entryScopes = getScopesFromRoleLike(entry, domain, options);
+        for (const scope of entryScopes) {
+            scopes.add(scope);
+        }
+    }
 
-        LINKS: {
-            READ: "class.links.read",
-            MANAGE: "class.links.manage",
-        },
-    },
-};
+    return [...scopes];
+}
 
-const CLASS_PERMISSIONS = {
-    GAMES: "games",
-    CONTROL_POLLS: "controlPoll",
-    MANAGE_STUDENTS: "manageStudents",
-    MANAGE_CLASS: "manageClass",
-    BREAK_AND_HELP: "breakHelp",
-    AUXILIARY: "auxiliary",
-    USER_DEFAULTS: "userDefaults",
-};
+function getScopesFromRoleLike(roleLike, domain, options = {}) {
+    if (!roleLike) {
+        return [];
+    }
 
-// Defines the default permissions for people in a class
-const DEFAULT_CLASS_PERMISSIONS = {
-    links: MOD_PERMISSIONS, // Control the links page
-    controlPoll: MOD_PERMISSIONS,
-    manageStudents: TEACHER_PERMISSIONS,
-    breakHelp: MOD_PERMISSIONS, // Approve break and help requests
-    manageClass: TEACHER_PERMISSIONS,
-    auxiliary: MOD_PERMISSIONS, // Controls the FormPix lights and sounds
-    userDefaults: GUEST_PERMISSIONS,
-    seePoll: GUEST_PERMISSIONS, // View polls
-    votePoll: STUDENT_PERMISSIONS, // Vote in polls
-};
+    if (roleLike && typeof roleLike === "object" && Object.prototype.hasOwnProperty.call(roleLike, "scopes")) {
+        return parseScopesField(roleLike.scopes);
+    }
 
-// This defines global socket permissions that define who can use each socket event
-const GLOBAL_SOCKET_PERMISSIONS = {
-    deleteClass: TEACHER_PERMISSIONS,
-    getOwnedClasses: TEACHER_PERMISSIONS,
-    logout: GUEST_PERMISSIONS,
-    saveTags: TEACHER_PERMISSIONS,
-    setTags: TEACHER_PERMISSIONS,
-    joinClass: GUEST_PERMISSIONS,
-    joinRoom: GUEST_PERMISSIONS,
-    getActiveClass: GUEST_PERMISSIONS,
-    transferDigipogs: STUDENT_PERMISSIONS,
-    awardDigipogs: TEACHER_PERMISSIONS,
-    awardDigipogsResponse: TEACHER_PERMISSIONS,
-};
+    const roleId = getRoleId(roleLike);
+    if (roleId != null && Array.isArray(options.availableRoles)) {
+        const availableRole = options.availableRoles.find((role) => Number(role.id) === Number(roleId));
+        if (availableRole) {
+            return parseScopesField(availableRole.scopes);
+        }
+    }
 
-// This defines socket permissions for the class that define who can use each socket event
-const CLASS_SOCKET_PERMISSIONS = {
-    help: STUDENT_PERMISSIONS,
-    pollResp: STUDENT_PERMISSIONS,
-    requestBreak: STUDENT_PERMISSIONS,
-    endBreak: STUDENT_PERMISSIONS,
-    leaveClass: GUEST_PERMISSIONS,
-    leaveRoom: GUEST_PERMISSIONS,
-    classUpdate: GUEST_PERMISSIONS,
-    setClassSetting: TEACHER_PERMISSIONS,
-    setClassPermissionSetting: MANAGER_PERMISSIONS,
-    classPoll: MOD_PERMISSIONS,
-    updatePoll: MOD_PERMISSIONS,
-    timer: TEACHER_PERMISSIONS,
-    timerOn: TEACHER_PERMISSIONS,
-    awardDigipogs: TEACHER_PERMISSIONS,
-    getPreviousPolls: TEACHER_PERMISSIONS,
-    updateExcludedRespondents: TEACHER_PERMISSIONS,
-};
+    const roleName = getRoleName(roleLike);
+    if (roleName && ROLES[roleName]) {
+        return [...(ROLES[roleName][domain] || [])];
+    }
 
-// This associates actions with the permissions of other actions
-// Example: To start a poll, you first need the controlPoll permission
-const CLASS_SOCKET_PERMISSION_MAPPER = {
-    startPoll: "controlPoll",
-    updatePoll: "controlPoll",
-    customPollUpdate: "controlPoll",
-    savePoll: "controlPoll",
-    deletePoll: "controlPoll",
-    setPublicPoll: "controlPoll",
-    sharePollToUser: "controlPoll",
-    removeUserPollShare: "controlPoll",
-    getPollShareIds: "controlPoll",
-    sharePollToClass: "controlPoll",
-    removeClassPollShare: "controlPoll",
-    classPermChange: "manageStudents",
-    classKickStudent: "manageStudents",
-    classKickStudents: "manageStudents",
-    classRemoveFromSession: "manageStudents",
-    approveBreak: "breakHelp",
-    deleteTicket: "breakHelp",
-    startClass: "manageClass",
-    endClass: "manageClass",
-    isClassActive: "manageClass",
-    regenerateClassCode: "manageClass",
-    changeClassName: "manageClass",
-    classBannedUsersUpdate: "manageStudents",
-    classBanUser: "manageStudents",
-    classUnbanUser: "manageStudents",
-    awardDigipogs: "userDefaults",
-};
+    return [];
+}
 
-// Maps socket event names to scope strings for the new permission system.
-// Global events use global.* scopes; class events use class.* scopes.
-const SOCKET_EVENT_SCOPE_MAP = {
-    // Global socket events
-    deleteClass: SCOPES.GLOBAL.CLASS.DELETE,
-    getOwnedClasses: SCOPES.GLOBAL.CLASS.CREATE,
-    logout: null, // No scope required
-    saveTags: SCOPES.CLASS.TAGS.MANAGE,
-    setTags: SCOPES.CLASS.TAGS.MANAGE,
-    joinClass: null,
-    joinRoom: null,
-    getActiveClass: null,
-    transferDigipogs: SCOPES.GLOBAL.DIGIPOGS.TRANSFER,
-    awardDigipogs: SCOPES.CLASS.DIGIPOGS.AWARD,
-    awardDigipogsResponse: SCOPES.CLASS.DIGIPOGS.AWARD,
+function hasGlobalAdminScope(globalScopes) {
+    const scopeSet = new Set(normalizeScopes(globalScopes, { domain: "global" }));
+    return hasAnyScope(scopeSet, GLOBAL_MANAGER_SCOPES);
+}
 
-    // Class socket events
-    help: SCOPES.CLASS.HELP.REQUEST,
-    pollResp: SCOPES.CLASS.POLL.VOTE,
-    requestBreak: SCOPES.CLASS.BREAK.REQUEST,
-    endBreak: SCOPES.CLASS.BREAK.REQUEST,
-    leaveClass: null,
-    leaveRoom: null,
-    classUpdate: null,
-    setClassSetting: SCOPES.CLASS.SESSION.SETTINGS,
-    setClassPermissionSetting: SCOPES.GLOBAL.SYSTEM.ADMIN,
-    classPoll: SCOPES.CLASS.POLL.CREATE,
-    updatePoll: SCOPES.CLASS.POLL.CREATE,
-    timer: SCOPES.CLASS.TIMER.CONTROL,
-    timerOn: SCOPES.CLASS.TIMER.CONTROL,
-    getPreviousPolls: SCOPES.CLASS.POLL.READ,
-    updateExcludedRespondents: SCOPES.CLASS.STUDENTS.READ,
+function computeGlobalPermissionLevel(globalScopes) {
+    const scopeSet = new Set(normalizeScopes(globalScopes, { domain: "global" }));
 
-    // Mapped class socket events (previously via CLASS_SOCKET_PERMISSION_MAPPER)
-    startPoll: SCOPES.CLASS.POLL.CREATE,
-    customPollUpdate: SCOPES.CLASS.POLL.CREATE,
-    savePoll: SCOPES.CLASS.POLL.CREATE,
-    deletePoll: SCOPES.CLASS.POLL.DELETE,
-    setPublicPoll: SCOPES.CLASS.POLL.SHARE,
-    sharePollToUser: SCOPES.CLASS.POLL.SHARE,
-    removeUserPollShare: SCOPES.CLASS.POLL.SHARE,
-    getPollShareIds: SCOPES.CLASS.POLL.SHARE,
-    sharePollToClass: SCOPES.CLASS.POLL.SHARE,
-    removeClassPollShare: SCOPES.CLASS.POLL.SHARE,
-    classPermChange: SCOPES.CLASS.STUDENTS.PERM_CHANGE,
-    classKickStudent: SCOPES.CLASS.STUDENTS.KICK,
-    classKickStudents: SCOPES.CLASS.STUDENTS.KICK,
-    classRemoveFromSession: SCOPES.CLASS.STUDENTS.KICK,
-    approveBreak: SCOPES.CLASS.BREAK.APPROVE,
-    deleteTicket: SCOPES.CLASS.BREAK.APPROVE,
-    startClass: SCOPES.CLASS.SESSION.START,
-    endClass: SCOPES.CLASS.SESSION.END,
-    isClassActive: SCOPES.CLASS.SESSION.SETTINGS,
-    regenerateClassCode: SCOPES.CLASS.SESSION.REGENERATE_CODE,
-    changeClassName: SCOPES.CLASS.SESSION.RENAME,
-    classBannedUsersUpdate: SCOPES.CLASS.STUDENTS.BAN,
-    classBanUser: SCOPES.CLASS.STUDENTS.BAN,
-    classUnbanUser: SCOPES.CLASS.STUDENTS.BAN,
-};
+    if (hasAnyScope(scopeSet, GLOBAL_BLOCKED_SCOPES)) {
+        return BANNED_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, GLOBAL_MANAGER_SCOPES)) {
+        return MANAGER_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, GLOBAL_TEACHER_SCOPES)) {
+        return TEACHER_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, GLOBAL_MOD_SCOPES)) {
+        return MOD_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, GLOBAL_STUDENT_SCOPES)) {
+        return STUDENT_PERMISSIONS;
+    }
+
+    return GUEST_PERMISSIONS;
+}
+
+function computeClassPermissionLevel(classScopes, options = {}) {
+    const scopeSet = new Set(normalizeScopes(classScopes, { domain: "class" }));
+    const hasOwnerBypass = Boolean(options.isOwner);
+
+    if (hasAnyScope(scopeSet, CLASS_BLOCKED_SCOPES) && !hasOwnerBypass && !hasAnyScope(scopeSet, CLASS_MANAGER_SCOPES)) {
+        return BANNED_PERMISSIONS;
+    }
+
+    if (hasOwnerBypass || hasAnyScope(scopeSet, CLASS_MANAGER_SCOPES)) {
+        return MANAGER_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, CLASS_TEACHER_SCOPES)) {
+        return TEACHER_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, CLASS_MOD_SCOPES)) {
+        return MOD_PERMISSIONS;
+    }
+
+    if (hasAnyScope(scopeSet, CLASS_STUDENT_SCOPES)) {
+        return STUDENT_PERMISSIONS;
+    }
+
+    return GUEST_PERMISSIONS;
+}
+
+function hasGlobalPermissionLevel(globalScopes, minimumLevel) {
+    return computeGlobalPermissionLevel(globalScopes) >= minimumLevel;
+}
+
+function hasClassPermissionLevel(classScopes, minimumLevel, options = {}) {
+    return computeClassPermissionLevel(classScopes, options) >= minimumLevel;
+}
+
+function computePermissionLevel(input, options = {}) {
+    const domain = options.domain === "global" ? "global" : "class";
+    const scopes = normalizeScopes(input, options);
+    return domain === "global" ? computeGlobalPermissionLevel(scopes) : computeClassPermissionLevel(scopes, options);
+}
 
 module.exports = {
     SCOPES,
     SOCKET_EVENT_SCOPE_MAP,
-
-    // Permissions (legacy — kept for backward compatibility)
-    MANAGER_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MOD_PERMISSIONS,
-    STUDENT_PERMISSIONS,
-    GUEST_PERMISSIONS,
+    normalizeScopes,
+    getScopesFromRoleLike,
+    hasGlobalAdminScope,
+    computePermissionLevel,
+    computeGlobalPermissionLevel,
+    computeClassPermissionLevel,
+    hasGlobalPermissionLevel,
+    hasClassPermissionLevel,
+    hasAnyScope,
     BANNED_PERMISSIONS,
-
-    // Page permissions (legacy)
-    CLASS_PERMISSIONS,
-    DEFAULT_CLASS_PERMISSIONS,
-
-    // Socket permissions (legacy)
-    GLOBAL_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSION_MAPPER,
+    GUEST_PERMISSIONS,
+    STUDENT_PERMISSIONS,
+    MOD_PERMISSIONS,
+    TEACHER_PERMISSIONS,
+    MANAGER_PERMISSIONS,
 };

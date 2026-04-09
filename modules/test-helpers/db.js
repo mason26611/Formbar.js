@@ -81,8 +81,8 @@ const CLEARABLE_TABLES = [
     "users",
     "refresh_tokens",
     "classroom",
-    "class_permissions",
     "classusers",
+    "user_roles",
     "poll_answers",
     "poll_history",
     "shared_polls",
@@ -142,6 +142,14 @@ async function createTestDb() {
                 });
             });
         }
+
+        // Delete custom roles (keep built-in roles where classId IS NULL)
+        await new Promise((resolve, reject) => {
+            db.run(`DELETE FROM "roles" WHERE "classId" IS NOT NULL`, (err) => {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
 
         // Reset SQLite auto-increment counters by deleting rows in sqlite_sequence
         await new Promise((resolve, reject) => {

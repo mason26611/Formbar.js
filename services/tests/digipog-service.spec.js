@@ -1,4 +1,5 @@
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 const bcrypt = require("bcrypt");
 
 let mockDatabase;
@@ -49,7 +50,6 @@ const {
     getPoolsForUserPaginated,
     getUsersForPool,
     isUserInPool,
-    isUserOwner,
     isPoolOwnedByUser,
     poolOwnerCheck,
     addUserToPool,
@@ -84,9 +84,10 @@ async function seedUser(overrides = {}) {
     };
     const u = { ...defaults, ...overrides };
     await mockDatabase.dbRun(
-        "INSERT INTO users (id, email, password, permissions, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [uid, u.email, u.password, u.permissions, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+        "INSERT INTO users (id, email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [uid, u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
+    await setGlobalPermissionLevel(mockDatabase, uid, u.permissions);
     return { id: uid, ...u };
 }
 
@@ -128,7 +129,7 @@ describe("createPool()", () => {
         expect(pool.name).toBe("My Pool");
         expect(pool.amount).toBe(0);
 
-        const ownerFlag = await isUserOwner(user.id, poolId);
+        const ownerFlag = await isPoolOwnedByUser(poolId, user.id);
         expect(ownerFlag).toBe(true);
     });
 
@@ -231,11 +232,11 @@ describe("isUserInPool()", () => {
     });
 });
 
-describe("isUserOwner()", () => {
+describe("isPoolOwnedByUser()", () => {
     it("returns true for owner", async () => {
         const user = await seedUser();
         const poolId = await createPool({ name: "P", ownerId: user.id });
-        expect(await isUserOwner(user.id, poolId)).toBe(true);
+        expect(await isPoolOwnedByUser(poolId, user.id)).toBe(true);
     });
 
     it("returns false for non-owner member", async () => {
@@ -243,21 +244,13 @@ describe("isUserOwner()", () => {
         const member = await seedUser();
         const poolId = await createPool({ name: "P", ownerId: owner.id });
         await addUserToPool(poolId, member.id, 0);
-        expect(await isUserOwner(member.id, poolId)).toBe(false);
+        expect(await isPoolOwnedByUser(poolId, member.id)).toBe(false);
     });
 
     it("returns false for non-member", async () => {
         const pool = await seedPool();
         const user = await seedUser();
-        expect(await isUserOwner(user.id, pool.id)).toBe(false);
-    });
-});
-
-describe("isPoolOwnedByUser()", () => {
-    it("delegates to isUserOwner with swapped params", async () => {
-        const user = await seedUser();
-        const poolId = await createPool({ name: "P", ownerId: user.id });
-        expect(await isPoolOwnedByUser(poolId, user.id)).toBe(true);
+        expect(await isPoolOwnedByUser(pool.id, user.id)).toBe(false);
     });
 });
 
@@ -285,14 +278,14 @@ describe("addUserToPool()", () => {
         await addUserToPool(pool.id, user.id);
 
         expect(await isUserInPool(user.id, pool.id)).toBe(true);
-        expect(await isUserOwner(user.id, pool.id)).toBe(false);
+        expect(await isPoolOwnedByUser(pool.id, user.id)).toBe(false);
     });
 
     it("adds a user as owner when flag is truthy", async () => {
         const pool = await seedPool();
         const user = await seedUser();
         await addUserToPool(pool.id, user.id, 1);
-        expect(await isUserOwner(user.id, pool.id)).toBe(true);
+        expect(await isPoolOwnedByUser(pool.id, user.id)).toBe(true);
     });
 
     it("replaces existing entry on duplicate", async () => {
@@ -300,7 +293,7 @@ describe("addUserToPool()", () => {
         const user = await seedUser();
         await addUserToPool(pool.id, user.id, 0);
         await addUserToPool(pool.id, user.id, 1);
-        expect(await isUserOwner(user.id, pool.id)).toBe(true);
+        expect(await isPoolOwnedByUser(pool.id, user.id)).toBe(true);
     });
 });
 
@@ -336,7 +329,7 @@ describe("removeUserFromPool()", () => {
 
         expect(await getPoolById(poolId)).toBeDefined();
         expect(await isUserInPool(owner1.id, poolId)).toBe(false);
-        expect(await isUserOwner(owner2.id, poolId)).toBe(true);
+        expect(await isPoolOwnedByUser(poolId, owner2.id)).toBe(true);
     });
 });
 
@@ -348,7 +341,7 @@ describe("setUserOwnerFlag()", () => {
         await addUserToPool(poolId, member.id, 0);
 
         await setUserOwnerFlag(poolId, member.id, 1);
-        expect(await isUserOwner(member.id, poolId)).toBe(true);
+        expect(await isPoolOwnedByUser(poolId, member.id)).toBe(true);
     });
 
     it("demotes an owner to member", async () => {
@@ -356,7 +349,7 @@ describe("setUserOwnerFlag()", () => {
         const poolId = await createPool({ name: "P", ownerId: owner.id });
 
         await setUserOwnerFlag(poolId, owner.id, 0);
-        expect(await isUserOwner(owner.id, poolId)).toBe(false);
+        expect(await isPoolOwnedByUser(poolId, owner.id)).toBe(false);
     });
 });
 
@@ -528,7 +521,7 @@ describe("payoutPool()", () => {
     it("rejects when pool is not found", async () => {
         const user = await seedUser();
         const poolId = await createPool({ name: "P", ownerId: user.id });
-        // Delete the pool row but leave pool_users so isUserOwner passes
+        // Delete the pool row but leave pool_users so isPoolOwnedByUser passes
         await mockDatabase.dbRun("DELETE FROM digipog_pools WHERE id = ?", [poolId]);
 
         const result = await payoutPool({ actingUserId: user.id, poolId });
@@ -624,13 +617,7 @@ describe("awardDigipogs()", () => {
             "{}",
         ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: { id: student.id, type: "user" }, amount: 10, reason: "Good job" }, { id: teacher.id });
         expect(result.success).toBe(true);
@@ -706,13 +693,7 @@ describe("awardDigipogs()", () => {
             "{}",
         ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: student.id, amount: 5 }, { id: teacher.id });
         expect(result.success).toBe(true);
@@ -737,13 +718,7 @@ describe("awardDigipogs()", () => {
             "{}",
         ]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'AwardClass'");
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: { id: classRow.id, type: "class" }, amount: 7 }, { id: teacher.id });
         expect(result.success).toBe(true);

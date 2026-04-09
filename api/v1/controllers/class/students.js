@@ -1,7 +1,8 @@
 const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
+const { resolveClassScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -70,22 +71,35 @@ module.exports = (router) => {
         // Get the students of the class
         // If an error occurs, log the error and return the error
         const classUsers = await dbGetAll(
-            "SELECT users.id, users.displayName, users.digipogs, classUsers.permissions AS classPermissions FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
+            "SELECT users.id, users.displayName, users.digipogs FROM users INNER JOIN classUsers ON users.id = classUsers.studentId WHERE classUsers.classId = ?",
             [classId]
         );
         if (classUsers.error) {
             throw new NotFoundError(classUsers, { event: "class.students.error", reason: "retrieval_error" });
         }
 
-        // Guest users cannot be found in the database, so if the classroom exists, then add them to the list
         const classroom = classStateStore.getClassroom(classId);
         if (classroom) {
-            for (const [studentId, studentInfo] of Object.entries(classroom.students)) {
-                if (studentInfo.permissions === GUEST_PERMISSIONS && !classUsers.find((user) => user.id === studentId)) {
+            for (const classUser of classUsers) {
+                const studentEntry = Object.values(classroom.students).find((s) => s.id === classUser.id);
+                if (studentEntry) {
+                    classUser.classRoles = studentEntry.classRoleRefs || [];
+                    classUser.classRole = studentEntry.classRole || null;
+                    classUser.classPermissions = computeClassPermissionLevel(resolveClassScopes(studentEntry, classroom), {
+                        isOwner: Boolean(studentEntry.isClassOwner),
+                        globalScopes: studentEntry.globalRoles || [],
+                    });
+                }
+            }
+
+            for (const [, studentInfo] of Object.entries(classroom.students)) {
+                if (studentInfo.isGuest && !classUsers.find((user) => user.id === studentInfo.id)) {
                     classUsers.push({
-                        id: studentId,
+                        id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
-                        classPermissions: 0,
+                        classRoles: [],
+                        classRole: null,
+                        classPermissions: computeClassPermissionLevel(resolveClassScopes(studentInfo, classroom)),
                     });
                 }
             }

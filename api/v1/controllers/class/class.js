@@ -89,6 +89,7 @@ module.exports = (router) => {
                 tags: rawClassData.tags,
                 settings: rawClassData.settings,
                 timer: rawClassData.timer,
+                roles: rawClassData.availableRoles || [],
             },
         });
     });

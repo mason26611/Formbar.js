@@ -4,11 +4,12 @@ const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-
 const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
 const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
-const { joinRoom, leaveRoom } = require("@services/room-service");
+const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { buildRoleReferences } = require("@modules/role-reference");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -39,9 +40,13 @@ module.exports = {
             await joinClass(socket.request.session, classId);
         });
 
-        // Joins a classroom
+        // Enrolls in a classroom by code
         socket.on("joinRoom", async (classCode) => {
-            joinRoom(socket.request.session, classCode);
+            try {
+                await enrollInClass(socket.request.session, classCode);
+            } catch (err) {
+                handleSocketError(err, socket, "joinRoom", "There was a server error. Please try again");
+            }
         });
 
         /**
@@ -57,11 +62,15 @@ module.exports = {
         });
 
         /**
-         * Leaves the classroom entirely
-         * The user is no longer associated with the class
+         * Permanently unenrolls the user from the classroom.
+         * The user is no longer associated with the class.
          */
         socket.on("leaveRoom", async () => {
-            await leaveRoom(socket.request.session);
+            try {
+                await unenrollFromClass(socket.request.session);
+            } catch (err) {
+                handleSocketError(err, socket, "leaveRoom", "There was a server error. Please try again");
+            }
         });
 
         socket.on("getActiveClass", () => {
@@ -82,70 +91,6 @@ module.exports = {
                 handleSocketError(err, socket, "getActiveClass");
             }
         });
-
-        /**
-         * Helper function to clear poll votes from excluded students
-         * @param {string} classId - The class ID
-         */
-        function clearVotesFromExcludedStudents(classId) {
-            const { GUEST_PERMISSIONS, MOD_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
-            const classData = classStateStore.getClassroom(classId);
-            if (!classData) return;
-
-            // Get the list of excluded students using the same logic as sortStudentsInPoll
-            const excludedEmails = [];
-
-            for (const student of Object.values(classData.students)) {
-                let shouldExclude = false;
-
-                // Check if excluded by checkbox (excludedRespondents stores student IDs)
-                if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
-                    shouldExclude = true;
-                }
-
-                // Check if they have the Excluded tag
-                if (student.tags && student.tags.includes("Excluded")) {
-                    shouldExclude = true;
-                }
-
-                // Check exclusion based on class settings for permission levels
-                if (classData.settings && classData.settings.isExcluded) {
-                    if (classData.settings.isExcluded.guests && student.permissions == GUEST_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                    if (classData.settings.isExcluded.mods && student.classPermissions == MOD_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                    if (classData.settings.isExcluded.teachers && student.classPermissions == TEACHER_PERMISSIONS) {
-                        shouldExclude = true;
-                    }
-                }
-
-                // Check if on break
-                if (student.break === true) {
-                    shouldExclude = true;
-                }
-
-                // Check if offline or is a teacher
-                if ((student.tags && student.tags.includes("Offline")) || student.classPermissions >= TEACHER_PERMISSIONS) {
-                    shouldExclude = true;
-                }
-
-                if (shouldExclude) {
-                    excludedEmails.push(student.email);
-                }
-            }
-
-            // Clear votes for all excluded students
-            for (const email of excludedEmails) {
-                const student = classData.students[email];
-                if (student && student.pollRes) {
-                    student.pollRes.buttonRes = "";
-                    student.pollRes.textRes = "";
-                    student.pollRes.date = null;
-                }
-            }
-        }
 
         /**
          * Sets a setting for the classroom
@@ -323,7 +268,7 @@ module.exports = {
          * Bans a user from the classroom
          * @param {string} email - The email of the user to ban.
          */
-        socket.on("classBanUser", (email) => {
+        socket.on("classBanUser", async (email) => {
             try {
                 let classId = socket.request.session.classId;
 
@@ -337,26 +282,33 @@ module.exports = {
                     return;
                 }
 
-                database.run(
-                    "UPDATE classusers SET permissions = 0 WHERE classId = ? AND studentId = (SELECT id FROM users WHERE email=?)",
-                    [classId, email],
-                    (err) => {
-                        try {
-                            if (err) throw err;
-
-                            if (classStateStore.getClassroomStudent(socket.request.session.classId, email)) {
-                                classStateStore.updateClassroomStudent(socket.request.session.classId, email, { classPermissions: 0 });
-                            }
-
-                            classKickStudent(email, classId);
-                            socketUpdates.classBannedUsersUpdate();
-                            socketUpdates.classUpdate();
-                            socket.emit("message", `Banned ${email}`);
-                        } catch (err) {
-                            handleSocketError(err, socket, "classBanUser:callback", "There was a server error try again.");
-                        }
+                // Assign the Banned role via user_roles
+                const { ensureDefaultClassRoles, findRoleByPermissionLevel } = require("@services/role-service");
+                await ensureDefaultClassRoles(classId);
+                const userId = await getIdFromEmail(email);
+                const blockedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classId);
+                if (userId) {
+                    if (blockedRole) {
+                        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
+                        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, blockedRole.id, classId]);
                     }
-                );
+                }
+
+                if (classStateStore.getClassroomStudent(classId, email)) {
+                    const bannedRole = blockedRole
+                        ? classStateStore.getClassroom(classId)?.availableRoles?.find((role) => Number(role.id) === Number(blockedRole.id)) || null
+                        : null;
+                    classStateStore.updateClassroomStudent(classId, email, {
+                        classRoles: bannedRole ? [bannedRole.name] : [],
+                        classRoleRefs: bannedRole ? buildRoleReferences([bannedRole]) : [],
+                        classRole: bannedRole ? bannedRole.name : null,
+                    });
+                }
+
+                classKickStudent(userId, classId, { exitRoom: true, ban: true });
+                socketUpdates.classBannedUsersUpdate();
+                socketUpdates.classUpdate();
+                socket.emit("message", `Banned ${email}`);
             } catch (err) {
                 handleSocketError(err, socket, "classBanUser", "There was a server error try again.");
             }
@@ -366,7 +318,7 @@ module.exports = {
          * Unbans a user from the classroom
          * @param {string} email - The email of the user to unban.
          */
-        socket.on("classUnbanUser", (email) => {
+        socket.on("classUnbanUser", async (email) => {
             try {
                 let classId = socket.request.session.classId;
 
@@ -380,107 +332,32 @@ module.exports = {
                     return;
                 }
 
-                database.run(
-                    "UPDATE classusers SET permissions = 1 WHERE classId = ? AND studentId = (SELECT id FROM users WHERE email=?)",
-                    [classId, email],
-                    (err) => {
-                        try {
-                            if (err) throw err;
+                // Remove the Banned role — user reverts to Guest (implicit)
+                const userId = await getIdFromEmail(email);
+                if (userId) {
+                    await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
+                }
 
-                            if (classStateStore.getClassroomStudent(classId, email)) {
-                                classStateStore.updateClassroomStudent(classId, email, { classPermissions: 1 });
-                            }
+                if (classStateStore.getClassroomStudent(classId, email)) {
+                    classStateStore.updateClassroomStudent(classId, email, {
+                        classRoles: [],
+                        classRoleRefs: [],
+                        classRole: null,
+                    });
+                }
 
-                            // After unbanning, remove the user from the class so they rejoin fresh next time
-                            getIdFromEmail(email)
-                                .then((userId) => {
-                                    classKickStudent(userId, classId, { exitRoom: true, ban: false });
-                                    socketUpdates.classUpdate();
-                                })
-                                .catch(() => {});
+                // Kick user so they rejoin fresh
+                getIdFromEmail(email)
+                    .then((uid) => {
+                        classKickStudent(uid, classId, { exitRoom: true, ban: false });
+                        socketUpdates.classUpdate();
+                    })
+                    .catch(() => {});
 
-                            socketUpdates.classBannedUsersUpdate();
-                            socket.emit("message", `Unbanned ${email}`);
-                        } catch (err) {
-                            handleSocketError(err, socket, "classUnbanUser:callback", "There was a server error try again.");
-                        }
-                    }
-                );
+                socketUpdates.classBannedUsersUpdate();
+                socket.emit("message", `Unbanned ${email}`);
             } catch (err) {
                 handleSocketError(err, socket, "classUnbanUser", "There was a server error try again.");
-            }
-        });
-
-        /**
-         * Changes permission of user. Takes which user and the new permission level
-         * @param {string} email - The email of the user to change permissions for.
-         * @param {number} newPerm - The new permission level to set.
-         */
-        socket.on("classPermChange", async (userId, newPerm) => {
-            try {
-                const email = await getEmailFromId(userId);
-                const classId = socket.request.session.classId;
-
-                // Prevent changing the owner's permissions
-                const classroom = classStateStore.getClassroom(classId);
-                if (classroom.owner == userId) {
-                    socket.emit("message", "You cannot change the permissions of the class owner.");
-                    return;
-                }
-
-                const oldPerm = classStateStore.getClassroomStudent(classId, email).classPermissions || BANNED_PERMISSIONS;
-
-                // Update the permission in the classInformation and in the database
-                classStateStore.updateClassroomStudent(classId, email, { classPermissions: newPerm });
-                classStateStore.updateUser(email, { classPermissions: newPerm });
-                await dbRun("UPDATE classusers SET permissions=? WHERE classId=? AND studentId=?", [
-                    newPerm,
-                    classroom.id,
-                    classStateStore.getClassroomStudent(classId, email).id,
-                ]);
-
-                // If the new permission is BANNED_PERMISSIONS, kick the user from the class and ban them
-                if (newPerm === BANNED_PERMISSIONS) {
-                    classKickStudent(userId, classId, { exitRoom: true, ban: true });
-                    advancedEmitToClass("leaveSound", classId, {});
-                    socketUpdates.classUpdate();
-                    return;
-                }
-
-                // If the student's previous permissions were banned and the new permissions are higher, then
-                // kick them from the class to allow them to rejoin. Await to ensure UI reflects immediately.
-                if (oldPerm === BANNED_PERMISSIONS && newPerm > BANNED_PERMISSIONS) {
-                    await classKickStudent(userId, classId, { exitRoom: true, ban: false });
-                    socketUpdates.classUpdate();
-                    return;
-                }
-
-                // Reload the user's page and update the class
-                io.to(`user-${email}`).emit("reload");
-                socketUpdates.classUpdate();
-            } catch (err) {
-                handleSocketError(err, socket, "classPermChange");
-            }
-        });
-
-        /**
-         * Sets the permission settings for the classroom
-         * @param {string} permission - The permission to set.
-         * @param {number} level - The level to set the permission to.
-         * This can be 1, 2, 3, 4, 5 with guest permissions being 1.
-         */
-        socket.on("setClassPermissionSetting", async (permission, level) => {
-            try {
-                const classId = socket.request.session.classId;
-                classStateStore.updateClassroom(classId, (classroom) => {
-                    classroom.permissions[permission] = level;
-                });
-                dbRun(`UPDATE class_permissions SET ${permission}=? WHERE classId=?`, [level, classId]).catch((err) => {
-                    handleSocketError(err, socket, "setClassPermissionSetting:dbRun");
-                });
-                socketUpdates.classUpdate(classId);
-            } catch (err) {
-                handleSocketError(err, socket, "setClassPermissionSetting");
             }
         });
 

@@ -25,9 +25,9 @@ describe("ROLES", () => {
         expect(Array.isArray(ROLES[roleName].class)).toBe(true);
     });
 
-    it("Banned has empty global and class arrays", () => {
-        expect(ROLES.Banned.global).toEqual([]);
-        expect(ROLES.Banned.class).toEqual([]);
+    it("Banned carries explicit blocked marker scopes", () => {
+        expect(ROLES.Banned.global).toContain(SCOPES.GLOBAL.SYSTEM.BLOCKED);
+        expect(ROLES.Banned.class).toContain(SCOPES.CLASS.SYSTEM.BLOCKED);
     });
 
     it("Guest class scopes include class.poll.read and class.links.read", () => {
@@ -62,6 +62,11 @@ describe("ROLES", () => {
     it("Manager global scopes include global.system.admin and global.users.manage", () => {
         expect(ROLES.Manager.global).toContain(SCOPES.GLOBAL.SYSTEM.ADMIN);
         expect(ROLES.Manager.global).toContain(SCOPES.GLOBAL.USERS.MANAGE);
+    });
+
+    it("Mod and Manager carry their explicit scope markers", () => {
+        expect(ROLES.Mod.global).toContain(SCOPES.GLOBAL.SYSTEM.MODERATE);
+        expect(ROLES.Manager.class).toContain(SCOPES.CLASS.SYSTEM.ADMIN);
     });
 
     it("Teacher class scopes include class.digipogs.award but Student and Mod do not", () => {

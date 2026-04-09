@@ -1,4 +1,5 @@
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 
 let mockDatabase;
 
@@ -88,7 +89,7 @@ jest.mock("@services/classroom-service", () => {
 
 jest.mock("@services/class-service", () => ({
     endClass: jest.fn(),
-    deleteRooms: jest.fn(),
+    deleteClassrooms: jest.fn(),
 }));
 
 jest.mock("@services/poll-service", () => ({
@@ -113,7 +114,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { deleteRooms } = require("@services/class-service");
+const { deleteClassrooms } = require("@services/class-service");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 const AuthError = require("@errors/auth-error");
@@ -124,6 +125,7 @@ const {
     requestVerificationEmail,
     verifyEmailFromCode,
     resetPassword,
+    updatePassword,
     regenerateAPIKey,
     requestPinReset,
     resetPin,
@@ -182,9 +184,10 @@ async function seedUser(overrides = {}) {
     };
     const u = { ...defaults, ...overrides };
     const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [u.email, u.password, u.permissions, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+        "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
+    await setGlobalPermissionLevel(mockDatabase, id, u.permissions);
     return { id, ...u };
 }
 
@@ -194,6 +197,13 @@ describe("getUserDataFromDb()", () => {
         const result = await getUserDataFromDb(seeded.id);
         expect(result.email).toBe("lookup@test.com");
         expect(result.id).toBe(seeded.id);
+    });
+
+    it("keeps manager accounts at permission level 5", async () => {
+        const seeded = await seedUser({ email: "manager@test.com", permissions: 5 });
+        const result = await getUserDataFromDb(seeded.id);
+        expect(result.role).toBe("Manager");
+        expect(result.permissions).toBe(5);
     });
 
     it("returns undefined for a non-existent id", async () => {
@@ -303,6 +313,48 @@ describe("resetPassword()", () => {
         expect(row.password.startsWith("$2b$")).toBe(true);
         const matches = await bcrypt.compare("NewPassword1!", row.password);
         expect(matches).toBe(true);
+    });
+
+    it("rejects passwords that do not meet validation requirements", async () => {
+        await seedUser({ secret: "resettoken2" });
+        await expect(resetPassword("bad", "resettoken2")).rejects.toThrow(/Password must be 5-20 characters/i);
+    });
+});
+
+describe("updatePassword()", () => {
+    it("sets a first password when the account does not have one yet", async () => {
+        const seeded = await seedUser({ password: null });
+        const result = await updatePassword(seeded.id, null, "NewPassword1!");
+        expect(result).toBe(true);
+
+        const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
+        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        expect(matches).toBe(true);
+    });
+
+    it("updates an existing password when the old password matches", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await updatePassword(seeded.id, "OldPassword1!", "NewPassword1!");
+
+        const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
+        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        expect(matches).toBe(true);
+    });
+
+    it("requires the current password when one already exists", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await expect(updatePassword(seeded.id, null, "NewPassword1!")).rejects.toThrow(AppError);
+    });
+
+    it("throws AuthError when the current password is incorrect", async () => {
+        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const seeded = await seedUser({ password: hashedPassword });
+
+        await expect(updatePassword(seeded.id, "WrongPassword1!", "NewPassword1!")).rejects.toThrow(AuthError);
     });
 });
 
@@ -635,7 +687,7 @@ describe("deleteUser()", () => {
 
     it("deletes the user and associated data from the database", async () => {
         const seeded = await seedUser({ email: "delme@test.com" });
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions) VALUES (?, ?, ?)", [1, seeded.id, 2]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId) VALUES (?, ?)", [1, seeded.id]);
         await mockDatabase.dbRun("INSERT INTO shared_polls (userId, pollId) VALUES (?, ?)", [seeded.id, 1]);
 
         const result = await deleteUser(seeded.id, {});

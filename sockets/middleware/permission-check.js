@@ -1,15 +1,30 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const {
-    GLOBAL_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
-    CLASS_SOCKET_PERMISSION_MAPPER,
-    SOCKET_EVENT_SCOPE_MAP,
-} = require("@modules/permissions");
+const { SOCKET_EVENT_SCOPE_MAP } = require("@modules/permissions");
 const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
+
+async function getSocketUserData(socket, email) {
+    const cachedUser = classStateStore.getUser(email);
+    if (cachedUser) {
+        return cachedUser;
+    }
+
+    const sessionUserId = socket.request.session?.userId;
+    if (sessionUserId != null) {
+        return getUserDataFromDb(sessionUserId);
+    }
+
+    if (!email) {
+        return null;
+    }
+
+    const userRow = await dbGet("SELECT id FROM users WHERE email=?", [email]);
+    return userRow ? getUserDataFromDb(userRow.id) : null;
+}
 
 module.exports = {
     order: 30,
@@ -18,7 +33,7 @@ module.exports = {
         socket.use(async ([event, ...args], next) => {
             try {
                 const email = socket.request.session.email;
-                let userData = classStateStore.getUser(email);
+                const userData = await getSocketUserData(socket, email);
 
                 // If the classId in the session is different from the user's active class, update it
                 const classId = userData && userData.activeClass != null ? userData.activeClass : socket.request.session.classId;
@@ -33,18 +48,9 @@ module.exports = {
                 }
 
                 // If the class provided by the user is not loaded into memory, avoid going further to avoid errors
-                if (CLASS_SOCKET_PERMISSION_MAPPER[event] && !classStateStore.getClassroom(classId)) {
+                if (SOCKET_EVENT_SCOPE_MAP[event] && SOCKET_EVENT_SCOPE_MAP[event]?.startsWith("class.") && !classStateStore.getClassroom(classId)) {
                     socket.emit("message", "Class is not loaded");
                     return;
-                }
-
-                if (!classStateStore.getUser(email)) {
-                    // Get the user data from the database
-                    userData = await dbGet("SELECT * FROM users WHERE email=?", [email]);
-                    userData.classPermissions = await dbGet("SELECT permissions FROM classUsers WHERE studentId=? AND classId=?", [
-                        userData.id,
-                        classId,
-                    ]);
                 }
 
                 // Try scope-based check first
@@ -63,29 +69,23 @@ module.exports = {
                     // Class scope check
                     if (requiredScope.startsWith("class.") && classId) {
                         const classroom = classStateStore.getClassroom(classId);
-                        const classUser = classroom?.students[email];
+                        const classUser =
+                            classroom?.students[email] ||
+                            (userData && classroom && Number(classroom.owner) === Number(userData.id) ? { ...userData, isClassOwner: true } : null);
                         if (classUser && classUserHasScope(classUser, classroom, requiredScope)) {
                             return next();
                         }
                     }
 
                     // Scope is mapped but user doesn't have it — deny access
-                    socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    if (!PASSIVE_SOCKETS.includes(event)) {
+                        socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
+                    }
                     return;
                 }
 
-                // Legacy fallback for unmapped events
-                if (GLOBAL_SOCKET_PERMISSIONS[event] && userData.permissions >= GLOBAL_SOCKET_PERMISSIONS[event]) {
-                    next();
-                } else if (CLASS_SOCKET_PERMISSIONS[event] && userData.classPermissions >= CLASS_SOCKET_PERMISSIONS[event]) {
-                    next();
-                } else if (
-                    CLASS_SOCKET_PERMISSION_MAPPER[event] &&
-                    classStateStore.getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]] &&
-                    userData.classPermissions >= classStateStore.getClassroom(classId).permissions[CLASS_SOCKET_PERMISSION_MAPPER[event]]
-                ) {
-                    next();
-                } else if (!PASSIVE_SOCKETS.includes(event)) {
+                // Unmapped events: allow passive sockets, deny everything else
+                if (!PASSIVE_SOCKETS.includes(event)) {
                     socket.emit("message", `You do not have permission to use ${camelCaseToNormal(event)}.`);
                 }
             } catch (err) {

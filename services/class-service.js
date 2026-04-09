@@ -7,31 +7,35 @@ const {
     userUpdateSocket,
     invalidateClassPollCache,
 } = require("@services/socket-updates-service");
-const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
+const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
-    MANAGER_PERMISSIONS,
-    DEFAULT_CLASS_PERMISSIONS,
-    CLASS_SOCKET_PERMISSIONS,
+    SCOPES,
+    computeClassPermissionLevel,
+    computeGlobalPermissionLevel,
     BANNED_PERMISSIONS,
-    TEACHER_PERMISSIONS,
+    GUEST_PERMISSIONS,
     MOD_PERMISSIONS,
-    STUDENT_PERMISSIONS,
+    TEACHER_PERMISSIONS,
+    MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
+const { getUserRoleName, getClassRoleName, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
+const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, findRoleByPermissionLevel } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
+const { buildRoleReferences } = require("@modules/role-reference");
 
 function getUserJoinedClasses(userId) {
     return dbGetAll(
-        "SELECT classroom.name, classroom.id, classusers.permissions FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
+        "SELECT classroom.name, classroom.id FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
         [userId]
     );
 }
@@ -45,9 +49,31 @@ async function getClassCode(classId) {
     return result ? result.key : null;
 }
 
-async function getClassIdByCode(classCode) {
-    const result = await dbGet("SELECT id FROM classroom WHERE key = ?", [classCode]);
-    return result ? result.id : null;
+function getGlobalPermissionLevelForUser(user) {
+    return computeGlobalPermissionLevel(resolveUserScopes(user));
+}
+
+function getClassPermissionLevelForUser(classUser, classroom) {
+    if (!classUser) {
+        return GUEST_PERMISSIONS;
+    }
+
+    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+        isOwner: isClassOwner(classUser, classroom),
+        globalScopes: resolveUserScopes(classUser),
+    });
+}
+
+function hasClassPermissionLevel(classUser, classroom, minimumLevel) {
+    return getClassPermissionLevelForUser(classUser, classroom) >= minimumLevel;
+}
+
+function findAvailableRoleByPermissionLevel(classroom, permissionLevel) {
+    if (!classroom || !Array.isArray(classroom.availableRoles)) {
+        return null;
+    }
+
+    return classroom.availableRoles.find((role) => computeClassPermissionLevel(role.scopes) === permissionLevel) || null;
 }
 
 /**
@@ -82,21 +108,6 @@ function validateClassroomName(className) {
     }
 
     return { valid: true };
-}
-
-/**
- * Parses and normalizes class permissions from database row
- * @private
- * @param {Object} permissionsRow - The permissions row from the database
- * @returns {Object} Normalized permissions object with defaults applied
- */
-function parseClassPermissions(permissionsRow) {
-    const parsedPermissions = {};
-    for (let permission of Object.keys(DEFAULT_CLASS_PERMISSIONS)) {
-        parsedPermissions[permission] =
-            permissionsRow && permissionsRow[permission] != null ? permissionsRow[permission] : DEFAULT_CLASS_PERMISSIONS[permission];
-    }
-    return parsedPermissions;
 }
 
 /**
@@ -151,13 +162,6 @@ async function createClass(className, ownerId, ownerEmail) {
         tags: null,
     };
 
-    // Ensure class_permissions exists for the new class
-    let permissions = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [classroom.id]);
-    if (!permissions) {
-        permissions = { ...DEFAULT_CLASS_PERMISSIONS };
-        await dbRun("INSERT OR IGNORE INTO class_permissions (classId) VALUES (?)", [classroom.id]);
-    }
-
     // Initialize the classroom in memory
     await initializeClassroom(classroom.id);
 
@@ -183,35 +187,12 @@ async function initializeClassroom(id) {
         throw new NotFoundError(`Class with id ${id} does not exist`);
     }
 
-    // Fetch and normalize permissions
-    let permissionsRow = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [id]);
-    if (!permissionsRow) {
-        await dbRun("INSERT OR IGNORE INTO class_permissions (classId) VALUES (?)", [id]);
-        permissionsRow = await dbGet("SELECT * FROM class_permissions WHERE classId = ?", [id]);
-    }
-
-    const permissions = parseClassPermissions(permissionsRow);
-
     // Normalize classroom data (JSON parsing, tags, poll history)
     normalizeClassroomData(classroom);
 
-    // Validate and normalize permissions
-    if (Object.keys(permissions).sort().toString() !== Object.keys(DEFAULT_CLASS_PERMISSIONS).sort().toString()) {
-        for (let permission of Object.keys(permissions)) {
-            if (!DEFAULT_CLASS_PERMISSIONS[permission]) {
-                delete permissions[permission];
-            }
-        }
-
-        for (let permission of Object.keys(permissions)) {
-            if (typeof permissions[permission] != "number" || permissions[permission] < 1 || permissions[permission] > 5) {
-                permissions[permission] = DEFAULT_CLASS_PERMISSIONS[permission];
-            }
-            await dbRun(`UPDATE class_permissions SET ${permission} = ? WHERE classId=?`, [permissions[permission], id]);
-        }
-    }
-
     // Create or update classroom in memory
+    const customRoles = await loadCustomRoles(id);
+    const availableRoles = await getClassRoles(id);
     if (!classStateStore.getClassroom(id)) {
         classStateStore.setClassroom(
             id,
@@ -220,13 +201,15 @@ async function initializeClassroom(id) {
                 className: classroom.name,
                 key: classroom.key,
                 owner: classroom.owner,
-                permissions,
                 tags: classroom.tags,
+                customRoles,
+                availableRoles,
             })
         );
     } else {
-        classStateStore.getClassroom(id).permissions = permissions;
         classStateStore.getClassroom(id).tags = classroom.tags;
+        classStateStore.getClassroom(id).customRoles = customRoles;
+        classStateStore.getClassroom(id).availableRoles = availableRoles;
     }
 
     // Get all students in the class and add them to the classroom
@@ -270,12 +253,7 @@ async function startClass(classId) {
 
     // Activate the class and send the class active event
     classStateStore.getClassroom(classId).isActive = true;
-    advancedEmitToClass(
-        "isClassActive",
-        classId,
-        { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classStateStore.getClassroom(classId).isActive
-    );
+    advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
 }
 
 /**
@@ -291,31 +269,7 @@ async function endClass(classId, userSession) {
     classStateStore.getClassroom(classId).isActive = false;
     await clearPoll(classId, userSession, true);
 
-    advancedEmitToClass(
-        "isClassActive",
-        classId,
-        { classPermissions: CLASS_SOCKET_PERMISSIONS.isClassActive },
-        classStateStore.getClassroom(classId).isActive
-    );
-}
-
-/**
- * Checks if the user has the required permission level for a class action.
- * @param {string|number} userId - The user's ID to check permissions for.
- * @param {string|number} classId - The class ID to check against.
- * @param {string} permission - The class permission to check (e.g., CLASS_PERMISSIONS.MANAGE_CLASS).
- * @returns {Promise<boolean>} Resolves to true if the user has permission, false otherwise.
- */
-async function checkUserClassPermission(userId, classId, permission) {
-    const email = await getEmailFromId(userId);
-    const user = classStateStore.getUser(email);
-    const classroom = classStateStore.getClassroom(classId);
-
-    if (!user || !classroom) {
-        throw new NotFoundError("User or classroom not found in active sessions");
-    }
-
-    return user.classPermissions >= classroom.permissions[permission];
+    advancedEmitToClass("isClassActive", classId, {}, classStateStore.getClassroom(classId).isActive);
 }
 
 /**
@@ -349,26 +303,31 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         throw new NotFoundError("Class not found");
     }
 
-    // If the user is the owner of the classroom, give them manager permissions
+    // If the user is the owner of the classroom, ensure they have a classUser entry
     if (classroomDb.owner === user.id) {
         if (!classUser) {
-            classUser = { permissions: MANAGER_PERMISSIONS, tags: "" };
-        } else {
-            classUser.permissions = MANAGER_PERMISSIONS;
+            classUser = { tags: "" };
         }
     }
 
     if (classUser) {
-        // If the user is banned, don't let them join
-        if (classUser.permissions <= BANNED_PERMISSIONS) {
-            throw new ForbiddenError("You are banned from that class");
-        }
-
         // Get the student's session data
         let currentUser = classStateStore.getUser(email);
+        const classroom = classStateStore.getClassroom(classId);
 
-        // Set class permissions and active class
-        currentUser.classPermissions = classUser.permissions;
+        // Load multi-role assignments from user_roles
+        const roleAssignments = await getStudentRoleAssignments(classId, currentUser.id);
+        const roles = roleAssignments.map((role) => role.name);
+        const roleRefs = buildRoleReferences(roleAssignments);
+        currentUser.classRoles = roles;
+        currentUser.classRoleRefs = roleRefs;
+        currentUser.classRole = computePrimaryRole(roleAssignments, classroom?.availableRoles || []);
+        currentUser.isClassOwner = classroomDb.owner === user.id;
+
+        // If the user is banned, don't let them join
+        if (getClassPermissionLevelForUser(currentUser, classroom) === BANNED_PERMISSIONS && !currentUser.isClassOwner) {
+            throw new ForbiddenError("You are banned from that class");
+        }
         currentUser.activeClass = classId;
 
         // Load tags from classusers table
@@ -377,7 +336,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         classStateStore.getUser(email).tags = currentUser.tags;
 
         // Add the student to the class
-        const classroom = classStateStore.getClassroom(classId);
         classStateStore.setClassroomStudent(classId, email, currentUser);
 
         // Set the active class of the user
@@ -400,17 +358,17 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
     } else {
         // If the user is not a guest, insert them into the database
         if (!user.isGuest) {
-            await dbRun("INSERT INTO classusers(classId, studentId, permissions) VALUES(?, ?, ?)", [
-                classId,
-                user.id,
-                classStateStore.getClassroom(classId).permissions.userDefaults,
-            ]);
+            await dbRun("INSERT INTO classusers(classId, studentId) VALUES(?, ?)", [classId, user.id]);
         }
 
         // Grab the user from the users list
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
-        currentUser.classPermissions = currentUser.id !== classData.owner ? classData.permissions.userDefaults : TEACHER_PERMISSIONS;
+        const isOwner = currentUser.id === classData.owner;
+        currentUser.classRoles = [];
+        currentUser.classRoleRefs = [];
+        currentUser.classRole = null;
+        currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
         currentUser.tags = [];
 
@@ -526,10 +484,11 @@ function isClassActive(classId) {
 }
 
 /**
- * Deletes all classrooms owned by the specified user, along with related data in other tables.
+ * Deletes all classrooms owned by the specified user, along with related data
+ * (class users, polls, links) and in-memory session state.
  * @param {number|string} userId - The ID of the user whose classrooms should be deleted.
  */
-async function deleteRooms(userId) {
+async function deleteClassrooms(userId) {
     const classrooms = await dbGetAll("SELECT * FROM classroom WHERE owner=?", userId);
     if (classrooms.length == 0) return;
 
@@ -558,6 +517,7 @@ async function deleteRooms(userId) {
 async function classKickStudent(userId, classId, options = { exitRoom: true, ban: false }) {
     try {
         const email = await getEmailFromId(userId);
+        const classroom = classStateStore.getClassroom(classId);
 
         const existingUser = classStateStore.getUser(email);
         if (existingUser) {
@@ -567,12 +527,14 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
             user.help = false;
 
             if (options.ban) {
-                user.classPermissions = BANNED_PERMISSIONS;
+                const blockedRole = findAvailableRoleByPermissionLevel(classroom, BANNED_PERMISSIONS);
+                user.classRoles = blockedRole ? [blockedRole.name] : [];
+                user.classRoleRefs = blockedRole ? buildRoleReferences([blockedRole]) : [];
+                user.classRole = blockedRole ? blockedRole.name : null;
             }
             setClassOfApiSockets(existingUser.API, null);
         }
 
-        const classroom = classStateStore.getClassroom(classId);
         const classroomStudent = classroom ? classroom.students[email] : null;
         if (classroom && classroomStudent) {
             const student = classroomStudent;
@@ -623,7 +585,7 @@ function classKickStudents(classId) {
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) return;
         for (const student of Object.values(classroom.students)) {
-            if (student.classPermissions < TEACHER_PERMISSIONS) {
+            if (!hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
                 classKickStudent(student.id, classId);
             }
         }
@@ -774,7 +736,8 @@ async function setTags(tags, userSession) {
     classStateStore.updateClassroom(classId, { tags });
 
     for (const student of Object.values(classroom.students)) {
-        if (student.classPermissions == 0 || student.classPermissions >= 5) continue;
+        const permissionLevel = getClassPermissionLevelForUser(student, classroom);
+        if (permissionLevel === BANNED_PERMISSIONS || permissionLevel === MANAGER_PERMISSIONS) continue;
         if (!student.tags) student.tags = [];
 
         let studentTags = [];
@@ -838,10 +801,9 @@ async function saveTags(studentId, tags, userSession) {
  * @param {string} key - The class key/code.
  */
 async function getClassUsers(user, key) {
-    const classPermissions = user.classPermissions;
     const dbClassUsers = await new Promise((resolve, reject) => {
         database.all(
-            "SELECT DISTINCT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE COALESCE(classusers.permissions, 1) END AS classPermissions FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
+            "SELECT DISTINCT users.id, users.email FROM users INNER JOIN classroom ON classroom.key = ? LEFT JOIN classusers ON users.id = classusers.studentId AND classusers.classId = classroom.id WHERE users.id = classroom.owner OR classusers.studentId IS NOT NULL",
             [key],
             (err, rows) => {
                 if (err) return reject(err);
@@ -858,6 +820,7 @@ async function getClassUsers(user, key) {
     let classId = await getClassIDFromCode(key);
 
     const cdClassroom = classId ? classStateStore.getClassroom(classId) : null;
+    const requesterPermissionLevel = cdClassroom ? getClassPermissionLevelForUser(user, cdClassroom) : GUEST_PERMISSIONS;
     if (cdClassroom) {
         cDClassUsers = cdClassroom.students || {};
     }
@@ -877,9 +840,11 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].help = cdUser.help;
             classUsers[userRow.email].break = cdUser.break;
             classUsers[userRow.email].pogMeter = cdUser.pogMeter;
+            classUsers[userRow.email].classRole = cdUser.classRole || null;
+            classUsers[userRow.email].classRoles = cdUser.classRoleRefs || [];
         }
 
-        if (classPermissions <= MOD_PERMISSIONS) {
+        if (requesterPermissionLevel < TEACHER_PERMISSIONS) {
             if (classUsers[userRow.email].help) {
                 classUsers[userRow.email].help = true;
             }
@@ -888,9 +853,7 @@ async function getClassUsers(user, key) {
             }
         }
 
-        if (classPermissions <= STUDENT_PERMISSIONS) {
-            delete classUsers[userRow.email].permissions;
-            delete classUsers[userRow.email].classPermissions;
+        if (requesterPermissionLevel < MOD_PERMISSIONS) {
             delete classUsers[userRow.email].help;
             delete classUsers[userRow.email].break;
             delete classUsers[userRow.email].pogMeter;
@@ -1021,22 +984,110 @@ function clearTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * Clears poll votes from students who should be excluded based on class settings,
+ * tags, permission levels, break status, and offline status.
+ * @param {string|number} classId
+ */
+function clearVotesFromExcludedStudents(classId) {
+    const classData = classStateStore.getClassroom(classId);
+    if (!classData) return;
+
+    const excludedEmails = [];
+
+    for (const student of Object.values(classData.students)) {
+        let shouldExclude = false;
+        const permissionLevel = getClassPermissionLevelForUser(student, classData);
+
+        if (classData.poll && classData.poll.excludedRespondents && classData.poll.excludedRespondents.includes(student.id)) {
+            shouldExclude = true;
+        }
+
+        if (student.tags && student.tags.includes("Excluded")) {
+            shouldExclude = true;
+        }
+
+        if (classData.settings && classData.settings.isExcluded) {
+            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
+                shouldExclude = true;
+            }
+            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
+                shouldExclude = true;
+            }
+            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
+                shouldExclude = true;
+            }
+        }
+
+        if (student.break === true) {
+            shouldExclude = true;
+        }
+
+        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
+            shouldExclude = true;
+        }
+
+        if (shouldExclude) {
+            excludedEmails.push(student.email);
+        }
+    }
+
+    for (const email of excludedEmails) {
+        const student = classData.students[email];
+        if (student && student.pollRes) {
+            student.pollRes.buttonRes = "";
+            student.pollRes.textRes = "";
+            student.pollRes.date = null;
+        }
+    }
+}
+
+/**
+ * Updates a single class setting, persists to DB, and broadcasts via socket.
+ * @param {string|number} classId
+ * @param {string} setting - The setting key (mute, filter, sort, isExcluded)
+ * @param {*} value - The new value for the setting
+ */
+async function updateClassSetting(classId, setting, value) {
+    requireInternalParam(classId, "classId");
+
+    const validSettings = Object.keys(DEFAULT_CLASS_SETTINGS);
+    if (!validSettings.includes(setting)) {
+        throw new ValidationError(`Invalid setting "${setting}". Valid settings: ${validSettings.join(", ")}`);
+    }
+
+    const classroom = classStateStore.getClassroom(classId);
+    if (!classroom) {
+        throw new NotFoundError("Class not started");
+    }
+
+    classStateStore.updateClassroom(classId, (c) => {
+        c.settings[setting] = value;
+    });
+
+    await dbRun("UPDATE classroom SET settings=? WHERE id=?", [JSON.stringify(classStateStore.getClassroom(classId).settings), classId]);
+
+    if (setting === "isExcluded") {
+        clearVotesFromExcludedStudents(classId);
+    }
+
+    broadcastClassUpdate(classId);
+}
+
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
     getClassLinks,
-    getClassIdByCode,
     validateClassroomName,
     initializeClassroom,
     addUserToClassroomSession,
     createClass,
     startClass,
     endClass,
-    checkUserClassPermission,
     joinClass,
     leaveClass,
     isClassActive,
-    deleteRooms,
+    deleteClassrooms,
     classKickStudent,
     classKickStudents,
     requestBreak,
@@ -1053,4 +1104,7 @@ module.exports = {
     clearTimer,
     resumeTimer,
     pauseTimer,
+    clearVotesFromExcludedStudents,
+    updateClassSetting,
+    broadcastClassUpdate,
 };

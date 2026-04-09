@@ -1,5 +1,6 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { resolveUserScopes } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -90,6 +91,43 @@ function recordAttempt(accountId, success) {
     failedAttempts.set(accountId, userAttempts);
 }
 
+function parseStoredScopes(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
+async function getComputedGlobalUser(userId) {
+    const user = await dbGet("SELECT id, email FROM users WHERE id = ?", [userId]);
+    if (!user) {
+        return null;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NULL`,
+        [userId]
+    );
+
+    return {
+        ...user,
+        globalRoles: roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes })),
+    };
+}
+
 // Pool helpers
 
 async function createPool({ name, description = "", ownerId }) {
@@ -134,13 +172,15 @@ async function isUserInPool(userId, poolId) {
     return !!row;
 }
 
-async function isUserOwner(userId, poolId) {
+/**
+ * Checks whether a specific user is an owner of a pool.
+ * @param {number} poolId - The pool to check.
+ * @param {number} userId - The user to check.
+ * @returns {Promise<boolean>} True if the user is an owner of the pool.
+ */
+async function isPoolOwnedByUser(poolId, userId) {
     const row = await dbGet("SELECT owner FROM digipog_pool_users WHERE pool_id = ? AND user_id = ? LIMIT 1", [poolId, userId]);
     return !!(row && row.owner);
-}
-
-async function isPoolOwnedByUser(poolId, userId) {
-    return isUserOwner(userId, poolId);
 }
 
 /**
@@ -149,7 +189,7 @@ async function isPoolOwnedByUser(poolId, userId) {
  * @returns {Promise<boolean>} Whether the requesting user owns the pool
  */
 function poolOwnerCheck(req) {
-    return isUserOwner(req.user.id, Number(req.params.id));
+    return isPoolOwnedByUser(Number(req.params.id), req.user.id);
 }
 
 async function addUserToPool(poolId, userId, ownerFlag = 0) {
@@ -157,7 +197,7 @@ async function addUserToPool(poolId, userId, ownerFlag = 0) {
 }
 
 async function removeUserFromPool(poolId, userId) {
-    if (await isUserOwner(userId, poolId)) {
+    if (await isPoolOwnedByUser(poolId, userId)) {
         const poolUsers = await getUsersForPool(poolId);
         const otherOwners = poolUsers.filter((poolUser) => poolUser.user_id !== userId && poolUser.owner);
         if (otherOwners.length === 0) {
@@ -182,7 +222,7 @@ async function addMemberToPool({ actingUserId, poolId, userId }) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -211,7 +251,7 @@ async function removeMemberFromPool({ actingUserId, poolId, userId }) {
         return { success: false, message: "Invalid user ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -231,7 +271,7 @@ async function payoutPool({ actingUserId, poolId }) {
         return { success: false, message: "Invalid pool ID." };
     }
 
-    const isOwner = await isUserOwner(actingUserId, poolId);
+    const isOwner = await isPoolOwnedByUser(poolId, actingUserId);
     if (!isOwner) {
         return { success: false, message: "You do not own this pool." };
     }
@@ -472,10 +512,11 @@ async function awardDigipogs(awardData, user) {
             return { success: false, message: rateLimitCheck.message, rateLimited: true, waitTime: rateLimitCheck.waitTime };
         }
 
-        const fromUser = await dbGet("SELECT email, permissions FROM users WHERE id = ?", [from]);
+        const fromUser = await getComputedGlobalUser(from);
         if (!fromUser || !fromUser.email) {
             return fail("Sender account not found.");
         }
+        const senderPermissionLevel = computeGlobalPermissionLevel(resolveUserScopes(fromUser));
 
         if (to.type === "class") {
             if (to.code) {
@@ -492,15 +533,20 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient class not found.");
             }
 
-            let classPermissions = 0;
+            let classPermissionLevel = 1;
             if (classInfo.owner === from) {
-                classPermissions = TEACHER_PERMISSIONS;
+                classPermissionLevel = TEACHER_PERMISSIONS;
             } else {
-                const permRow = await dbGet("SELECT permissions FROM classusers WHERE classId = ? AND studentId = ?", [to.id, from]);
-                classPermissions = permRow ? permRow.permissions : 0;
+                const roleRows = await dbGetAll(
+                    `SELECT r.scopes FROM user_roles ur
+                     JOIN roles r ON ur.roleId = r.id
+                     WHERE ur.userId = ? AND ur.classId = ?`,
+                    [from, to.id]
+                );
+                classPermissionLevel = computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
             }
 
-            if (classPermissions < TEACHER_PERMISSIONS && fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
                 return fail("Sender does not have permission to award to this class.");
             }
 
@@ -513,7 +559,7 @@ async function awardDigipogs(awardData, user) {
             if (!to.id) {
                 return fail("Missing pool identifier.");
             }
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
+            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
                 return fail("Sender does not have permission to award to pools.");
             }
             const poolInfo = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
@@ -527,12 +573,42 @@ async function awardDigipogs(awardData, user) {
                 return fail("Recipient account not found.");
             }
 
-            if (fromUser.permissions < TEACHER_PERMISSIONS) {
-                const hasPermission = await dbGet(
-                    "SELECT 1 FROM classusers cu1 INNER JOIN classroom c ON c.id = cu1.classId WHERE cu1.studentId = ? AND (cu1.classId IN (SELECT classId FROM classusers cu2 WHERE cu2.studentId = ? AND cu2.permissions >= ?) OR c.owner = ?)",
-
-                    [to.id, from, TEACHER_PERMISSIONS, from]
+            if (senderPermissionLevel < TEACHER_PERMISSIONS) {
+                const senderRoleRows = await dbGetAll(
+                    `SELECT ur.classId, r.scopes
+                     FROM user_roles ur
+                     JOIN roles r ON ur.roleId = r.id
+                     WHERE ur.userId = ? AND ur.classId IS NOT NULL`,
+                    [from]
                 );
+                const senderClassLevels = new Map();
+                for (const row of senderRoleRows) {
+                    const scopes = parseStoredScopes(row.scopes);
+                    const existingScopes = senderClassLevels.get(row.classId) || [];
+                    senderClassLevels.set(row.classId, existingScopes.concat(scopes));
+                }
+                const teacherClassIds = [...senderClassLevels.entries()]
+                    .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
+                    .map(([classId]) => classId);
+
+                let hasPermission = false;
+                if (teacherClassIds.length > 0) {
+                    const placeholders = teacherClassIds.map(() => "?").join(",");
+                    hasPermission = await dbGet(`SELECT 1 FROM classusers WHERE studentId = ? AND classId IN (${placeholders}) LIMIT 1`, [
+                        to.id,
+                        ...teacherClassIds,
+                    ]);
+                }
+                if (!hasPermission) {
+                    hasPermission = await dbGet(
+                        `SELECT 1 FROM classusers cu1
+                         INNER JOIN classroom c ON c.id = cu1.classId
+                         WHERE cu1.studentId = ?
+                         AND c.owner = ?
+                         LIMIT 1`,
+                        [to.id, from]
+                    );
+                }
                 if (!hasPermission) {
                     return fail("Sender does not have permission to award to this user.");
                 }
@@ -727,7 +803,6 @@ module.exports = {
     getUsersForPool,
     getPoolById,
     isUserInPool,
-    isUserOwner,
     isPoolOwnedByUser,
     poolOwnerCheck,
     addUserToPool,

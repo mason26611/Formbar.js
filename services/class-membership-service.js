@@ -1,0 +1,206 @@
+/**
+ * @module class-membership-service
+ *
+ * Manages persistent classroom membership — enrollment, unenrollment, and
+ * classroom-level data (links, bans). Operations here survive across sessions
+ * and are backed by the database.
+ *
+ * For active session management (start/end, timers, polls, breaks, help),
+ * see `class-service`. For the shared Classroom model and state store,
+ * see `classroom-service`.
+ */
+const { classStateStore, getClassIDFromCode } = require("@services/classroom-service");
+const { classCodeCacheStore } = require("@stores/class-code-cache-store");
+const { dbGet, dbRun, dbGetAll } = require("@modules/database");
+const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
+const { getIdFromEmail } = require("@services/student-service");
+const { userSocketUpdates } = require("../sockets/init");
+const { requireInternalParam } = require("@modules/error-wrapper");
+const NotFoundError = require("@errors/not-found-error");
+
+// Lazy-load class-service to avoid circular dependency
+let classService;
+function getClassService() {
+    if (!classService) {
+        classService = require("@services/class-service");
+    }
+    return classService;
+}
+
+async function deleteClassroom(classroomId) {
+    requireInternalParam(classroomId, "classroomId");
+
+    // End the active class session if it's currently loaded in memory
+    if (classStateStore.getClassroom(classroomId)) {
+        await getClassService().endClass(classroomId);
+    }
+
+    await dbRun("BEGIN TRANSACTION");
+    try {
+        await dbRun("DELETE FROM classroom WHERE id=?", [classroomId]);
+        await Promise.all([
+            dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM roles WHERE classId=?", [classroomId]),
+        ]);
+        await dbRun("COMMIT");
+    } catch (err) {
+        try {
+            await dbRun("ROLLBACK");
+        } catch (rollbackErr) {
+            // Intentionally ignore rollback errors to avoid masking the original error
+        }
+        throw err;
+    }
+
+    // Invalidate in-memory caches
+    invalidateClassPollCache(classroomId);
+    classCodeCacheStore.invalidateByClassId(classroomId);
+}
+
+function getClassroomById(classroomId) {
+    requireInternalParam(classroomId, "classroomId");
+
+    return dbGet("SELECT * FROM classroom WHERE id=?", [classroomId]);
+}
+
+/**
+ * Enroll a user in a classroom for the first time using a class code.
+ *
+ * Use this function when a user is joining with a code they received. For rejoining a class
+ * the user is already a member of, use `joinClass` from `class-service` instead.
+ *
+ * This function will:
+ *  - Look up the classroom by the provided code.
+ *  - Initialize the classroom in memory if it's not already loaded.
+ *  - Delegate the actual joining logic to `class-service.addUserToClassroomSession`.
+ *
+ * @param {string} code - The class code to enroll with.
+ * @param {Object} sessionUser - The user's session object (must include `email`).
+ * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to an object with `success: true` and `roomId` on success, or `{ success: false }` if the underlying service indicates the enrollment failed.
+ * @throws {NotFoundError} If no class exists with that code.
+ * @throws {Error} Errors from `class-service` (for example, permission/ban related errors) are propagated.
+ */
+async function enrollByCode(code, sessionUser) {
+    const email = sessionUser.email;
+
+    // Resolve class code to classroom ID (uses cache when available)
+    const classId = await getClassIDFromCode(code);
+
+    if (!classId) {
+        throw new NotFoundError("No class with that code");
+    }
+
+    // Initialize classroom if not already loaded
+    if (!classStateStore.getClassroom(classId)) {
+        await getClassService().initializeClassroom(classId);
+    }
+
+    // Delegate to class-service to handle the actual joining logic
+    const result = await getClassService().addUserToClassroomSession(classId, email, sessionUser);
+    if (!result) {
+        return { success: false };
+    }
+
+    return {
+        success: true,
+        roomId: classId,
+    };
+}
+
+/**
+ * Enroll in a class by code and emit the result back to the user's sockets.
+ *
+ * This wraps `enrollByCode` and forwards the resulting payload to the user's
+ * connected clients via the `joinClass` socket event. The event is intentionally
+ * named `joinClass` (not `enroll`) because the client treats both first-time
+ * enrollment and session re-joins identically once the server responds.
+ *
+ * @param {Object} userSession - The session object of the user attempting to enroll. Must include `email`.
+ * @param {string} classCode - The code of the class to enroll in.
+ * @returns {Promise<{success: boolean, roomId?: number}>} Resolves to the enrollment result. On success `success` is true and `roomId` is provided.
+ * @throws {NotFoundError} If no class exists with that code (propagated from `enrollByCode`).
+ * @throws {Error} Errors from `class-service` (for example, permission/ban related errors) are propagated.
+ */
+async function enrollInClass(userSession, classCode) {
+    const response = await enrollByCode(classCode, userSession);
+    emitToUser(userSession.email, "joinClass", response);
+    return response;
+}
+
+/**
+ * Permanently removes a user from a classroom.
+ * Deletes the user from the class in memory and the database, updates the user's session,
+ * emits leave events, and reloads the user's page.
+ * @param {Object} userData - The session object of the user being unenrolled.
+ * @returns {Promise<void>}
+ */
+async function unenrollFromClass(userData) {
+    const classId = userData.classId;
+    const email = userData.email;
+    const studentId = await getIdFromEmail(email);
+
+    // Remove the user from the class
+    classStateStore.removeClassroomStudent(classId, email);
+    classStateStore.updateUser(email, {
+        activeClass: null,
+        break: false,
+        help: false,
+    });
+    await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
+
+    // If the owner of the classroom leaves, then delete the classroom
+    const classRow = await dbGet("SELECT owner FROM classroom WHERE id=?", classId);
+    if (classRow && classRow.owner === studentId) {
+        await deleteClassroom(classId);
+    }
+
+    // Update the class and play leave sound
+    const userSockets = userSocketUpdates.get(email);
+    if (userSockets) {
+        for (const socketUpdate of userSockets.values()) {
+            socketUpdate.classUpdate(classId);
+        }
+    }
+
+    // Play leave sound and reload the user's page
+    await advancedEmitToClass("leaveSound", classId, {});
+    await emitToUser(email, "reload");
+}
+
+async function isUserEnrolled(userId, classId) {
+    const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
+    return !!result;
+}
+
+function getClassLinks(classId) {
+    requireInternalParam(classId, "classId");
+    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
+}
+
+/**
+ * Middleware-compatible ownership check for classrooms.
+ * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
+ * Also caches the classroom on req._room for use by the handler.
+ */
+async function classroomOwnerCheck(req) {
+    const classroom = await getClassroomById(Number(req.params.id));
+    if (!classroom) {
+        throw new NotFoundError("Classroom not found");
+    }
+    req._room = classroom;
+    return classroom.owner === req.user.id;
+}
+
+module.exports = {
+    deleteClassroom,
+    getClassroomById,
+    classroomOwnerCheck,
+    enrollByCode,
+    enrollInClass,
+    unenrollFromClass,
+    isUserEnrolled,
+    getClassLinks,
+};
