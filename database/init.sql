@@ -16,23 +16,21 @@ CREATE TABLE IF NOT EXISTS "class_polls"
 
 CREATE TABLE IF NOT EXISTS "classroom"
 (
-    "id"          INTEGER NOT NULL UNIQUE,
-    "name"        TEXT    NOT NULL,
-    "owner"       INTEGER NOT NULL,
-    "key"         INTEGER NOT NULL,
-    "permissions" TEXT    NOT NULL,
-    "tags"        TEXT,
-    "settings"    TEXT,
+    "id"       INTEGER NOT NULL UNIQUE,
+    "name"     TEXT    NOT NULL,
+    "owner"    INTEGER NOT NULL,
+    "key"      INTEGER NOT NULL,
+    "tags"     TEXT,
+    "settings" TEXT,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 
 CREATE TABLE IF NOT EXISTS "classusers"
 (
-    "classId"     INTEGER NOT NULL,
-    "studentId"   INTEGER NOT NULL,
-    "permissions" INTEGER,
-    "digiPogs"    INTEGER,
-    "role"        TEXT
+    "classId"   INTEGER NOT NULL,
+    "studentId" INTEGER NOT NULL,
+    "digiPogs"  INTEGER,
+    "tags"      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "custom_polls"
@@ -132,8 +130,6 @@ CREATE TABLE IF NOT EXISTS "users"
     "username"    TEXT    NOT NULL,
     "email"       TEXT    NOT NULL UNIQUE,
     "password"    TEXT,
-    "permissions" INTEGER,
-    "role"        TEXT,
     "API"         TEXT    NOT NULL UNIQUE,
     "secret"      TEXT    NOT NULL UNIQUE,
     "tags"        TEXT,
@@ -149,6 +145,7 @@ CREATE TABLE IF NOT EXISTS "roles"
     "name"    TEXT    NOT NULL,
     "classId" INTEGER,
     "scopes"  TEXT    NOT NULL DEFAULT '[]',
+    "color"   TEXT    NOT NULL DEFAULT '#808080',
     PRIMARY KEY ("id" AUTOINCREMENT),
     UNIQUE ("name", "classId")
 );
@@ -162,9 +159,9 @@ CREATE TABLE IF NOT EXISTS "user_roles"
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
 
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Banned', NULL, '[]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Guest', NULL, '["class.poll.read","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Student', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Mod', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Teacher', NULL, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
-INSERT INTO "roles" ("name", "classId", "scopes") VALUES ('Manager', NULL, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Banned', NULL, '[]', '#808080');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Guest', NULL, '["class.poll.read","class.links.read"]', '#95A5A6');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Student', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#3498DB');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Mod', NULL, '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#2ECC71');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Teacher', NULL, '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#F39C12');
+INSERT INTO "roles" ("name", "classId", "scopes", "color") VALUES ('Manager', NULL, '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#E74C3C');

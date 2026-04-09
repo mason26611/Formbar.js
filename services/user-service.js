@@ -10,8 +10,8 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES } = require("@modules/roles");
+const { getUserRoleName, resolveUserScopes, resolveClassScopes } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
@@ -19,6 +19,7 @@ const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
 
 let passwordResetTemplate;
@@ -180,15 +181,45 @@ function loadVerifyEmailTemplate() {
 
 async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
-    return user;
+    if (!user) {
+        return user;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NULL`,
+        [userId]
+    );
+    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
+    const role = getUserRoleName({ globalRoles });
+    const globalScopes = resolveUserScopes({ globalRoles });
+
+    return {
+        ...user,
+        globalRoles,
+        role,
+        permissions: computeGlobalPermissionLevel(globalScopes),
+        classPermissions: null,
+    };
 }
 
 async function requestPasswordReset(email) {
+    requireInternalParam(email, "email");
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await dbGet("SELECT id FROM users WHERE email = ?", [normalizedEmail]);
+    if (!user) {
+        return true;
+    }
+
     const template = loadPasswordResetTemplate();
     const secret = crypto.randomBytes(256).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, email]);
+    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, normalizedEmail]);
 
-    sendMail(email, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
+    sendMail(normalizedEmail, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
+    return true;
 }
 
 async function requestVerificationEmail(userId, apiBaseUrl) {
@@ -240,6 +271,7 @@ async function verifyEmailFromCode(code) {
 async function resetPassword(password, token) {
     requireInternalParam(password, "password");
     requireInternalParam(token, "token");
+    assertValidPassword(password, { event: "user.password.reset.failed", reason: "invalid_password" });
 
     const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
     if (!user) {
@@ -251,6 +283,37 @@ async function resetPassword(password, token) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
+    return true;
+}
+
+async function updatePassword(userId, oldPassword, newPassword) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(newPassword, "newPassword");
+    assertValidPassword(newPassword, { event: "user.password.update.failed", reason: "invalid_password" });
+
+    const user = await getUserDataFromDb(userId);
+    if (!user) {
+        throw new NotFoundError("User not found.", {
+            event: "user.password.update.failed",
+            reason: "user_not_found",
+        });
+    }
+
+    if (user.password) {
+        requireInternalParam(oldPassword, "oldPassword");
+
+        const oldPasswordMatches = await bcrypt.compare(oldPassword, user.password);
+        if (!oldPasswordMatches) {
+            const AuthError = require("@errors/auth-error");
+            throw new AuthError("Current password is incorrect.", {
+                event: "user.password.update.failed",
+                reason: "incorrect_old_password",
+            });
+        }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
     return true;
 }
 
@@ -354,42 +417,23 @@ async function getUser(userIdentifier) {
         if (classId instanceof Error) throw classId;
 
         let dbUser = await new Promise((resolve, reject) => {
-            if (!classId) {
-                database.get("SELECT id, email, permissions, NULL AS classPermissions FROM users WHERE email = ?", [email], (err, dbUser) => {
-                    try {
-                        if (err) throw err;
-                        if (!dbUser) {
-                            resolve({ error: "user does not exist" });
-                            return;
-                        }
-                        resolve(dbUser);
-                    } catch (err) {
-                        reject(err);
+            database.get("SELECT id FROM users WHERE email = ?", [email], async (err, row) => {
+                try {
+                    if (err) throw err;
+                    if (!row) {
+                        resolve({ error: classId ? "user does not exist in this class" : "user does not exist" });
+                        return;
                     }
-                });
-                return;
-            }
-            database.get(
-                "SELECT users.id, users.email, users.permissions, CASE WHEN users.id = classroom.owner THEN 5 ELSE classusers.permissions END AS classPermissions FROM users JOIN classroom ON classroom.id = ? LEFT JOIN classusers ON classusers.classId = classroom.id AND classusers.studentId = users.id WHERE users.email = ?;",
-                [classId, email],
-                (err, dbUser) => {
-                    try {
-                        if (err) throw err;
-                        if (!dbUser) {
-                            resolve({ error: "user does not exist in this class" });
-                            return;
-                        }
-                        resolve(dbUser);
-                    } catch (err) {
-                        reject(err);
-                    }
+                    resolve(await getUserDataFromDb(row.id));
+                } catch (error) {
+                    reject(error);
                 }
-            );
+            });
         });
 
         if (dbUser.error) return dbUser;
 
-        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: 0, classId };
+        let userData = { loggedIn: false, ...dbUser, help: null, break: null, pogMeter: 0, classId, classPermissions: null };
 
         const classroom = classStateStore.getClassroom(classId);
         if (classroom && classroom.students[dbUser.email]) {
@@ -399,6 +443,28 @@ async function getUser(userIdentifier) {
                 userData.help = cdUser.help;
                 userData.break = cdUser.break;
                 userData.pogMeter = cdUser.pogMeter;
+                userData.classRole = cdUser.classRole || null;
+                userData.classRoles = cdUser.classRoleRefs || [];
+            }
+        }
+
+        if (classroom) {
+            const classroomOwnerId = classroom.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [classId]))?.owner;
+            const activeClassUser = classroom.students[dbUser.email];
+            const effectiveClassUser = activeClassUser
+                ? {
+                      ...activeClassUser,
+                      isClassOwner: activeClassUser.isClassOwner === true || dbUser.id === classroomOwnerId,
+                  }
+                : dbUser.id === classroomOwnerId
+                  ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
+                  : null;
+            if (effectiveClassUser) {
+                const classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                userData.classPermissions = computeClassPermissionLevel(classScopes, {
+                    isOwner: Boolean(effectiveClassUser.isClassOwner),
+                    globalScopes: resolveUserScopes(effectiveClassUser),
+                });
             }
         }
 
@@ -444,9 +510,8 @@ function logout(socket) {
                     user.activeClass = null;
                     user.break = false;
                     user.help = false;
-                    user.classPermissions = null;
                 }
-                if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
+                if (user && (user.isGuest || user.permissions === GUEST_PERMISSIONS)) {
                     classStateStore.removeUser(email);
                 }
                 if (!classId) return;
@@ -545,6 +610,7 @@ module.exports = {
     requestVerificationEmail,
     verifyEmailFromCode,
     resetPassword,
+    updatePassword,
     regenerateAPIKey,
     requestPinReset,
     resetPin,

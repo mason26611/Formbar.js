@@ -7,7 +7,7 @@ const {
     getClassRoleName,
     getClassRoleNames,
 } = require("@modules/scope-resolver");
-const { SCOPES } = require("@modules/permissions");
+const { SCOPES, computeGlobalPermissionLevel } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
     it("returns role field when present", () => {
@@ -58,6 +58,12 @@ describe("resolveUserScopes", () => {
         expect(scopes).toContain(SCOPES.GLOBAL.USERS.MANAGE);
         expect(scopes).toContain(SCOPES.GLOBAL.CLASS.CREATE);
         expect(scopes).toContain(SCOPES.GLOBAL.POOLS.MANAGE);
+    });
+
+    it("Manager scopes do not include blocked and still resolve to permission level 5", () => {
+        const scopes = resolveUserScopes({ role: "Manager" });
+        expect(scopes).not.toContain(SCOPES.GLOBAL.SYSTEM.BLOCKED);
+        expect(computeGlobalPermissionLevel(scopes)).toBe(5);
     });
 
     it("Banned user gets empty array", () => {

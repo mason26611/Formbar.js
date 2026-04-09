@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
-const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
 
 let mockDatabase;
 
@@ -99,7 +99,7 @@ async function setupClassWithStudent() {
         permissions: 2,
     });
 
-    await mockDatabase.dbRun("INSERT INTO classusers(classId, studentId, permissions) VALUES(?, ?, ?)", [classId, student.id, 2]);
+    await seedClassMembership(mockDatabase, student.id, classId, 2);
 
     await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
 

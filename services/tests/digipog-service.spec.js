@@ -1,4 +1,5 @@
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 const bcrypt = require("bcrypt");
 
 let mockDatabase;
@@ -83,9 +84,10 @@ async function seedUser(overrides = {}) {
     };
     const u = { ...defaults, ...overrides };
     await mockDatabase.dbRun(
-        "INSERT INTO users (id, email, password, permissions, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [uid, u.email, u.password, u.permissions, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+        "INSERT INTO users (id, email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [uid, u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
+    await setGlobalPermissionLevel(mockDatabase, uid, u.permissions);
     return { id: uid, ...u };
 }
 
@@ -603,13 +605,7 @@ describe("awardDigipogs()", () => {
         // Put them in same class so teacher has permission
         await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["C1", teacher.id, "k1", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: { id: student.id, type: "user" }, amount: 10, reason: "Good job" }, { id: teacher.id });
         expect(result.success).toBe(true);
@@ -679,13 +675,7 @@ describe("awardDigipogs()", () => {
 
         await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["C2", teacher.id, "k2", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: student.id, amount: 5 }, { id: teacher.id });
         expect(result.success).toBe(true);
@@ -704,13 +694,7 @@ describe("awardDigipogs()", () => {
 
         await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["AwardClass", teacher.id, "kc", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'AwardClass'");
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-            classRow.id,
-            student.id,
-            2,
-            0,
-            "student",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
         const result = await awardDigipogs({ to: { id: classRow.id, type: "class" }, amount: 7 }, { id: teacher.id });
         expect(result.success).toBe(true);

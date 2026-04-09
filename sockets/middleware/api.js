@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database } = require("@modules/database");
 const { createStudentFromUserData, getIdFromEmail } = require("@services/student-service");
-const { getUserClass } = require("@services/user-service");
+const { getUserClass, getUserDataFromDb } = require("@services/user-service");
 const { classKickStudent } = require("@services/class-service");
 const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
@@ -25,7 +25,18 @@ const reconnectTimers = new Map();
 function ensureStudentExists(userData) {
     if (!classStateStore.getUser(userData.email)) {
         classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
+        return;
     }
+
+    classStateStore.updateUser(userData.email, {
+        id: userData.id,
+        API: userData.API,
+        displayName: userData.displayName,
+        verified: userData.verified,
+        role: userData.role,
+        globalRoles: userData.globalRoles || [],
+        permissions: userData.permissions,
+    });
 }
 
 /**
@@ -143,10 +154,14 @@ module.exports = {
                 const cachedEmail = apiKeyCacheStore.get(api);
                 if (cachedEmail) {
                     const userData = await new Promise((resolve, reject) => {
-                        database.get("SELECT id, email, API, permissions, displayName FROM users WHERE email = ?", [cachedEmail], (err, row) => {
-                            if (err) return reject(err);
-                            if (!row) return reject("User not found");
-                            resolve(row);
+                        database.get("SELECT id FROM users WHERE email = ?", [cachedEmail], async (err, row) => {
+                            try {
+                                if (err) return reject(err);
+                                if (!row) return reject("User not found");
+                                resolve(await getUserDataFromDb(row.id));
+                            } catch (error) {
+                                reject(error);
+                            }
                         });
                     });
                     finalizeAuthentication(socket, userData, socketUpdates, true);
@@ -155,7 +170,7 @@ module.exports = {
                         // Look up the user by comparing API key hash.
                         // Only fetch users that actually have an API key set to avoid
                         // pulling sensitive columns (password hash, secret) for every user.
-                        database.all("SELECT id, email, API, permissions, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
+                        database.all("SELECT id, email, API, displayName FROM users WHERE API IS NOT NULL", [], async (err, users) => {
                             try {
                                 if (err) throw err;
 
@@ -171,6 +186,8 @@ module.exports = {
                                 if (!userData) {
                                     throw "Not a valid API key";
                                 }
+
+                                userData = await getUserDataFromDb(userData.id);
 
                                 // Cache the result for future connections
                                 apiKeyCacheStore.set(api, userData.email);
@@ -202,15 +219,15 @@ module.exports = {
                             throw "Invalid access token: missing required fields";
                         }
 
-                        // Fetch user data from database to get permissions and API key
-                        database.get("SELECT * FROM users WHERE id = ?", [userId], (err, userData) => {
+                        database.get("SELECT id FROM users WHERE id = ?", [userId], async (err, row) => {
                             try {
                                 if (err) throw err;
 
-                                if (!userData) {
+                                if (!row) {
                                     throw "User not found";
                                 }
 
+                                const userData = await getUserDataFromDb(row.id);
                                 finalizeAuthentication(socket, userData, socketUpdates, false);
                                 resolve();
                             } catch (err) {

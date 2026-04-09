@@ -12,7 +12,6 @@
  * @module services/classroom-service
  */
 const { database, dbGet } = require("@modules/database");
-const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -22,7 +21,7 @@ const classStateStore = new ClassStateStore();
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, permissions, tags, customRoles } = {}) {
+    constructor({ id, className, key, owner, tags, customRoles, availableRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -40,13 +39,15 @@ class Classroom {
         };
         this.key = key;
 
-        // Ensure permissions is an object, not a JSON string
-        try {
-            this.permissions = typeof permissions === "string" ? JSON.parse(permissions) : permissions || DEFAULT_CLASS_PERMISSIONS;
-        } catch (err) {
-            // Fallback to defaults if parsing fails
-            this.permissions = DEFAULT_CLASS_PERMISSIONS;
+        let parsedTags = tags;
+        if (typeof parsedTags === "string") {
+            try {
+                parsedTags = JSON.parse(parsedTags);
+            } catch {
+                parsedTags = null;
+            }
         }
+        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
 
         this.tags = tags || ["Offline", "Excluded"];
         this.timer = {
@@ -61,6 +62,7 @@ class Classroom {
         }
 
         this.customRoles = customRoles || {};
+        this.availableRoles = Array.isArray(availableRoles) ? availableRoles : [];
     }
 }
 

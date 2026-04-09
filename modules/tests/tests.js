@@ -11,6 +11,7 @@
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
 const { Student } = require("@services/student-service");
+const { LEVEL_TO_ROLE } = require("@modules/roles");
 
 /** Common test fixture values reused across all socket tests. */
 const testData = {
@@ -94,12 +95,15 @@ function createTestClass(code, name) {
  *
  * @param {string} email       - Student email address.
  * @param {string} code        - Class code (unused but kept for call-site symmetry).
- * @param {number} permissions - Class-level permission value.
+ * @param {number} permissions - Class-level permission value (mapped to role name).
  * @returns {Object} The Student instance added to classStateStore.
  */
 function createTestUser(email, code, permissions) {
-    const student = new Student(email, testData.userId, permissions);
-    student.classPermissions = permissions;
+    const student = new Student(email, testData.userId);
+    const roleName = LEVEL_TO_ROLE[permissions] || "Guest";
+    student.classRole = roleName;
+    student.classRoles = [roleName];
+    student.role = roleName;
     student.activeClass = testData.classId;
     classStateStore.setUser(email, student);
     if (classStateStore.getClassroom(testData.classId)) {

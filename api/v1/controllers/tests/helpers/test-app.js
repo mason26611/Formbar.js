@@ -8,6 +8,7 @@
 
 require("express-async-errors");
 const express = require("express");
+const { setGlobalPermissionLevel, addClassMemberWithPermission } = require("@test-helpers/role-seeding");
 
 /**
  * Creates a lightweight Express app for HTTP endpoint testing.
@@ -65,10 +66,10 @@ async function seedAuthenticatedUser(mockDatabase, overrides = {}) {
     const result = await register(email, password, displayName);
 
     if (overrides.permissions !== undefined) {
-        await mockDatabase.dbRun("UPDATE users SET permissions = ? WHERE id = ?", [overrides.permissions, result.user.id]);
+        await setGlobalPermissionLevel(mockDatabase, result.user.id, overrides.permissions);
     }
 
-    const userData = await mockDatabase.dbGet("SELECT * FROM users WHERE id = ?", [result.user.id]);
+    const userData = await require("@services/user-service").getUserDataFromDb(result.user.id);
     const student = createStudentFromUserData(userData, { isGuest: false });
     classStateStore.setUser(email, student);
 
@@ -76,6 +77,10 @@ async function seedAuthenticatedUser(mockDatabase, overrides = {}) {
         tokens: result.tokens,
         user: { ...userData, id: result.user.id },
     };
+}
+
+async function seedClassMembership(mockDatabase, userId, classId, permissionLevel, options = {}) {
+    return addClassMemberWithPermission(mockDatabase, userId, classId, permissionLevel, options);
 }
 
 /**
@@ -93,4 +98,4 @@ function clearClassStateStore() {
     }
 }
 
-module.exports = { createTestApp, seedAuthenticatedUser, clearClassStateStore };
+module.exports = { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore };

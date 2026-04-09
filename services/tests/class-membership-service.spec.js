@@ -92,15 +92,9 @@ async function seedClassroom(overrides = {}) {
 }
 
 async function seedClassUser(classId, studentId, overrides = {}) {
-    const defaults = { permissions: null, digiPogs: 0, role: "student" };
+    const defaults = { digiPogs: 0 };
     const u = { ...defaults, ...overrides };
-    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions, digiPogs, role) VALUES (?, ?, ?, ?, ?)", [
-        classId,
-        studentId,
-        u.permissions,
-        u.digiPogs,
-        u.role,
-    ]);
+    await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classId, studentId, u.digiPogs]);
 }
 
 async function seedLink(classId, name, url) {
@@ -323,7 +317,6 @@ describe("unenrollFromClass", () => {
             activeClass: null,
             break: false,
             help: false,
-            classPermissions: null,
         });
 
         const row = await mockDatabase.dbGet("SELECT * FROM classusers WHERE classId=? AND studentId=?", [room.id, 1]);

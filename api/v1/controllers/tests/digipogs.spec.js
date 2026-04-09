@@ -113,7 +113,7 @@ describe("POST /api/v1/digipogs/award", () => {
             id: 1,
             className: "Test",
             key: "TEST1",
-            owner: user.id,
+            owner: 99999,
             permissions: null,
             tags: null,
             settings: null,
