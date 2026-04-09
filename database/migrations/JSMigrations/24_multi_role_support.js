@@ -15,16 +15,10 @@ module.exports = {
             // Index may already exist
         }
 
-        const classusersColumns = await dbGetAll("PRAGMA table_info(classusers)", [], database);
-        if (!classusersColumns.some((column) => column.name === "role")) {
-            console.log("Migration 24 skipped: classusers.role does not exist.");
-            return;
-        }
-
         // Migrate existing classusers.role values into user_roles entries.
         // Only migrate rows that don't already have a corresponding user_roles entry.
         const classUserRows = await dbGetAll(
-            `SELECT cu.classId, cu.studentId, cu.role
+            `SELECT cu.classId, cu.studentId, cu.role, cu.permissions
              FROM classusers cu
              WHERE cu.role IS NOT NULL AND cu.role != ''`,
             [],

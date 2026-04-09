@@ -71,36 +71,30 @@ module.exports = {
 
         // Add role column to users table if it doesn't exist
         const usersColumns = await dbGetAll("PRAGMA table_info(users)", [], database);
-        const hasUserPermissionsColumn = usersColumns.some((col) => col.name === "permissions");
         if (!usersColumns.some((col) => col.name === "role")) {
             await dbRun(`ALTER TABLE "users" ADD COLUMN "role" TEXT`, [], database);
 
             // Backfill users.role from existing numeric permissions
-            if (hasUserPermissionsColumn) {
-                await dbRun(`UPDATE "users" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
-                await dbRun(`UPDATE "users" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
-                await dbRun(`UPDATE "users" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
-                await dbRun(`UPDATE "users" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
-                await dbRun(`UPDATE "users" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
-                await dbRun(`UPDATE "users" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
-            }
+            await dbRun(`UPDATE "users" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
         }
 
         // Add role column to classusers table if it doesn't exist
         const classusersColumns = await dbGetAll("PRAGMA table_info(classusers)", [], database);
-        const hasClassUserPermissionsColumn = classusersColumns.some((col) => col.name === "permissions");
         if (!classusersColumns.some((col) => col.name === "role")) {
             await dbRun(`ALTER TABLE "classusers" ADD COLUMN "role" TEXT`, [], database);
 
             // Backfill classusers.role from existing numeric permissions
-            if (hasClassUserPermissionsColumn) {
-                await dbRun(`UPDATE "classusers" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
-                await dbRun(`UPDATE "classusers" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
-                await dbRun(`UPDATE "classusers" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
-                await dbRun(`UPDATE "classusers" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
-                await dbRun(`UPDATE "classusers" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
-                await dbRun(`UPDATE "classusers" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
-            }
+            await dbRun(`UPDATE "classusers" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
         }
 
         console.log("Migration 23 completed: roles tables created and role columns added.");
