@@ -42,7 +42,8 @@ async function deleteClassroom(classroomId) {
             dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]),
             dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]),
             dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM class_permissions WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM roles WHERE classId=?", [classroomId]),
         ]);
         await dbRun("COMMIT");
     } catch (err) {
@@ -147,7 +148,6 @@ async function unenrollFromClass(userData) {
         activeClass: null,
         break: false,
         help: false,
-        classPermissions: null,
     });
     await dbRun("DELETE FROM classusers WHERE classId=? AND studentId=?", [classId, studentId]);
 

@@ -1,9 +1,8 @@
 const { getUser } = require("@services/user-service");
 const { verifyToken } = require("@services/auth-service");
 const { settings } = require("@modules/config");
-const { getUserRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
-const { GUEST_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { resolveUserScopes } = require("@modules/scope-resolver");
 
 // In-memory rate limit storage
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
@@ -16,28 +15,28 @@ async function rateLimiter(req, res, next) {
     } else if (req.headers.authorization) {
         const decodedToken = verifyToken(req.headers.authorization);
         if (!decodedToken || decodedToken.error || !decodedToken.email) {
-            user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+            user = { email: req.ip };
         } else {
             let email = decodedToken.email;
             user = await getUser({ email: email });
         }
     } else {
-        // If no auth provided, use ip as identifier with guest permissions
-        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+        user = { email: req.ip };
     }
 
     // Fallback for invalid user data
-    if (!user || user.error || !user.email || !user.permissions) {
-        user = { email: req.ip, permissions: GUEST_PERMISSIONS };
+    if (!user || user.error || !user.email) {
+        user = { email: req.ip };
     }
 
     const identifier = user.email;
     const currentTime = Date.now();
     const timeFrame = settings.rateLimitWindowMs ?? 60000;
     let limit = 10; // Default limit for unauthenticated users
-    if (isRoleAtLeast(getUserRoleName(user), ROLE_NAMES.TEACHER)) {
+    const permissionLevel = computeGlobalPermissionLevel(resolveUserScopes(user));
+    if (permissionLevel >= TEACHER_PERMISSIONS) {
         limit = 225;
-    } else if (isRoleAtLeast(getUserRoleName(user), ROLE_NAMES.STUDENT)) {
+    } else if (permissionLevel >= STUDENT_PERMISSIONS) {
         limit = req.path.startsWith("/auth/") ? 10 : 120;
     }
     // Apply the configurable multiplier so test runs can relax limits.
@@ -73,7 +72,7 @@ async function rateLimiter(req, res, next) {
                 identifier,
                 path,
                 limit,
-                permissions: user.permissions,
+                permissionLevel,
             });
         }
 

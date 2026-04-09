@@ -16,7 +16,7 @@ module.exports = (router) => {
      *     tags:
      *       - Class Roles
      *     description: |
-     *       Returns all built-in and custom roles available for the class,
+     *       Returns all roles available for the class,
      *       including the scopes assigned to each role.
      *
      *       **Required:** Must be authenticated and a member of the class.
@@ -44,15 +44,12 @@ module.exports = (router) => {
      *                     properties:
      *                       id:
      *                         type: integer
-     *                         nullable: true
      *                       name:
      *                         type: string
      *                       scopes:
      *                         type: array
      *                         items:
      *                           type: string
-     *                       builtIn:
-     *                         type: boolean
      *       401:
      *         description: Not authenticated
      *         content:
@@ -121,6 +118,9 @@ module.exports = (router) => {
      *                 items:
      *                   type: string
      *                 example: ["class.poll.create", "class.poll.end"]
+     *               color:
+     *                 type: string
+     *                 example: "#123456"
      *     responses:
      *       201:
      *         description: Role created
@@ -140,6 +140,8 @@ module.exports = (router) => {
      *                       type: array
      *                       items:
      *                         type: string
+     *                     color:
+     *                       type: string
      *       400:
      *         description: Invalid parameters
      *         content:
@@ -163,7 +165,7 @@ module.exports = (router) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
 
-        const { name, scopes } = req.body;
+        const { name, scopes, color } = req.body;
         requireBodyParam(name, "name");
         requireBodyParam(scopes, "scopes");
 
@@ -171,7 +173,7 @@ module.exports = (router) => {
         if (!classroom) throw new NotFoundError("Class not found.");
         const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom);
+        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom, color);
         await broadcastClassUpdate(classId);
         res.status(201).json({ success: true, data: role });
     });
@@ -180,12 +182,11 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/class/{id}/roles/{roleId}:
      *   patch:
-     *     summary: Update a custom role
+     *     summary: Update a role
      *     tags:
      *       - Class Roles
      *     description: |
-     *       Updates the name and/or scopes of a custom role.
-     *       Built-in roles cannot be modified.
+     *       Updates the name and/or scopes of a role.
      *       You can only grant scopes you possess yourself.
      *
      *       **Required scope:** `class.session.settings`
@@ -203,7 +204,7 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: integer
-     *         description: The custom role ID
+     *         description: The role ID
      *     requestBody:
      *       required: true
      *       content:
@@ -217,6 +218,9 @@ module.exports = (router) => {
      *                 type: array
      *                 items:
      *                   type: string
+     *               color:
+     *                 type: string
+     *                 example: "#123456"
      *     responses:
      *       200:
      *         description: Role updated
@@ -236,6 +240,8 @@ module.exports = (router) => {
      *                       type: array
      *                       items:
      *                         type: string
+     *                     color:
+     *                       type: string
      *       400:
      *         description: Invalid parameters
      *         content:
@@ -280,11 +286,11 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/class/{id}/roles/{roleId}:
      *   delete:
-     *     summary: Delete a custom role
+     *     summary: Delete a role
      *     tags:
      *       - Class Roles
      *     description: |
-     *       Deletes a custom role. Students assigned to this role are
+     *       Deletes a role. Students assigned to this role are
      *       reassigned to the Guest role.
      *
      *       **Required scope:** `class.session.settings`
@@ -302,7 +308,7 @@ module.exports = (router) => {
      *         required: true
      *         schema:
      *           type: integer
-     *         description: The custom role ID
+     *         description: The role ID
      *     responses:
      *       200:
      *         description: Role deleted

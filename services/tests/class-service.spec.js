@@ -77,16 +77,21 @@ afterAll(async () => {
 const crypto = require("crypto");
 
 async function seedUser(email = "owner@example.com", displayName = "Owner") {
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [email, "hashed", 4, crypto.randomBytes(8).toString("hex"), crypto.randomBytes(8).toString("hex"), displayName, 1]
-    );
+    const id = await mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)", [
+        email,
+        "hashed",
+        crypto.randomBytes(8).toString("hex"),
+        crypto.randomBytes(8).toString("hex"),
+        displayName,
+        1,
+    ]);
+    // Assign Teacher role (id=5) by default
+    await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [id, 5]);
     return { id, email, displayName };
 }
 
 async function seedClassroom({ name = "Test Class", ownerId = 1, key = 1234 } = {}) {
     const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", [name, ownerId, key]);
-    await mockDatabase.dbRun("INSERT OR IGNORE INTO class_permissions (classId) VALUES (?)", [id]);
     return { id, name, ownerId, key };
 }
 
@@ -157,16 +162,15 @@ describe("getUserJoinedClasses()", () => {
         expect(result).toEqual([]);
     });
 
-    it("returns joined classes with name, id, and permissions", async () => {
+    it("returns joined classes with name and id", async () => {
         const owner = await seedUser();
         const { id: classId } = await seedClassroom({ ownerId: owner.id, name: "Biology" });
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions) VALUES (?, ?, ?)", [classId, owner.id, 4]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classId, owner.id, 0]);
 
         const result = await getUserJoinedClasses(owner.id);
         expect(result).toHaveLength(1);
         expect(result[0].name).toBe("Biology");
         expect(result[0].id).toBe(classId);
-        expect(result[0]).toHaveProperty("permissions");
     });
 
     it("does not return classes the user has not joined", async () => {
@@ -214,14 +218,6 @@ describe("createClass()", () => {
         expect(rows).toHaveLength(1);
         expect(rows[0].name).toBe("New Class");
         expect(rows[0].owner).toBe(owner.id);
-    });
-
-    it("creates a class_permissions row for the new class", async () => {
-        const owner = await seedUser();
-        const result = await createClass("Permissions Class", owner.id, owner.email);
-
-        const permissions = await mockDatabase.dbGet("SELECT * FROM class_permissions WHERE classId = ?", [result.classId]);
-        expect(permissions).toBeDefined();
     });
 
     it("returns classId, key, and className", async () => {

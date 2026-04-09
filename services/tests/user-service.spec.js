@@ -1,4 +1,5 @@
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 
 let mockDatabase;
 
@@ -183,9 +184,10 @@ async function seedUser(overrides = {}) {
     };
     const u = { ...defaults, ...overrides };
     const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [u.email, u.password, u.permissions, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
+        "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
+    await setGlobalPermissionLevel(mockDatabase, id, u.permissions);
     return { id, ...u };
 }
 
@@ -195,6 +197,13 @@ describe("getUserDataFromDb()", () => {
         const result = await getUserDataFromDb(seeded.id);
         expect(result.email).toBe("lookup@test.com");
         expect(result.id).toBe(seeded.id);
+    });
+
+    it("keeps manager accounts at permission level 5", async () => {
+        const seeded = await seedUser({ email: "manager@test.com", permissions: 5 });
+        const result = await getUserDataFromDb(seeded.id);
+        expect(result.role).toBe("Manager");
+        expect(result.permissions).toBe(5);
     });
 
     it("returns undefined for a non-existent id", async () => {
@@ -678,7 +687,7 @@ describe("deleteUser()", () => {
 
     it("deletes the user and associated data from the database", async () => {
         const seeded = await seedUser({ email: "delme@test.com" });
-        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, permissions) VALUES (?, ?, ?)", [1, seeded.id, 2]);
+        await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId) VALUES (?, ?)", [1, seeded.id]);
         await mockDatabase.dbRun("INSERT INTO shared_polls (userId, pollId) VALUES (?, ?)", [seeded.id, 1]);
 
         const result = await deleteUser(seeded.id, {});

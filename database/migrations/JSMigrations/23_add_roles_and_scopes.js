@@ -69,34 +69,48 @@ module.exports = {
             }
         }
 
-        // Add role column to users table if it doesn't exist
+        // Add/backfill the legacy users.role column only while permissions still exist.
+        // Once migration 25 has removed permissions, re-adding role would just recreate
+        // a transient column on every migrate run.
         const usersColumns = await dbGetAll("PRAGMA table_info(users)", [], database);
-        if (!usersColumns.some((col) => col.name === "role")) {
-            await dbRun(`ALTER TABLE "users" ADD COLUMN "role" TEXT`, [], database);
+        const usersHasRole = usersColumns.some((col) => col.name === "role");
+        const usersHasPermissions = usersColumns.some((col) => col.name === "permissions");
 
-            // Backfill users.role from existing numeric permissions
-            await dbRun(`UPDATE "users" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
-            await dbRun(`UPDATE "users" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
-            await dbRun(`UPDATE "users" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
-            await dbRun(`UPDATE "users" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
-            await dbRun(`UPDATE "users" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
-            await dbRun(`UPDATE "users" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
+        if (usersHasPermissions) {
+            if (!usersHasRole) {
+                await dbRun(`ALTER TABLE "users" ADD COLUMN "role" TEXT`, [], database);
+            }
+
+            // Backfill users.role from existing numeric permissions without clobbering
+            // rows that already have a role value.
+            await dbRun(`UPDATE "users" SET "role" = 'Banned' WHERE "permissions" = 0 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Guest' WHERE "permissions" = 1 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Student' WHERE "permissions" = 2 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Mod' WHERE "permissions" = 3 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Teacher' WHERE "permissions" = 4 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "users" SET "role" = 'Manager' WHERE "permissions" = 5 AND ("role" IS NULL OR "role" = '')`, [], database);
         }
 
-        // Add role column to classusers table if it doesn't exist
+        // Add/backfill the legacy classusers.role column only while permissions still exist.
         const classusersColumns = await dbGetAll("PRAGMA table_info(classusers)", [], database);
-        if (!classusersColumns.some((col) => col.name === "role")) {
-            await dbRun(`ALTER TABLE "classusers" ADD COLUMN "role" TEXT`, [], database);
+        const classusersHasRole = classusersColumns.some((col) => col.name === "role");
+        const classusersHasPermissions = classusersColumns.some((col) => col.name === "permissions");
 
-            // Backfill classusers.role from existing numeric permissions
-            await dbRun(`UPDATE "classusers" SET "role" = 'Banned' WHERE "permissions" = 0`, [], database);
-            await dbRun(`UPDATE "classusers" SET "role" = 'Guest' WHERE "permissions" = 1`, [], database);
-            await dbRun(`UPDATE "classusers" SET "role" = 'Student' WHERE "permissions" = 2`, [], database);
-            await dbRun(`UPDATE "classusers" SET "role" = 'Mod' WHERE "permissions" = 3`, [], database);
-            await dbRun(`UPDATE "classusers" SET "role" = 'Teacher' WHERE "permissions" = 4`, [], database);
-            await dbRun(`UPDATE "classusers" SET "role" = 'Manager' WHERE "permissions" = 5`, [], database);
+        if (classusersHasPermissions) {
+            if (!classusersHasRole) {
+                await dbRun(`ALTER TABLE "classusers" ADD COLUMN "role" TEXT`, [], database);
+            }
+
+            // Backfill classusers.role from existing numeric permissions without
+            // overwriting rows that were already migrated.
+            await dbRun(`UPDATE "classusers" SET "role" = 'Banned' WHERE "permissions" = 0 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Guest' WHERE "permissions" = 1 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Student' WHERE "permissions" = 2 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Mod' WHERE "permissions" = 3 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Teacher' WHERE "permissions" = 4 AND ("role" IS NULL OR "role" = '')`, [], database);
+            await dbRun(`UPDATE "classusers" SET "role" = 'Manager' WHERE "permissions" = 5 AND ("role" IS NULL OR "role" = '')`, [], database);
         }
 
-        console.log("Migration 23 completed: roles tables created and role columns added.");
+        console.log("Migration 23 completed: roles tables ensured and legacy role columns backfilled when available.");
     },
 };

@@ -1,12 +1,13 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
+const { findRoleByPermissionLevel } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -14,6 +15,68 @@ const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
+
+async function withComputedGlobalRole(userData) {
+    if (!userData || !userData.id) {
+        return userData;
+    }
+
+    const roleRows = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.userId = ? AND ur.classId IS NULL`,
+        [userData.id]
+    );
+    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
+    const role = getUserRoleName({ globalRoles });
+    const globalScopes = resolveUserScopes({ globalRoles });
+
+    return {
+        ...userData,
+        globalRoles,
+        role,
+        permissions: computeGlobalPermissionLevel(globalScopes),
+        classPermissions: null,
+    };
+}
+
+async function getActiveClassContext(user) {
+    let classRoles = [];
+    let classScopes = [];
+    let classPermissions = null;
+
+    const liveUser = classStateStore.getUser(user.email);
+    if (!liveUser || !liveUser.activeClass) {
+        return { classRoles, classScopes, classPermissions };
+    }
+
+    const classroom = classStateStore.getClassroom(liveUser.activeClass);
+    const classStudent = classroom?.students?.[user.email];
+    const classroomOwnerId = classroom?.owner || (await dbGet("SELECT owner FROM classroom WHERE id = ?", [liveUser.activeClass]))?.owner;
+    const effectiveClassUser = classStudent
+        ? {
+              ...classStudent,
+              isClassOwner: classStudent.isClassOwner === true || user.id === classroomOwnerId,
+          }
+        : user.id === classroomOwnerId
+          ? { id: user.id, email: user.email, globalRoles: user.globalRoles || [], isClassOwner: true }
+          : null;
+
+    if (classStudent) {
+        classRoles = classStudent.classRoleRefs || [];
+    }
+
+    if (effectiveClassUser) {
+        classScopes = resolveClassScopes(effectiveClassUser, classroom);
+        classPermissions = computeClassPermissionLevel(classScopes, {
+            isOwner: Boolean(effectiveClassUser.isClassOwner),
+            globalScopes: resolveUserScopes(effectiveClassUser),
+        });
+    }
+
+    return { classRoles, classScopes, classPermissions };
+}
 
 function normalizeEmail(email) {
     return String(email).trim().toLowerCase();
@@ -72,15 +135,19 @@ async function createUser({ email, password, displayName, verified }) {
     const permissions = allUsers.length === 0 ? MANAGER_PERMISSIONS : STUDENT_PERMISSIONS;
     const uniqueDisplayName = await getUniqueDisplayName(displayName, email);
 
-    const userId = await dbRun(`INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+    const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
         email,
         password || null,
-        permissions,
         apiKey,
         secret,
         uniqueDisplayName,
         verified ? 1 : 0,
     ]);
+
+    const role = await findRoleByPermissionLevel(permissions, null);
+    if (role) {
+        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
+    }
 
     return dbGet("SELECT * FROM users WHERE id = ?", [userId]);
 }
@@ -137,12 +204,14 @@ async function register(email, password, displayName) {
     }
 
     const hashedPassword = await hash(password, 10);
-    const userData = await createUser({
-        email,
-        password: hashedPassword,
-        displayName,
-        verified: 0,
-    });
+    const userData = await withComputedGlobalRole(
+        await createUser({
+            email,
+            password: hashedPassword,
+            displayName,
+            verified: 0,
+        })
+    );
 
     // Generate tokens
     const tokens = await issueAuthTokens(userData);
@@ -170,7 +239,7 @@ async function login(email, password) {
     // Normalize email to lowercase to prevent login issues
     email = normalizeEmail(email);
 
-    const userData = await dbGet("SELECT * FROM users WHERE email = ?", [email]);
+    const userData = await withComputedGlobalRole(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -209,7 +278,7 @@ async function refreshLogin(refreshToken) {
     }
 
     // Load user data to include email and displayName in the new token
-    const userData = await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]);
+    const userData = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -335,6 +404,7 @@ async function oidcLogin(provider, email, displayName, options = {}) {
         }
     }
 
+    userData = await withComputedGlobalRole(userData);
     return { provider, tokens: await issueAuthTokens(userData), user: userData };
 }
 
@@ -412,7 +482,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [authorizationCodeData.sub]);
+    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -436,17 +506,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
-    let classRoles = [];
-    let classScopes = [];
-    const liveUser = classStateStore.getUser(user.email);
-    if (liveUser && liveUser.activeClass) {
-        const classroom = classStateStore.getClassroom(liveUser.activeClass);
-        const classStudent = classroom?.students?.[user.email];
-        if (classStudent) {
-            classRoles = getClassRoleNames(classStudent);
-            classScopes = resolveClassScopes(classStudent, classroom);
-        }
-    }
+    const { classRoles, classScopes, classPermissions } = await getActiveClassContext(user);
 
     return {
         access_token: accessToken,
@@ -454,7 +514,8 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         expires_in: 900,
         refresh_token: refreshToken,
         permissions: user.permissions,
-        role: getUserRoleName(user),
+        classPermissions,
+        role: user.role,
         scopes: resolveUserScopes(user),
         classRoles,
         classScopes,
@@ -484,7 +545,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await dbGet("SELECT id, email, displayName, permissions FROM users WHERE id = ?", [refreshTokenData.id]);
+    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -509,13 +570,16 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         "oauth",
     ]);
 
+    const { classPermissions } = await getActiveClassContext(user);
+
     return {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: 900,
         refresh_token: newRefreshToken,
         permissions: user.permissions,
-        role: getUserRoleName(user),
+        classPermissions,
+        role: user.role,
         scopes: resolveUserScopes(user),
     };
 }

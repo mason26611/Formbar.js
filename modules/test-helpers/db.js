@@ -81,8 +81,8 @@ const CLEARABLE_TABLES = [
     "users",
     "refresh_tokens",
     "classroom",
-    "class_permissions",
     "classusers",
+    "user_roles",
     "poll_answers",
     "poll_history",
     "shared_polls",
@@ -98,7 +98,6 @@ const CLEARABLE_TABLES = [
     "inventory",
     "item_registry",
     "trades",
-    "user_roles",
 ];
 
 /**

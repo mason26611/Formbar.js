@@ -15,6 +15,11 @@ components:
           type: integer
           description: Numeric permission level (higher means more privileges)
           example: 2
+        classPermissions:
+          type: integer
+          nullable: true
+          description: Numeric permission level within the user's active class
+          example: 4
         digipogs:
           type: integer
           description: Number of digipogs the user has

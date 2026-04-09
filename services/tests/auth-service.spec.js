@@ -1,4 +1,6 @@
 const { createTestDb } = require("@test-helpers/db");
+const { addClassMemberWithPermission } = require("@test-helpers/role-seeding");
+const { classStateStore } = require("@services/classroom-service");
 
 let mockDatabase;
 
@@ -52,6 +54,7 @@ const {
     verifyToken,
     generateAuthorizationCode,
     exchangeAuthorizationCodeForToken,
+    exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
 } = require("@services/auth-service");
@@ -63,6 +66,13 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await mockDatabase.reset();
+    const state = classStateStore.getRawState();
+    for (const key of Object.keys(state.users)) {
+        delete state.users[key];
+    }
+    for (const key of Object.keys(state.classrooms)) {
+        delete state.classrooms[key];
+    }
 });
 
 afterAll(async () => {
@@ -93,15 +103,23 @@ describe("sha256()", () => {
 });
 
 describe("register()", () => {
-    it("creates the first user with MANAGER_PERMISSIONS (5)", async () => {
+    it("assigns the first user the Manager role", async () => {
         const result = await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
-        expect(result.user.permissions).toBe(5);
+        const role = await mockDatabase.dbGet(
+            "SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ? AND ur.classId IS NULL",
+            [result.user.id]
+        );
+        expect(role.name).toBe("Manager");
     });
 
-    it("creates subsequent users with STUDENT_PERMISSIONS (2)", async () => {
+    it("assigns subsequent users the Student role", async () => {
         await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
         const second = await register("second@example.com", VALID_PASSWORD, "SecondUser");
-        expect(second.user.permissions).toBe(2);
+        const role = await mockDatabase.dbGet(
+            "SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.userId = ? AND ur.classId IS NULL",
+            [second.user.id]
+        );
+        expect(role.name).toBe("Student");
     });
 
     it("returns accessToken and refreshToken", async () => {
@@ -176,6 +194,7 @@ describe("login()", () => {
         expect(result.tokens).toHaveProperty("accessToken");
         expect(result.tokens).toHaveProperty("refreshToken");
         expect(result.user.email).toBe(VALID_EMAIL);
+        expect(result.user.classPermissions).toBeNull();
     });
 
     it("inserts a refresh token into the database", async () => {
@@ -325,6 +344,48 @@ describe("OAuth authorization code flow", () => {
         expect(tokenResponse).toHaveProperty("refresh_token");
         expect(tokenResponse.token_type).toBe("Bearer");
         expect(tokenResponse.expires_in).toBe(900);
+    });
+
+    it("returns classPermissions in OAuth token responses for users in an active class", async () => {
+        const { tokens, user } = await seedUser();
+        const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["OAuth Class", user.id + 1000, 2468]);
+        await addClassMemberWithPermission(mockDatabase, user.id, classId, 4);
+
+        classStateStore.setUser(user.email, {
+            id: user.id,
+            email: user.email,
+            activeClass: classId,
+        });
+        classStateStore.setClassroom(classId, {
+            id: classId,
+            owner: user.id + 1000,
+            students: {
+                [user.email]: {
+                    email: user.email,
+                    classRole: "Teacher",
+                    classRoles: ["Teacher"],
+                },
+            },
+        });
+
+        const code = generateAuthorizationCode({
+            client_id: "test-app",
+            redirect_uri: "http://localhost/callback",
+            scope: "openid",
+            authorization: tokens.accessToken,
+        });
+
+        const tokenResponse = await exchangeAuthorizationCodeForToken({
+            code,
+            redirect_uri: "http://localhost/callback",
+            client_id: "test-app",
+        });
+        expect(tokenResponse.classPermissions).toBe(4);
+
+        const refreshed = await exchangeRefreshTokenForAccessToken({
+            refresh_token: tokenResponse.refresh_token,
+        });
+        expect(refreshed.classPermissions).toBe(4);
     });
 
     it("rejects a code that has already been used (single-use enforcement)", async () => {

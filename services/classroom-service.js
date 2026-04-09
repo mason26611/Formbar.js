@@ -12,7 +12,6 @@
  * @module services/classroom-service
  */
 const { database, dbGet } = require("@modules/database");
-const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 const { ClassStateStore } = require("@stores/class-state-store");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -32,7 +31,7 @@ const DEFAULT_CLASS_SETTINGS = {
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, permissions, tags, settings, customRoles } = {}) {
+    constructor({ id, className, key, owner, tags, settings, customRoles, availableRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -50,16 +49,37 @@ class Classroom {
         };
         this.key = key;
 
-        // Ensure permissions is an object, not a JSON string
-        try {
-            this.permissions = typeof permissions === "string" ? JSON.parse(permissions) : permissions || DEFAULT_CLASS_PERMISSIONS;
-        } catch (err) {
-            // Fallback to defaults if parsing fails
-            this.permissions = DEFAULT_CLASS_PERMISSIONS;
+        let parsedTags = tags;
+        if (typeof parsedTags === "string") {
+            try {
+                parsedTags = JSON.parse(parsedTags);
+            } catch {
+                parsedTags = null;
+            }
         }
+        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
 
-        this.tags = tags || ["Offline", "Excluded"];
-        this.settings = settings || DEFAULT_CLASS_SETTINGS;
+        let parsedSettings = settings;
+        if (typeof parsedSettings === "string") {
+            try {
+                parsedSettings = JSON.parse(parsedSettings);
+            } catch {
+                parsedSettings = null;
+            }
+        }
+        if (!parsedSettings || typeof parsedSettings !== "object" || Array.isArray(parsedSettings)) {
+            parsedSettings = {};
+        }
+        this.settings = {
+            ...DEFAULT_CLASS_SETTINGS,
+            ...parsedSettings,
+            isExcluded: {
+                ...DEFAULT_CLASS_SETTINGS.isExcluded,
+                ...(parsedSettings.isExcluded && typeof parsedSettings.isExcluded === "object" && !Array.isArray(parsedSettings.isExcluded)
+                    ? parsedSettings.isExcluded
+                    : {}),
+            },
+        };
         this.timer = {
             startTime: 0,
             endTime: 0,
@@ -67,18 +87,12 @@ class Classroom {
             sound: false,
         };
 
-        // Ensure all default settings are present
-        for (const settingKey of Object.keys(DEFAULT_CLASS_SETTINGS)) {
-            if (!this.settings[settingKey]) {
-                this.settings[settingKey] = DEFAULT_CLASS_SETTINGS[settingKey];
-            }
-        }
-
         if (!this.tags.includes("Offline") && Array.isArray(this.tags)) {
             this.tags.push("Offline");
         }
 
         this.customRoles = customRoles || {};
+        this.availableRoles = Array.isArray(availableRoles) ? availableRoles : [];
     }
 }
 

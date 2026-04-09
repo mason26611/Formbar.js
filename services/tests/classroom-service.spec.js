@@ -31,7 +31,6 @@ jest.mock("@modules/database", () => {
 });
 
 const { Classroom, classStateStore, getClassroomFromDb, getClassIDFromCode } = require("@services/classroom-service");
-const { DEFAULT_CLASS_PERMISSIONS } = require("@modules/permissions");
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -61,7 +60,7 @@ async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags 
 
 describe("Classroom constructor", () => {
     it("stores id, className, owner, and key", () => {
-        const c = new Classroom({ id: 1, className: "Math", owner: 42, key: 9999, permissions: DEFAULT_CLASS_PERMISSIONS });
+        const c = new Classroom({ id: 1, className: "Math", owner: 42, key: 9999 });
         expect(c.id).toBe(1);
         expect(c.className).toBe("Math");
         expect(c.owner).toBe(42);
@@ -78,21 +77,10 @@ describe("Classroom constructor", () => {
         expect(c.students).toEqual({});
     });
 
-    it("parses JSON string permissions", () => {
-        const permissions = { controlPoll: 3, votePoll: 2 };
-        const c = new Classroom({ id: 1, className: "Art", owner: 1, key: 2222, permissions: JSON.stringify(permissions) });
-        expect(c.permissions.controlPoll).toBe(3);
-        expect(c.permissions.votePoll).toBe(2);
-    });
-
-    it("falls back to DEFAULT_CLASS_PERMISSIONS when permissions is null", () => {
-        const c = new Classroom({ id: 1, className: "PE", owner: 1, key: 3333, permissions: null });
-        expect(c.permissions).toEqual(DEFAULT_CLASS_PERMISSIONS);
-    });
-
-    it("falls back to DEFAULT_CLASS_PERMISSIONS when permissions JSON is malformed", () => {
-        const c = new Classroom({ id: 1, className: "PE", owner: 1, key: 3333, permissions: "not-json{" });
-        expect(c.permissions).toEqual(DEFAULT_CLASS_PERMISSIONS);
+    it("parses JSON string settings", () => {
+        const settings = { mute: true };
+        const c = new Classroom({ id: 1, className: "Art", owner: 1, key: 2222, settings: JSON.stringify(settings) });
+        expect(c.settings.mute).toBe(true);
     });
 
     it("adds 'Offline' tag when tags do not already include it", () => {
