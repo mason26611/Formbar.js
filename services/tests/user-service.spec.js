@@ -199,6 +199,13 @@ describe("getUserDataFromDb()", () => {
         expect(result.id).toBe(seeded.id);
     });
 
+    it("keeps manager accounts at permission level 5", async () => {
+        const seeded = await seedUser({ email: "manager@test.com", permissions: 5 });
+        const result = await getUserDataFromDb(seeded.id);
+        expect(result.role).toBe("Manager");
+        expect(result.permissions).toBe(5);
+    });
+
     it("returns undefined for a non-existent id", async () => {
         const result = await getUserDataFromDb(99999);
         expect(result).toBeUndefined();

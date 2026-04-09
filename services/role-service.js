@@ -197,7 +197,7 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
  * @param {Object} classroom - The classroom object
  * @returns {Promise<{id: number, name: string, scopes: string[]}>}
  */
-async function createClassRole(classId, name, scopes, actingClassUser, classroom) {
+async function createClassRole(classId, name, scopes, actingClassUser, classroom, color) {
     requireInternalParam(classId, "classId");
 
     await ensureDefaultClassRoles(classId);
@@ -212,8 +212,9 @@ async function createClassRole(classId, name, scopes, actingClassUser, classroom
         throw new ValidationError(`A role named "${name}" already exists in this class.`);
     }
 
+    const roleColor = color !== undefined ? color : "#808080";
     const scopesJson = JSON.stringify(scopes);
-    const id = await dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [name, classId, scopesJson, "#808080"]);
+    const id = await dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [name, classId, scopesJson, roleColor]);
 
     // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
@@ -221,10 +222,10 @@ async function createClassRole(classId, name, scopes, actingClassUser, classroom
         if (!classroomObj.customRoles) classroomObj.customRoles = {};
         classroomObj.customRoles[id] = [...scopes];
         if (!Array.isArray(classroomObj.availableRoles)) classroomObj.availableRoles = [];
-        classroomObj.availableRoles.push(buildRoleResponse({ id, name, scopes, color: "#808080" }));
+        classroomObj.availableRoles.push(buildRoleResponse({ id, name, scopes, color: roleColor }));
     }
 
-    return { id, name, scopes, color: "#808080" };
+    return { id, name, scopes, color: roleColor };
 }
 
 /**

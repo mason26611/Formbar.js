@@ -280,7 +280,9 @@ function getAllScopes() {
     function collect(obj) {
         for (const value of Object.values(obj)) {
             if (typeof value === "string") {
-                scopes.push(value);
+                if (value !== SCOPES.GLOBAL.SYSTEM.BLOCKED) {
+                    scopes.push(value);
+                }
             } else if (typeof value === "object" && value !== null) {
                 collect(value);
             }

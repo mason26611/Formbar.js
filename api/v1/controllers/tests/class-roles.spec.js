@@ -202,6 +202,22 @@ describe("POST /api/v1/class/:id/roles", () => {
         expect(res.body.data.id).toBeDefined();
     });
 
+    it("creates a custom role with a provided color", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ name: "ColorRole", scopes: ["class.poll.create"], color: "#123456" });
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.color).toBe("#123456");
+
+        const listRes = await request(app).get(`/api/v1/class/${classId}/roles`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+        const createdRole = listRes.body.data.find((role) => role.name === "ColorRole");
+        expect(createdRole.color).toBe("#123456");
+    });
+
     it("returns 400 for a built-in role name", async () => {
         const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
 
@@ -312,6 +328,24 @@ describe("PATCH /api/v1/class/:id/roles/:roleId", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.data.scopes).toEqual(["class.poll.create", "class.poll.end", "class.poll.delete"]);
+    });
+
+    it("updates a custom role color", async () => {
+        const { classId, teacherTokens } = await setupClassWithTeacherAndStudent();
+
+        const createRes = await request(app)
+            .post(`/api/v1/class/${classId}/roles`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ name: "ColorUpdateRole", scopes: ["class.poll.create"] });
+        const roleId = createRes.body.data.id;
+
+        const res = await request(app)
+            .patch(`/api/v1/class/${classId}/roles/${roleId}`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
+            .send({ color: "#abcdef" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.color).toBe("#abcdef");
     });
 
     it("returns 400 when renaming to a built-in role name", async () => {

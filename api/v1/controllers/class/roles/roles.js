@@ -118,6 +118,9 @@ module.exports = (router) => {
      *                 items:
      *                   type: string
      *                 example: ["class.poll.create", "class.poll.end"]
+     *               color:
+     *                 type: string
+     *                 example: "#123456"
      *     responses:
      *       201:
      *         description: Role created
@@ -137,6 +140,8 @@ module.exports = (router) => {
      *                       type: array
      *                       items:
      *                         type: string
+     *                     color:
+     *                       type: string
      *       400:
      *         description: Invalid parameters
      *         content:
@@ -160,7 +165,7 @@ module.exports = (router) => {
         const classId = req.params.id;
         requireQueryParam(classId, "id");
 
-        const { name, scopes } = req.body;
+        const { name, scopes, color } = req.body;
         requireBodyParam(name, "name");
         requireBodyParam(scopes, "scopes");
 
@@ -168,7 +173,7 @@ module.exports = (router) => {
         if (!classroom) throw new NotFoundError("Class not found.");
         const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom);
+        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom, color);
         await broadcastClassUpdate(classId);
         res.status(201).json({ success: true, data: role });
     });
@@ -213,6 +218,9 @@ module.exports = (router) => {
      *                 type: array
      *                 items:
      *                   type: string
+     *               color:
+     *                 type: string
+     *                 example: "#123456"
      *     responses:
      *       200:
      *         description: Role updated
@@ -232,6 +240,8 @@ module.exports = (router) => {
      *                       type: array
      *                       items:
      *                         type: string
+     *                     color:
+     *                       type: string
      *       400:
      *         description: Invalid parameters
      *         content:

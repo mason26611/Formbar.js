@@ -231,6 +231,41 @@ describe("getStudentRoles()", () => {
     });
 });
 
+// ── createClassRole ──
+
+describe("createClassRole()", () => {
+    it("creates a custom role with the provided color", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        setupMockClassroom(classId, user.id, {});
+
+        const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
+        const classroom = mockClassrooms[classId];
+
+        const role = await createClassRole(classId, "Helper", ["class.poll.create"], actingUser, classroom, "#123456");
+
+        expect(role.name).toBe("Helper");
+        expect(role.scopes).toEqual(["class.poll.create"]);
+        expect(role.color).toBe("#123456");
+
+        const row = await mockDatabase.dbGet("SELECT color FROM roles WHERE id = ?", [role.id]);
+        expect(row.color).toBe("#123456");
+    });
+
+    it("defaults custom role color to #808080 when omitted", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        setupMockClassroom(classId, user.id, {});
+
+        const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
+        const classroom = mockClassrooms[classId];
+
+        const role = await createClassRole(classId, "DefaultColorRole", ["class.poll.create"], actingUser, classroom);
+
+        expect(role.color).toBe("#808080");
+    });
+});
+
 // ── addStudentRole ──
 
 describe("addStudentRole()", () => {
@@ -451,5 +486,20 @@ describe("getClassRoles()", () => {
         const updatedRoles = await getClassRoles(classId);
         const updatedTeacher = updatedRoles.find((r) => r.name === "Teacher");
         expect(updatedTeacher.scopes).toEqual(["class.poll.read"]);
+    });
+
+    it("returns custom role colors", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+            "Helper",
+            classId,
+            '["class.poll.create"]',
+            "#123456",
+        ]);
+
+        const roles = await getClassRoles(classId);
+        const custom = roles.find((r) => r.name === "Helper");
+        expect(custom.color).toBe("#123456");
     });
 });
