@@ -91,7 +91,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/{id}/students/{userId}/roles:
+     * /api/v1/class/{id}/students/{userId}/roles/:roleId:
      *   post:
      *     summary: Add a role to a student
      *     tags:
@@ -117,18 +117,12 @@ module.exports = (router) => {
      *         schema:
      *           type: integer
      *         description: The student's user ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - roleId
-     *             properties:
-     *               roleId:
-     *                 type: integer
-     *                 example: 4
+     *       - in: path
+     *         name: roleId
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The id of the role to give to the student.
      *     responses:
      *       200:
      *         description: Role added
@@ -164,13 +158,11 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/students/:userId/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
-        const { id: classId, userId } = req.params;
+    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
+        const { id: classId, userId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(userId, "userId");
-
-        const { roleId } = req.body;
-        requireBodyParam(roleId, "roleId");
+        requireQueryParam(roleId, "roleId");
 
         const classroom = classStateStore.getClassroom(classId);
         const actingClassUser = getActingUser(classroom, req.user);
