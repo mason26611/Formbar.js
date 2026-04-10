@@ -1082,7 +1082,7 @@ function clearVotesFromExcludedStudents(classId) {
 /**
  * Updates a single class setting in memory and broadcasts via socket.
  * @param {string|number} classId
- * @param {string} setting - The setting key (mute, filter, sort, isExcluded)
+ * @param {string} setting - The setting key (name)
  * @param {*} value - The new value for the setting
  */
 async function updateClassSetting(classId, setting, value) {

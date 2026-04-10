@@ -148,9 +148,9 @@ describe("class socket", () => {
             createTestClass(testData.code, "Test Class");
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "setClassSetting")[1];
-            await handler("mute", true);
+            await handler("name", "abc");
 
-            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, "mute", true);
+            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, "name", "abc");
             expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
         });
     });

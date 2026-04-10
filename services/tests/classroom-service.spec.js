@@ -71,12 +71,6 @@ describe("Classroom constructor", () => {
         expect(c.students).toEqual({});
     });
 
-    it("parses JSON string settings", () => {
-        const settings = { mute: true };
-        const c = new Classroom({ id: 1, className: "Art", owner: 1, key: 2222, settings: JSON.stringify(settings) });
-        expect(c.settings.mute).toBe(true);
-    });
-
     it("adds 'Offline' tag when tags do not already include it", () => {
         const c = new Classroom({ id: 1, className: "Music", owner: 1, key: 4444, tags: ["Active"] });
         expect(c.tags).toContain("Offline");

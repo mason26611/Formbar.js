@@ -47,9 +47,8 @@ class Classroom {
                 parsedTags = null;
             }
         }
-        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
 
-        this.tags = tags || ["Offline", "Excluded"];
+        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
         this.timer = {
             startTime: 0,
             endTime: 0,

@@ -31,7 +31,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
@@ -625,11 +625,18 @@ describe("PUT /api/v1/class/:id/tags", () => {
     });
 
     it("returns 403 when user lacks class.tags.manage scope", async () => {
+        const { user: owner } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Tag Owner",
+            permissions: TEACHER_PERMISSIONS,
+        });
         const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
             email: "student@example.com",
+            displayName: "Tag Student",
             permissions: 2,
         });
-        const classId = await seedClassroom(user.id);
+
+        const classId = await seedClassroom(owner.id);
         await enrollUserInClass(user, classId, 2);
         classStateStore.updateUser(user.email, { activeClass: classId });
 
