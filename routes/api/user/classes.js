@@ -11,7 +11,7 @@ module.exports = {
                 const userId = req.params.id;
                 const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
                 if (!user) {
-                    return res.json({ error: "User not found" });
+                    return res.status(404).json({ error: "User not found" });
                 }
 
                 // Check if the user is a manager, or is the user themselves
@@ -62,7 +62,7 @@ module.exports = {
                 res.status(200).json(allClasses);
             } catch (err) {
                 logger.log("error", err.stack);
-                res.status(500).send(`Error: ${err.message}`);
+                res.status(500).json({ error: "There was a server error try again." });
             }
         });
     },

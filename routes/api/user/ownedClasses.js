@@ -18,7 +18,7 @@ module.exports = {
                 res.status(200).json(ownedClasses);
             } catch (err) {
                 logger.log("error", err.stack);
-                res.status(500).send(`Error: ${err.message}`);
+                res.status(500).json({ error: "There was a server error try again." });
             }
         });
     },
