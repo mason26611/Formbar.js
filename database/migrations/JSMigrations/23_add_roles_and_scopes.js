@@ -23,10 +23,9 @@ module.exports = {
             `CREATE TABLE IF NOT EXISTS "roles" (
                 "id"      INTEGER NOT NULL UNIQUE,
                 "name"    TEXT NOT NULL,
-                "classId" INTEGER,
+                "isDefault" INTEGER NOT NULL DEFAULT 0,
                 "scopes"  TEXT NOT NULL DEFAULT '[]',
-                PRIMARY KEY ("id" AUTOINCREMENT),
-                UNIQUE ("name", "classId")
+                PRIMARY KEY ("id" AUTOINCREMENT)
             )`,
             [],
             database
@@ -43,6 +42,29 @@ module.exports = {
             database
         );
 
+        // Create class_roles table if it doesn't exist
+        await dbRun(
+            `CREATE TABLE IF NOT EXISTS "class_roles" (
+            "roleId" INTEGER NOT NULL,
+            "classId" INTEGER NOT NULL
+            )`,
+            [],
+            database
+        );
+
+        // Create index on classId for faster queries
+        await dbRun(
+            `CREATE INDEX IF NOT EXISTS "idx_class_roles_classId" ON "class_roles" ("classId")`,
+            [],
+            database
+        );
+
+        await dbRun(
+            `CREATE UNIQUE INDEX IF NOT EXISTS "idx_class_roles_unique" ON "class_roles" ("classId", "roleId")`,
+            [],
+            database
+        );
+
         // Create unique index for user_roles (handles NULL classId)
         try {
             await dbRun(
@@ -55,7 +77,13 @@ module.exports = {
         }
 
         // Seed default global roles (upsert-safe via checking existence)
-        const existingRoles = await dbGetAll("SELECT name FROM roles WHERE classId IS NULL", [], database);
+        const existingRoles = await dbGetAll(
+            `SELECT name
+             FROM roles
+                         WHERE isDefault = 1`,
+            [],
+            database
+        );
         const existingNames = new Set(existingRoles.map((r) => r.name));
 
         const defaultRoles = Object.values(ROLE_NAMES).map((name) => ({
@@ -65,7 +93,7 @@ module.exports = {
 
         for (const role of defaultRoles) {
             if (!existingNames.has(role.name)) {
-                await dbRun(`INSERT INTO "roles" ("name", "classId", "scopes") VALUES (?, NULL, ?)`, [role.name, role.scopes], database);
+                await dbRun(`INSERT INTO "roles" ("name", "scopes", "isDefault") VALUES (?, ?, ?)`, [role.name, role.scopes, 1], database);
             }
         }
 

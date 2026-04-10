@@ -126,6 +126,9 @@ function resolveClassScopes(classUser, classroom) {
 
     const globalScopes = resolveUserScopes(classUser);
     const ownerBypass = isClassOwner(classUser, classroom);
+    if (ownerBypass || hasGlobalAdminScope(globalScopes)) {
+        return getAllClassScopes();
+    }
     const scopes = [...DEFAULT_CLASS_MEMBER_SCOPES];
 
     if (Array.isArray(classUser.classScopes) && classUser.classScopes.length > 0) {

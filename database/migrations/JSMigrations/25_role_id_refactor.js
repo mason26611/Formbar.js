@@ -37,14 +37,30 @@ module.exports = {
             await dbRun(`ALTER TABLE "roles" ADD COLUMN "color" TEXT NOT NULL DEFAULT '#808080'`, [], database);
         }
 
-        // Seed colors for global built-in roles (classId IS NULL)
+        // Seed colors for global built-in roles
         for (const [name, color] of Object.entries(ROLE_COLORS)) {
-            await dbRun(`UPDATE "roles" SET "color" = ? WHERE "name" = ? AND "classId" IS NULL`, [color, name], database);
+            await dbRun(
+                `UPDATE "roles"
+                 SET "color" = ?
+                 WHERE "name" = ?
+                   AND "isDefault" = 1`,
+                [color, name],
+                database
+            );
         }
 
-        // Also update class-scoped default roles that share a built-in name
+        // Also update class-associated default roles that share a built-in name
         for (const [name, color] of Object.entries(ROLE_COLORS)) {
-            await dbRun(`UPDATE "roles" SET "color" = ? WHERE "name" = ? AND "classId" IS NOT NULL AND "color" = '#808080'`, [color, name], database);
+            await dbRun(
+                `UPDATE "roles"
+                 SET "color" = ?
+                 WHERE "name" = ?
+                   AND "isDefault" = 1
+                   AND "color" = '#808080'
+                   AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = roles.id)`,
+                [color, name],
+                database
+            );
         }
 
         // ---------------------------------------------------------------
@@ -68,8 +84,15 @@ module.exports = {
 
                 if (!roleName || roleName === "Guest") continue; // Guest is implicit
 
-                // Look up the global role ID
-                const role = await dbGet(`SELECT id FROM roles WHERE name = ? AND classId IS NULL`, [roleName], database);
+                                // Look up the global role ID
+                                const role = await dbGet(
+                                        `SELECT r.id
+                                         FROM roles r
+                                         WHERE r.name = ?
+                                             AND r.isDefault = 1`,
+                                        [roleName],
+                                        database
+                                );
                 if (!role) continue;
 
                 // Insert only if not already present

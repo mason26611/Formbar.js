@@ -2,9 +2,21 @@ const { LEVEL_TO_ROLE, ROLE_NAMES } = require("@modules/roles");
 
 async function getRoleRow(mockDatabase, roleName, classId = null) {
     if (classId == null) {
-        return mockDatabase.dbGet("SELECT id, name, scopes, color FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+        return mockDatabase.dbGet(
+            `SELECT r.id, r.name, r.scopes, r.color
+             FROM roles r
+             WHERE r.name = ?
+                             AND r.isDefault = 1`,
+            [roleName]
+        );
     }
-    return mockDatabase.dbGet("SELECT id, name, scopes, color FROM roles WHERE name = ? AND classId = ?", [roleName, classId]);
+    return mockDatabase.dbGet(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.name = ? AND cr.classId = ?`,
+        [roleName, classId]
+    );
 }
 
 async function setGlobalPermissionLevel(mockDatabase, userId, permissionLevel) {
@@ -45,12 +57,7 @@ async function addClassMemberWithPermission(mockDatabase, userId, classId, permi
     if (!role) {
         const globalRole = await getRoleRow(mockDatabase, roleName, null);
         if (globalRole) {
-            await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
-                roleName,
-                classId,
-                globalRole.scopes,
-                globalRole.color,
-            ]);
+            await mockDatabase.dbRun("INSERT OR IGNORE INTO class_roles (roleId, classId) VALUES (?, ?)", [globalRole.id, classId]);
             role = await getRoleRow(mockDatabase, roleName, classId);
         }
     }

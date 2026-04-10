@@ -2,7 +2,7 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS } = require("@modules/roles");
 const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { resolveClassScopes, getAllClassScopes } = require("@modules/scope-resolver");
+const { resolveClassScopes, resolveUserScopes, getAllClassScopes } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
@@ -31,19 +31,18 @@ function getDefaultClassRoleScopes(roleName) {
 async function ensureDefaultClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
-    const existingRows = await dbGetAll("SELECT id FROM roles WHERE classId = ?", [classId]);
+    const existingRows = await dbGetAll("SELECT roleId FROM class_roles WHERE classId = ?", [classId]);
     if (existingRows.length > 0) {
         return;
     }
 
-    for (const roleName of DEFAULT_CLASS_ROLE_NAMES) {
-        await dbRun("INSERT OR IGNORE INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
-            roleName,
-            classId,
-            JSON.stringify(getDefaultClassRoleScopes(roleName)),
-            DEFAULT_ROLE_COLORS[roleName] || "#808080",
-        ]);
-    }
+    await dbRun(
+        `INSERT OR IGNORE INTO class_roles (roleId, classId)
+         SELECT id, ?
+         FROM roles
+         WHERE isDefault = 1`,
+        [classId]
+    );
 }
 
 /**
@@ -131,7 +130,7 @@ function isImplicitGuestRole(role) {
  * class-scoped role by scopes rather than by name.
  * @param {string|number} classId
  * @param {string|number} roleId
- * @returns {Promise<{id: number, name: string, classId: number|null, scopes: string}|null>}
+ * @returns {Promise<{id: number, name: string, scopes: string}|null>}
  */
 async function getRoleByIdForClass(classId, roleId) {
     requireInternalParam(classId, "classId");
@@ -139,18 +138,36 @@ async function getRoleByIdForClass(classId, roleId) {
 
     await ensureDefaultClassRoles(classId);
 
-    const classRole = await dbGet("SELECT id, name, classId, scopes, color FROM roles WHERE id = ? AND classId = ?", [roleId, classId]);
+    const classRole = await dbGet(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.id = ? AND cr.classId = ?`,
+        [roleId, classId]
+    );
     if (classRole) {
         return classRole;
     }
 
     // Backward compatibility for clients still sending legacy global role IDs.
-    const globalRole = await dbGet("SELECT id, name, classId, scopes, color FROM roles WHERE id = ? AND classId IS NULL", [roleId]);
+    const globalRole = await dbGet(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM roles r
+         WHERE r.id = ?
+                     AND r.isDefault = 1`,
+        [roleId]
+    );
     if (!globalRole) {
         return null;
     }
 
-    const classRoles = await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId = ?", [classId]);
+    const classRoles = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE cr.classId = ?`,
+        [classId]
+    );
     const globalScopesKey = buildScopesKey(globalRole.scopes);
     const exactMatch = classRoles.find((candidate) => buildScopesKey(candidate.scopes) === globalScopesKey);
     if (exactMatch) {
@@ -170,7 +187,14 @@ async function getClassRoles(classId) {
 
     await ensureDefaultClassRoles(classId);
 
-    const rows = await dbGetAll("SELECT id, name, scopes, color FROM roles WHERE classId = ? ORDER BY id", [classId]);
+    const rows = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE cr.classId = ?
+         ORDER BY r.id`,
+        [classId]
+    );
     return rows.map((row) => buildRoleResponse(row));
 }
 
@@ -181,8 +205,20 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
 
     const rows =
         classId == null
-            ? await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId IS NULL ORDER BY id")
-            : await dbGetAll("SELECT id, name, classId, scopes, color FROM roles WHERE classId = ? ORDER BY id", [classId]);
+            ? await dbGetAll(
+                `SELECT r.id, r.name, r.scopes, r.color
+                 FROM roles r
+                 WHERE r.isDefault = 1
+                 ORDER BY r.id`
+            )
+            : await dbGetAll(
+                `SELECT r.id, r.name, r.scopes, r.color
+                 FROM roles r
+                 JOIN class_roles cr ON cr.roleId = r.id
+                 WHERE cr.classId = ?
+                 ORDER BY r.id`,
+                [classId]
+            );
 
     const matcher = classId == null ? getGlobalRolePermissionLevel : getClassRolePermissionLevel;
     return rows.find((row) => matcher(row) === permissionLevel) || null;
@@ -197,7 +233,7 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
  * @param {Object} classroom - The classroom object
  * @returns {Promise<{id: number, name: string, scopes: string[]}>}
  */
-async function createClassRole(classId, name, scopes, actingClassUser, classroom, color) {
+async function createClassRole({classId, name, scopes, actingClassUser, classroom, color}) {
     requireInternalParam(classId, "classId");
 
     await ensureDefaultClassRoles(classId);
@@ -207,14 +243,21 @@ async function createClassRole(classId, name, scopes, actingClassUser, classroom
     validateNoPrivilegeEscalation(scopes, actingClassUser, classroom);
 
     // Check name doesn't conflict with existing roles in this class
-    const existing = await dbGet("SELECT id FROM roles WHERE name = ? AND classId = ?", [name, classId]);
+    const existing = await dbGet(
+        `SELECT r.id
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.name = ? AND cr.classId = ?`,
+        [name, classId]
+    );
     if (existing) {
         throw new ValidationError(`A role named "${name}" already exists in this class.`);
     }
 
     const roleColor = color !== undefined ? color : "#808080";
     const scopesJson = JSON.stringify(scopes);
-    const id = await dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [name, classId, scopesJson, roleColor]);
+    const id = await dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [name, scopesJson, roleColor]);
+    await dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [id, classId]);
 
     // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
@@ -243,10 +286,17 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
 
     await ensureDefaultClassRoles(classId);
 
-    const role = await dbGet("SELECT * FROM roles WHERE id = ? AND classId = ?", [roleId, classId]);
+    const role = await dbGet(
+        `SELECT r.*
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.id = ? AND cr.classId = ?`,
+        [roleId, classId]
+    );
     if (!role) {
-        throw new NotFoundError("Role not found in this class.");
+        throw new NotFoundError("Role does not exist.");
     }
+    const isDefault = role.isDefault === 1;
 
     const oldName = role.name;
     const newName = updates.name !== undefined ? updates.name : role.name;
@@ -257,11 +307,22 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         newScopes = [];
     }
 
+    if (isDefault) {
+        const validClassScopes = getValidClassScopes();
+        newScopes = parseStoredScopes(newScopes).filter((scope) => validClassScopes.has(scope));
+    }
+
     if (updates.name !== undefined) {
         validateRoleName(newName);
         // Check for conflicts with other roles
         if (newName !== oldName) {
-            const conflict = await dbGet("SELECT id FROM roles WHERE name = ? AND classId = ? AND id != ?", [newName, classId, roleId]);
+            const conflict = await dbGet(
+                `SELECT r.id
+                 FROM roles r
+                 JOIN class_roles cr ON cr.roleId = r.id
+                 WHERE r.name = ? AND cr.classId = ? AND r.id != ?`,
+                [newName, classId, roleId]
+            );
             if (conflict) {
                 throw new ValidationError(`A role named "${newName}" already exists in this class.`);
             }
@@ -276,20 +337,56 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
     }
 
     const scopesJson = JSON.stringify(newScopes);
-    await dbRun("UPDATE roles SET name = ?, scopes = ?, color = ? WHERE id = ?", [newName, scopesJson, newColor, roleId]);
+    let newRoleId = roleId;
+    if (isDefault) {
+        // When updating a default role, create a class-specific copy and replace
+        // the class association/assignments from the default role to the new role.
+        newRoleId = await dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [newName, scopesJson, newColor]);
+        await dbRun("UPDATE class_roles SET roleId = ? WHERE roleId = ? AND classId = ?", [newRoleId, roleId, classId]);
+        await dbRun(
+            `UPDATE user_roles
+             SET roleId = ?, classId = ?
+             WHERE roleId = ?
+               AND (
+                    classId = ?
+                    OR (
+                        classId IS NULL
+                        AND userId IN (SELECT studentId FROM classusers WHERE classId = ?)
+                    )
+               )`,
+            [newRoleId, classId, roleId, classId, classId]
+        );
+    } else {
+        await dbRun("UPDATE roles SET name = ?, scopes = ?, color = ? WHERE id = ?", [newName, scopesJson, newColor, roleId]);
+    }
 
     // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj && classroomObj.customRoles) {
-        classroomObj.customRoles[roleId] = [...newScopes];
+        classroomObj.customRoles[newRoleId] = [...newScopes];
     }
 
     if (classroomObj && Array.isArray(classroomObj.availableRoles)) {
         const availableRole = classroomObj.availableRoles.find((available) => Number(available.id) === Number(roleId));
         if (availableRole) {
+            availableRole.id = newRoleId;
             availableRole.name = newName;
             availableRole.scopes = [...newScopes];
             availableRole.color = newColor;
+        }
+    }
+
+    if (isDefault && classroomObj) {
+        for (const student of Object.values(classroomObj.students)) {
+            if (Array.isArray(student.classRoleRefs)) {
+                for (const roleRef of student.classRoleRefs) {
+                    if (Number(roleRef.id) === Number(roleId)) {
+                        roleRef.id = newRoleId;
+                        roleRef.name = newName;
+                    }
+                }
+            }
+            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
         }
     }
 
@@ -305,7 +402,7 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
                     }
                 }
                 if (Array.isArray(student.classRoleRefs)) {
-                    const roleRef = student.classRoleRefs.find((assignedRole) => Number(assignedRole.id) === Number(roleId));
+                    const roleRef = student.classRoleRefs.find((assignedRole) => Number(assignedRole.id) === Number(newRoleId));
                     if (roleRef) {
                         roleRef.name = newName;
                     }
@@ -315,11 +412,13 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         }
     }
 
-    return { id: roleId, name: newName, scopes: newScopes, color: newColor };
+    return { id: newRoleId, name: newName, scopes: newScopes, color: newColor };
 }
 
 /**
- * Deletes a custom role. Students with this role are reassigned to Guest.
+ * Deletes a role from a class.
+ * - Default roles: removes only class association.
+ * - Non-default roles: removes association and deletes role row.
  * @param {number} roleId
  * @param {string|number} classId
  * @returns {Promise<void>}
@@ -330,7 +429,13 @@ async function deleteClassRole(roleId, classId) {
 
     await ensureDefaultClassRoles(classId);
 
-    const role = await dbGet("SELECT * FROM roles WHERE id = ? AND classId = ?", [roleId, classId]);
+    const role = await dbGet(
+        `SELECT r.*
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.id = ? AND cr.classId = ?`,
+        [roleId, classId]
+    );
     if (!role) {
         throw new NotFoundError("Role not found in this class.");
     }
@@ -341,8 +446,14 @@ async function deleteClassRole(roleId, classId) {
     // Remove role assignments from user_roles
     await dbRun("DELETE FROM user_roles WHERE roleId = ? AND classId = ?", [roleId, classId]);
 
-    // Delete the role
-    await dbRun("DELETE FROM roles WHERE id = ?", [roleId]);
+    // Delete association for this class.
+    await dbRun("DELETE FROM class_roles WHERE roleId = ? AND classId = ?", [roleId, classId]);
+
+    // Non-default roles are class-specific and should be removed entirely.
+    if (role.isDefault !== 1) {
+        await dbRun("DELETE FROM class_roles WHERE roleId = ?", [roleId]);
+        await dbRun("DELETE FROM roles WHERE id = ?", [roleId]);
+    }
 
     // Recompute primary role for each affected user from their remaining roles
     for (const user of affectedUsers) {
@@ -413,7 +524,17 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
 
     // Check if already assigned
     const existing = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [userId, role.id, classId]);
-    if (existing) {
+    const legacyExisting = await dbGet(
+        `SELECT 1
+         FROM user_roles ur
+         JOIN class_roles cr ON cr.roleId = ur.roleId
+         WHERE ur.userId = ?
+           AND ur.roleId = ?
+           AND ur.classId IS NULL
+           AND cr.classId = ?`,
+        [userId, role.id, classId]
+    );
+    if (existing || legacyExisting) {
         throw new ValidationError(`User already has the "${role.name}" role.`);
     }
 
@@ -461,13 +582,38 @@ async function removeStudentRole(classId, userId, roleId) {
     }
 
     // Check the assignment exists
-    const existing = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [userId, role.id, classId]);
+    const existing = await dbGet(
+        `SELECT 1
+         FROM user_roles ur
+         WHERE ur.userId = ?
+           AND ur.roleId = ?
+           AND (
+                ur.classId = ?
+                OR (
+                    ur.classId IS NULL
+                    AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
+                )
+           )`,
+        [userId, role.id, classId, classId]
+    );
     if (!existing) {
         throw new ValidationError(`User does not have the "${role.name}" role.`);
     }
 
     // Delete from user_roles
-    await dbRun("DELETE FROM user_roles WHERE userId = ? AND roleId = ? AND classId = ?", [userId, role.id, classId]);
+    await dbRun(
+        `DELETE FROM user_roles
+         WHERE userId = ?
+           AND roleId = ?
+           AND (
+                classId = ?
+                OR (
+                    classId IS NULL
+                    AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = user_roles.roleId AND cr.classId = ?)
+                )
+           )`,
+        [userId, role.id, classId, classId]
+    );
 
     // Update in-memory
     const classroomObj = classStateStore.getClassroom(classId);
@@ -500,8 +646,15 @@ async function getStudentRoles(classId, userId) {
     const rows = await dbGetAll(
         `SELECT r.name FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
-         WHERE ur.classId = ? AND ur.userId = ?`,
-        [classId, userId]
+         WHERE ur.userId = ?
+           AND (
+                ur.classId = ?
+                OR (
+                    ur.classId IS NULL
+                    AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
+                )
+           )`,
+        [userId, classId, classId]
     );
     return rows.map((r) => r.name);
 }
@@ -518,12 +671,19 @@ async function getStudentRoleAssignments(classId, userId) {
 
     // ...existing code...
     const rows = await dbGetAll(
-        `SELECT r.id, r.name, r.classId, r.scopes
+        `SELECT r.id, r.name, r.scopes
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
-         WHERE ur.classId = ? AND ur.userId = ?
-         ORDER BY CASE WHEN r.classId IS NULL THEN 0 ELSE 1 END, r.id`,
-        [classId, userId]
+         WHERE ur.userId = ?
+           AND (
+                ur.classId = ?
+                OR (
+                    ur.classId IS NULL
+                    AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
+                )
+           )
+         ORDER BY r.id`,
+        [userId, classId, classId]
     );
 
     return rows.map((row) => buildRoleResponse(row));
@@ -544,7 +704,13 @@ async function assignStudentRole(classId, userId, roleName) {
     await ensureDefaultClassRoles(classId);
 
     // Validate role exists in this class
-    const classRole = await dbGet("SELECT id FROM roles WHERE name = ? AND classId = ?", [roleName, classId]);
+    const classRole = await dbGet(
+        `SELECT r.id
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE r.name = ? AND cr.classId = ?`,
+        [roleName, classId]
+    );
     if (!classRole && roleName !== ROLE_NAMES.GUEST) {
         throw new ValidationError(`Role "${roleName}" does not exist in this class.`);
     }
@@ -584,7 +750,13 @@ async function assignStudentRole(classId, userId, roleName) {
 async function loadCustomRoles(classId) {
     await ensureDefaultClassRoles(classId);
 
-    const rows = await dbGetAll("SELECT id, scopes FROM roles WHERE classId = ?", [classId]);
+    const rows = await dbGetAll(
+        `SELECT r.id, r.scopes
+         FROM roles r
+         JOIN class_roles cr ON cr.roleId = r.id
+         WHERE cr.classId = ?`,
+        [classId]
+    );
     const customRoles = {};
     for (const row of rows) {
         customRoles[row.id] = parseStoredScopes(row.scopes);
@@ -630,7 +802,10 @@ function validateScopes(scopes) {
  * Ensures the acting user isn't granting scopes they don't have.
  */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
-    const actorScopes = new Set(resolveClassScopes(actingClassUser, classroom));
+    const actorScopes = new Set([
+        ...resolveClassScopes(actingClassUser, classroom),
+        ...resolveUserScopes(actingClassUser),
+    ]);
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
@@ -662,7 +837,7 @@ function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
     return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
         isOwner: Boolean(classUser.isClassOwner),
-        globalScopes: classUser.globalRoles || [],
+        globalScopes: resolveUserScopes(classUser),
     });
 }
 
@@ -686,7 +861,19 @@ async function getEmailForUserId(userId) {
 function getActingUser(classroom, reqUser) {
     if (!classroom) return null;
     const student = classroom.students[reqUser.email];
-    if (student) return student;
+    if (student) {
+        return {
+            ...student,
+            id: student.id != null ? student.id : reqUser.id,
+            email: student.email || reqUser.email,
+            globalRoles:
+                Array.isArray(student.globalRoles) && student.globalRoles.length > 0 ? student.globalRoles : reqUser.globalRoles || [],
+            globalScopes:
+                Array.isArray(student.globalScopes) && student.globalScopes.length > 0
+                    ? student.globalScopes
+                    : reqUser.globalScopes || [],
+        };
+    }
 
     if (classroom.owner === reqUser.id || classroom.owner === reqUser.email) {
         return {

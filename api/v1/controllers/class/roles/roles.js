@@ -173,7 +173,7 @@ module.exports = (router) => {
         if (!classroom) throw new NotFoundError("Class not found.");
         const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await createClassRole(classId, name, scopes, actingClassUser, classroom, color);
+        const role = await createClassRole({classId, name, scopes, actingClassUser, classroom, color});
         await broadcastClassUpdate(classId);
         res.status(201).json({ success: true, data: role });
     });

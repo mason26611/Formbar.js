@@ -152,7 +152,7 @@ async function createClass(className, ownerId, ownerEmail) {
     // Use the ID of the newly created classroom returned by dbRun
     const classId = insertResult;
     if (!classId) {
-        throw new AppError("Class was not created successfully");
+        throw new AppError("Class was not created successfully", { event: "class.create.failed", reason: "db_insert_failed", className, ownerId });
     }
 
     const classroom = {
