@@ -15,7 +15,16 @@ jest.mock("@stores/class-code-cache-store", () => ({
 
 const { run: classRun } = require("../class");
 const { classStateStore } = require("@services/classroom-service");
-const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
+const {
+    startClass,
+    endClass,
+    leaveClass,
+    isClassActive,
+    joinClass,
+    classKickStudent,
+    classKickStudents,
+    updateClassSetting,
+} = require("@services/class-service");
 const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { generateKey } = require("@modules/util");
 const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
@@ -135,13 +144,13 @@ describe("class socket", () => {
     });
 
     describe("setClassSetting event", () => {
-        it("should update a class setting in classStateStore", async () => {
-            const classData = createTestClass(testData.code, "Test Class");
+        it("should delegate to updateClassSetting and emit a class update", async () => {
+            createTestClass(testData.code, "Test Class");
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "setClassSetting")[1];
-            await handler("mute", true);
+            await handler("name", "abc");
 
-            expect(classData.settings.mute).toBe(true);
+            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, "name", "abc");
             expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
         });
     });

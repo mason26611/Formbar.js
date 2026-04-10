@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "nodemon app",
         "start": "node app",
-        "test": "jest",
+        "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
         "init-db": "node database/init.js",
         "migrate": "node database/migrate.js",
         "format": "prettier --write \"**/*.js\"",

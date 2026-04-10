@@ -60,6 +60,7 @@ jest.mock("@stores/socket-state-store", () => ({
 const createController = require("../class/create");
 const joinController = require("../class/join");
 const settingsController = require("../class/settings");
+const { classStateStore } = require("@services/classroom-service");
 
 const app = createTestApp(createController, joinController, settingsController);
 
@@ -155,49 +156,31 @@ describe("PATCH /api/v1/class/:id/settings", () => {
         expect(res.status).toBe(400);
     });
 
-    it("updates mute setting successfully", async () => {
+    it("updates classroom name successfully", async () => {
         const { classId, teacherTokens } = await setupClassWithStudent();
+        const newName = "Renamed Class";
 
         const res = await request(app)
             .patch(`/api/v1/class/${classId}/settings`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ setting: "mute", value: true });
+            .send({ setting: "name", value: newName });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
+        expect(classStateStore.getClassroom(classId).className).toBe(newName);
 
-        // Verify setting persisted to DB
-        const row = await mockDatabase.dbGet("SELECT settings FROM classroom WHERE id = ?", [classId]);
-        const settings = JSON.parse(row.settings);
-        expect(settings.mute).toBe(true);
+        const dbClass = await mockDatabase.dbGet("SELECT name FROM classroom WHERE id = ?", [classId]);
+        expect(dbClass.name).toBe(newName);
     });
 
-    it("updates filter setting successfully", async () => {
+    it("returns 400 when classroom name is invalid", async () => {
         const { classId, teacherTokens } = await setupClassWithStudent();
 
         const res = await request(app)
             .patch(`/api/v1/class/${classId}/settings`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ setting: "filter", value: "test-filter" });
+            .send({ setting: "name", value: "@@@" });
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-    });
-
-    it("updates isExcluded setting successfully", async () => {
-        const { classId, teacherTokens } = await setupClassWithStudent();
-
-        const newExcluded = { guests: true, mods: false, teachers: true };
-        const res = await request(app)
-            .patch(`/api/v1/class/${classId}/settings`)
-            .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ setting: "isExcluded", value: newExcluded });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-
-        const row = await mockDatabase.dbGet("SELECT settings FROM classroom WHERE id = ?", [classId]);
-        const settings = JSON.parse(row.settings);
-        expect(settings.isExcluded).toEqual(newExcluded);
+        expect(res.status).toBe(400);
     });
 });

@@ -587,13 +587,7 @@ describe("getUserTransactionsPaginated()", () => {
 
     it("enriches class-type transactions", async () => {
         const user = await seedUser();
-        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-            "TestClass",
-            user.id,
-            "key123",
-            "[]",
-            "{}",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["TestClass", user.id, "key123", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'TestClass'");
         await seedTransaction(user.id, classRow.id, "user", "class", 10, "class-award");
 
@@ -609,13 +603,7 @@ describe("awardDigipogs()", () => {
         const student = await seedUser({ digipogs: 0 });
 
         // Put them in same class so teacher has permission
-        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-            "C1",
-            teacher.id,
-            "k1",
-            "[]",
-            "{}",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["C1", teacher.id, "k1", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
         await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
@@ -685,13 +673,7 @@ describe("awardDigipogs()", () => {
         const teacher = await seedUser({ permissions: 4 });
         const student = await seedUser({ digipogs: 0 });
 
-        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-            "C2",
-            teacher.id,
-            "k2",
-            "[]",
-            "{}",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["C2", teacher.id, "k2", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE owner = ?", [teacher.id]);
         await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
@@ -710,13 +692,7 @@ describe("awardDigipogs()", () => {
         const teacher = await seedUser({ permissions: 4, digipogs: 0 });
         const student = await seedUser({ digipogs: 0 });
 
-        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-            "AwardClass",
-            teacher.id,
-            "kc",
-            "[]",
-            "{}",
-        ]);
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", ["AwardClass", teacher.id, "kc", "[]"]);
         const classRow = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = 'AwardClass'");
         await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classRow.id, student.id, 0]);
 
