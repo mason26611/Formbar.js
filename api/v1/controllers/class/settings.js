@@ -95,19 +95,14 @@ module.exports = (router) => {
      */
     router.patch("/class/:id/settings", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const classId = req.params.id;
-        const { setting, value } = req.body;
-
+        const classSettings = req.body;
         requireQueryParam(classId, "id");
 
-        if (typeof setting !== "string") {
-            throw new ValidationError("Setting must be a string.");
-        }
+        req.infoEvent("class.settings.update", "Updating class settings", { classId, classSettings });
 
-        req.infoEvent("class.settings.update", "Updating class setting", { classId, setting });
+        await updateClassSetting(classId, classSettings);
 
-        await updateClassSetting(classId, setting, value);
-
-        req.infoEvent("class.settings.updated", "Class setting updated", { classId, setting });
+        req.infoEvent("class.settings.updated", "Class settings updated", { classId, classSettings });
 
         res.status(200).json({ success: true });
     });

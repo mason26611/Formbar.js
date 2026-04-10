@@ -1080,16 +1080,15 @@ function clearVotesFromExcludedStudents(classId) {
 }
 
 /**
- * Updates a single class setting in memory and broadcasts via socket.
- * @param {string|number} classId
- * @param {string} setting - The setting key (name)
- * @param {*} value - The new value for the setting
+ * Updates one or more class settings in memory and broadcasts the changes via socket.
+ *
+ * @param {string|number} classId - The unique identifier of the class.
+ * @param {Object} classSettings - Partial object of class settings to update.
+ * @returns {Promise<void>} Resolves when the settings have been updated and broadcasted.
  */
-async function updateClassSetting(classId, setting, value) {
+async function updateClassSetting(classId, classSettings) {
     requireInternalParam(classId, "classId");
-    if (value === undefined) {
-        throw new ValidationError("Value is required.");
-    }
+    requireInternalParam(classSettings, "classSettings");
 
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) {
@@ -1097,8 +1096,13 @@ async function updateClassSetting(classId, setting, value) {
     }
 
     // When more settings are added, this should be refactored
-    if (setting === "name") {
-        const normalizedName = typeof value === "string" ? value.trim() : value;
+    const newClassName = classSettings.name;
+    if (newClassName != null) {
+        if (typeof newClassName !== "string") {
+            throw new ValidationError("The new class name must be a string");
+        }
+
+        const normalizedName = newClassName.trim();
         const validation = validateClassroomName(normalizedName);
         if (!validation.valid) {
             throw new ValidationError(validation.error);
