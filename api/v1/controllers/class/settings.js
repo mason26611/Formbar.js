@@ -2,8 +2,6 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { SCOPES } = require("@modules/permissions");
 const { updateClassSetting } = require("@services/class-service");
-
-const ValidationError = require("@errors/validation-error");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
@@ -11,15 +9,15 @@ module.exports = (router) => {
      * @swagger
      * /api/v1/class/{id}/settings:
      *   patch:
-     *     summary: Update a class setting
+     *     summary: Update class settings
      *     tags:
      *       - Class
      *     description: |
-     *       Updates a mutable class setting for an active class session.
+     *       Updates one or more mutable settings for an active class session.
      *
      *       **Required scope:** `class.session.settings`
      *
-     *       Currently supported settings:
+     *       Currently supported request fields:
      *       - `name`: Renames the class
      *     security:
      *       - bearerAuth: []
@@ -38,18 +36,11 @@ module.exports = (router) => {
      *           schema:
      *             type: object
      *             required:
-     *               - setting
-     *               - value
+     *               - name
      *             properties:
-     *               setting:
+     *               name:
      *                 type: string
-     *                 enum:
-     *                   - name
-     *                 description: Setting key to update
-     *                 example: name
-     *               value:
-     *                 type: string
-     *                 description: New value for the selected setting
+     *                 description: New class name
      *                 example: Algebra I
      *     responses:
      *       200:
@@ -63,7 +54,7 @@ module.exports = (router) => {
      *                   type: boolean
      *                   example: true
      *       400:
-     *         description: Missing class ID, invalid setting, or invalid value
+     *         description: Missing class ID, unsupported setting field, or invalid value
      *         content:
      *           application/json:
      *             schema:
