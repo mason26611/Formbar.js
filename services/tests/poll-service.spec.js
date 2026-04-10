@@ -313,9 +313,10 @@ describe("getPreviousPolls", () => {
     it("returns poll history entries for a class", async () => {
         await seedPollHistory(1, "Thumbs?", [{ answer: "Up" }, { answer: "Down" }]);
 
-        const polls = await getPreviousPolls(1);
+        const { polls, total } = await getPreviousPolls(1);
 
         expect(polls).toHaveLength(1);
+        expect(total).toBe(1);
         expect(polls[0].classPollId).toBe(1);
         expect(polls[0].globalPollId).toEqual(expect.any(Number));
         expect(polls[0].prompt).toBe("Thumbs?");
@@ -324,8 +325,8 @@ describe("getPreviousPolls", () => {
     });
 
     it("returns empty array when no history exists", async () => {
-        const polls = await getPreviousPolls(999);
-        expect(polls).toEqual([]);
+        const result = await getPreviousPolls(999);
+        expect(result).toEqual({ polls: [], total: 0 });
     });
 
     it("parses responses JSON string into an object", async () => {
@@ -335,7 +336,7 @@ describe("getPreviousPolls", () => {
         ];
         await seedPollHistory(1, "Pick one", responses);
 
-        const polls = await getPreviousPolls(1);
+        const { polls } = await getPreviousPolls(1);
 
         expect(polls[0].responses).toEqual(responses);
     });
@@ -347,7 +348,7 @@ describe("getPreviousPolls", () => {
             [1, "Bad", "{not-json", 0, 0, 0, Date.now()]
         );
 
-        const polls = await getPreviousPolls(1);
+        const { polls } = await getPreviousPolls(1);
 
         expect(polls[0].responses).toEqual([]);
     });
@@ -355,7 +356,7 @@ describe("getPreviousPolls", () => {
     it("converts integer booleans to actual booleans", async () => {
         await seedPollHistory(1, "Q", [], { allowMultipleResponses: 1, blind: 1, allowTextResponses: 1 });
 
-        const polls = await getPreviousPolls(1);
+        const { polls } = await getPreviousPolls(1);
 
         expect(polls[0].allowMultipleResponses).toBe(true);
         expect(polls[0].blind).toBe(true);
@@ -365,7 +366,7 @@ describe("getPreviousPolls", () => {
     it("converts zero booleans to false", async () => {
         await seedPollHistory(1, "Q", [], { allowMultipleResponses: 0, blind: 0, allowTextResponses: 0 });
 
-        const polls = await getPreviousPolls(1);
+        const { polls } = await getPreviousPolls(1);
 
         expect(polls[0].allowMultipleResponses).toBe(false);
         expect(polls[0].blind).toBe(false);
@@ -377,7 +378,7 @@ describe("getPreviousPolls", () => {
         await seedPollHistory(1, "Second", []);
         await seedPollHistory(1, "Third", []);
 
-        const polls = await getPreviousPolls(1);
+        const { polls, total } = await getPreviousPolls(1);
 
         expect(polls[0].prompt).toBe("Third");
         expect(polls[0].classPollId).toBe(3);
@@ -385,6 +386,7 @@ describe("getPreviousPolls", () => {
         expect(polls[1].classPollId).toBe(2);
         expect(polls[2].prompt).toBe("First");
         expect(polls[2].classPollId).toBe(1);
+        expect(total).toBe(3);
     });
 
     it("respects pagination with index and limit", async () => {
@@ -394,19 +396,21 @@ describe("getPreviousPolls", () => {
 
         const page = await getPreviousPolls(1, 2, 2);
 
-        expect(page).toHaveLength(2);
-        expect(page[0].prompt).toBe("Poll 2");
-        expect(page[1].prompt).toBe("Poll 1");
+        expect(page.polls).toHaveLength(2);
+        expect(page.total).toBe(5);
+        expect(page.polls[0].prompt).toBe("Poll 2");
+        expect(page.polls[1].prompt).toBe("Poll 1");
     });
 
     it("only returns polls for the requested class", async () => {
         await seedPollHistory(1, "Class 1 poll", []);
         await seedPollHistory(2, "Class 2 poll", []);
 
-        const polls = await getPreviousPolls(1);
+        const { polls, total } = await getPreviousPolls(1);
 
         expect(polls).toHaveLength(1);
         expect(polls[0].prompt).toBe("Class 1 poll");
+        expect(total).toBe(1);
     });
 
     it("leaves responses untouched when already a non-string type", async () => {
@@ -416,7 +420,7 @@ describe("getPreviousPolls", () => {
             [1, "Q", null, 0, 0, 0, Date.now()]
         );
 
-        const polls = await getPreviousPolls(1);
+        const { polls } = await getPreviousPolls(1);
         expect(polls[0].responses).toEqual([]);
     });
 });

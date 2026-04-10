@@ -7,7 +7,7 @@ const {
     userUpdateSocket,
     invalidateClassPollCache,
 } = require("@services/socket-updates-service");
-const { Classroom, classStateStore, getClassIDFromCode, DEFAULT_CLASS_SETTINGS } = require("@services/classroom-service");
+const { Classroom, classStateStore, getClassIDFromCode } = require("@services/classroom-service");
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
@@ -580,16 +580,53 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 /**
  * Kicks all non-teacher students from a class.
  */
-function classKickStudents(classId) {
+async function classKickStudents(classId) {
     try {
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) return;
+
+        const kickOperations = [];
         for (const student of Object.values(classroom.students)) {
-            if (!hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
-                classKickStudent(student.id, classId);
+            if (hasClassPermissionLevel(student, classroom, TEACHER_PERMISSIONS)) {
+                continue;
             }
+
+            kickOperations.push(classKickStudent(student.id, classId));
+        }
+
+        if (kickOperations.length > 0) {
+            await Promise.all(kickOperations);
         }
     } catch (err) {}
+}
+
+/**
+ * Regenerates the classroom join code and updates cache/state.
+ * @param {number|string} classId
+ * @returns {Promise<string>} The new classroom code.
+ */
+async function regenerateClassCode(classId) {
+    requireInternalParam(classId, "classId");
+
+    const classroom = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
+    if (!classroom) {
+        throw new NotFoundError("Classroom not found");
+    }
+
+    const accessCode = generateKey(4);
+    await dbRun("UPDATE classroom SET key=? WHERE id=?", [accessCode, classId]);
+
+    const loadedClassroom = classStateStore.getClassroom(classId);
+    if (loadedClassroom) {
+        classStateStore.updateClassroom(classId, { key: accessCode });
+    }
+
+    if (classroom.key) {
+        classCodeCacheStore.delete(classroom.key);
+    }
+    classCodeCacheStore.set(accessCode, Number(classId));
+
+    return accessCode;
 }
 
 /**
@@ -1043,35 +1080,41 @@ function clearVotesFromExcludedStudents(classId) {
 }
 
 /**
- * Updates a single class setting, persists to DB, and broadcasts via socket.
- * @param {string|number} classId
- * @param {string} setting - The setting key (mute, filter, sort, isExcluded)
- * @param {*} value - The new value for the setting
+ * Updates one or more class settings in memory and broadcasts the changes via socket.
+ *
+ * @param {string|number} classId - The unique identifier of the class.
+ * @param {Object} classSettings - Partial object of class settings to update.
+ * @returns {Promise<void>} Resolves when the settings have been updated and broadcasted.
  */
-async function updateClassSetting(classId, setting, value) {
+async function updateClassSetting(classId, classSettings) {
     requireInternalParam(classId, "classId");
-
-    const validSettings = Object.keys(DEFAULT_CLASS_SETTINGS);
-    if (!validSettings.includes(setting)) {
-        throw new ValidationError(`Invalid setting "${setting}". Valid settings: ${validSettings.join(", ")}`);
-    }
+    requireInternalParam(classSettings, "classSettings");
 
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) {
         throw new NotFoundError("Class not started");
     }
 
-    classStateStore.updateClassroom(classId, (c) => {
-        c.settings[setting] = value;
-    });
+    // When more settings are added, this should be refactored
+    const newClassName = classSettings.name;
+    if (newClassName != null) {
+        if (typeof newClassName !== "string") {
+            throw new ValidationError("The new class name must be a string");
+        }
 
-    await dbRun("UPDATE classroom SET settings=? WHERE id=?", [JSON.stringify(classStateStore.getClassroom(classId).settings), classId]);
+        const normalizedName = newClassName.trim();
+        const validation = validateClassroomName(normalizedName);
+        if (!validation.valid) {
+            throw new ValidationError(validation.error);
+        }
 
-    if (setting === "isExcluded") {
-        clearVotesFromExcludedStudents(classId);
+        await dbRun("UPDATE classroom SET name = ? WHERE id = ?", [normalizedName, classId]);
+        classStateStore.updateClassroom(classId, { className: normalizedName });
+        broadcastClassUpdate(classId);
+        return;
     }
 
-    broadcastClassUpdate(classId);
+    throw new ValidationError(`Invalid setting ${setting} provided.`);
 }
 
 module.exports = {
@@ -1106,5 +1149,6 @@ module.exports = {
     pauseTimer,
     clearVotesFromExcludedStudents,
     updateClassSetting,
+    regenerateClassCode,
     broadcastClassUpdate,
 };

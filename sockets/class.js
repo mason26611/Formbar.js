@@ -1,9 +1,18 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbRun } = require("@modules/database");
 const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-updates-service");
-const { generateKey } = require("@modules/util");
 const { io } = require("@modules/web-server");
-const { startClass, endClass, leaveClass, isClassActive, joinClass, classKickStudent, classKickStudents } = require("@services/class-service");
+const {
+    startClass,
+    endClass,
+    leaveClass,
+    isClassActive,
+    joinClass,
+    classKickStudent,
+    classKickStudents,
+    updateClassSetting,
+    regenerateClassCode,
+} = require("@services/class-service");
 const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
 const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
 const { BANNED_PERMISSIONS } = require("@modules/permissions");
@@ -100,17 +109,7 @@ module.exports = {
         socket.on("setClassSetting", async (setting, value) => {
             try {
                 const classId = socket.request.session.classId;
-
-                // Update the setting in the classInformation and in the database
-                classStateStore.updateClassroom(classId, (classroom) => {
-                    classroom.settings[setting] = value;
-                });
-                await dbRun("UPDATE classroom SET settings=? WHERE id= ?", [JSON.stringify(classStateStore.getClassroom(classId).settings), classId]);
-
-                // If the isExcluded setting changed, clear votes from newly excluded students
-                if (setting === "isExcluded") {
-                    clearVotesFromExcludedStudents(classId);
-                }
+                await updateClassSetting(classId, setting, value);
 
                 // Trigger a class update to sync all clients
                 socketUpdates.classUpdate(classId);
@@ -133,27 +132,12 @@ module.exports = {
         });
 
         // Regenerates the class code for the classroom in the teacher's session
-        socket.on("regenerateClassCode", () => {
+        socket.on("regenerateClassCode", async () => {
             try {
-                // Generate a new class code
-                const accessCode = generateKey(4);
                 const classId = socket.request.session.classId;
-                const oldClassCode = classStateStore.getClassroom(classId)?.key;
 
-                // Update the class code in the database
-                database.run("UPDATE classroom SET key=? WHERE id= ?", [accessCode, classId], (err) => {
-                    try {
-                        if (err) throw err;
-
-                        // Update the class code in the class information, session, then refresh the page
-                        classStateStore.updateClassroom(classId, { key: accessCode });
-                        if (oldClassCode) classCodeCacheStore.delete(oldClassCode);
-                        classCodeCacheStore.set(accessCode, classId);
-                        socket.emit("reload");
-                    } catch (err) {
-                        handleSocketError(err, socket, "regenerateClassCode:callback");
-                    }
-                });
+                await regenerateClassCode(classId);
+                socket.emit("reload");
             } catch (err) {
                 handleSocketError(err, socket, "regenerateClassCode");
             }
@@ -252,10 +236,10 @@ module.exports = {
         });
 
         // Removes all students from the class
-        socket.on("classKickStudents", () => {
+        socket.on("classKickStudents", async () => {
             try {
                 const classId = socket.request.session.classId;
-                classKickStudents(classId);
+                await classKickStudents(classId);
 
                 socketUpdates.classUpdate(classId);
                 advancedEmitToClass("kickStudentsSound", classId, { api: true });

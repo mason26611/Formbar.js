@@ -2,6 +2,7 @@ const oidc = require("@modules/oidc.js");
 const authService = require("@services/auth-service");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
+const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { createStudentFromUserData } = require("@services/student-service");
 
@@ -20,20 +21,22 @@ function buildCallbackUrl(req, provider) {
     return `${req.protocol}://${req.get("host")}/api/v1/auth/oidc/${provider}/callback`;
 }
 
-function getRedirectTarget(req, tokens) {
-    const clientOrigin = req.session?.oauthOrigin;
+function getRedirectTarget(req, tokens, userData) {
+    const clientOrigin = req.session?.oauthOrigin || (frontendUrl ? new URL("/login", frontendUrl).toString() : null);
     if (!clientOrigin) {
         return null;
     }
 
     delete req.session.oauthOrigin;
     const redirect = new URL(clientOrigin);
-    const existingHash = redirect.hash ? redirect.hash.replace(/^#/, "") : "";
-    const hashParams = new URLSearchParams(existingHash);
-    hashParams.set("accessToken", tokens.accessToken);
-    hashParams.set("refreshToken", tokens.refreshToken);
-
-    redirect.hash = hashParams.toString();
+    redirect.searchParams.set("accessToken", tokens.accessToken);
+    redirect.searchParams.set("refreshToken", tokens.refreshToken);
+    if (tokens.legacyToken) {
+        redirect.searchParams.set("legacyToken", tokens.legacyToken);
+    }
+    redirect.searchParams.set("userId", String(userData.id));
+    redirect.searchParams.set("email", userData.email);
+    redirect.searchParams.set("displayName", userData.displayName);
     return redirect.toString();
 }
 
@@ -77,7 +80,7 @@ async function handleCallback(req, res) {
         });
     }
 
-    const client = await import("openid-client");
+    const client = await oidc.getOpenIdClient();
     const currentUrl = new URL(`${req.protocol}://${req.get("host")}${req.originalUrl}`);
     const tokens = await client.authorizationCodeGrant(providerClient, currentUrl, {
         pkceCodeVerifier: authSession.codeVerifier,
@@ -111,7 +114,7 @@ async function handleCallback(req, res) {
         classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
     }
 
-    const redirectTarget = getRedirectTarget(req, result.tokens);
+    const redirectTarget = getRedirectTarget(req, result.tokens, userData);
     if (redirectTarget) {
         req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
         return res.redirect(redirectTarget);
@@ -214,7 +217,7 @@ module.exports = (router) => {
     router.get("/auth/oidc/:provider", async (req, res) => {
         const provider = req.params.provider;
         const providerClient = assertProviderSupported(provider);
-        const client = await import("openid-client");
+        const client = await oidc.getOpenIdClient();
 
         const codeVerifier = client.randomPKCECodeVerifier();
         const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);

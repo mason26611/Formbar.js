@@ -17,21 +17,11 @@ const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { requireInternalParam } = require("@modules/error-wrapper");
 
 const classStateStore = new ClassStateStore();
-const DEFAULT_CLASS_SETTINGS = {
-    mute: false,
-    filter: "",
-    sort: "",
-    isExcluded: {
-        guests: false,
-        mods: true,
-        teachers: true,
-    },
-};
 
 // This class is used to add a new classroom to the session data
 // The classroom will be used to add lessons, do lessons, and for the teacher to operate them
 class Classroom {
-    constructor({ id, className, key, owner, tags, settings, customRoles, availableRoles } = {}) {
+    constructor({ id, className, key, owner, tags, customRoles, availableRoles } = {}) {
         this.id = id;
         this.className = className;
         this.isActive = false;
@@ -57,29 +47,8 @@ class Classroom {
                 parsedTags = null;
             }
         }
-        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
 
-        let parsedSettings = settings;
-        if (typeof parsedSettings === "string") {
-            try {
-                parsedSettings = JSON.parse(parsedSettings);
-            } catch {
-                parsedSettings = null;
-            }
-        }
-        if (!parsedSettings || typeof parsedSettings !== "object" || Array.isArray(parsedSettings)) {
-            parsedSettings = {};
-        }
-        this.settings = {
-            ...DEFAULT_CLASS_SETTINGS,
-            ...parsedSettings,
-            isExcluded: {
-                ...DEFAULT_CLASS_SETTINGS.isExcluded,
-                ...(parsedSettings.isExcluded && typeof parsedSettings.isExcluded === "object" && !Array.isArray(parsedSettings.isExcluded)
-                    ? parsedSettings.isExcluded
-                    : {}),
-            },
-        };
+        this.tags = Array.isArray(parsedTags) ? [...parsedTags] : ["Offline", "Excluded"];
         this.timer = {
             startTime: 0,
             endTime: 0,
@@ -130,5 +99,4 @@ module.exports = {
     classStateStore,
     getClassroomFromDb,
     getClassIDFromCode,
-    DEFAULT_CLASS_SETTINGS,
 };
