@@ -1,8 +1,16 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGetAll } = require("@modules/database");
-const { SCOPES } = require("@modules/permissions");
-const { classUserHasScope, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES, isRoleAtLeast } = require("@modules/roles");
+const {
+    SCOPES,
+    computeGlobalPermissionLevel,
+    computeClassPermissionLevel,
+    GUEST_PERMISSIONS,
+    MOD_PERMISSIONS,
+    TEACHER_PERMISSIONS,
+    MANAGER_PERMISSIONS,
+    BANNED_PERMISSIONS,
+} = require("@modules/permissions");
+const { classUserHasScope, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -86,6 +94,34 @@ function userUpdateSocket(email, methodName, ...args) {
 
 // Scopes that grant access to the control panel
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
+
+function getGlobalPermissionLevelForUser(user) {
+    return computeGlobalPermissionLevel(resolveUserScopes(user));
+}
+
+function getClassPermissionLevelForUser(classUser, classroom) {
+    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+        isOwner: isClassOwner(classUser, classroom),
+        globalScopes: resolveUserScopes(classUser),
+    });
+}
+
+function parseStoredScopes(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
 
 /**
  * Checks if a class user has access to the control panel.
@@ -206,7 +242,7 @@ async function managerUpdate() {
 
         // Emit only to connected manager sockets
         for (const [email, sockets] of Object.entries(socketStateStore.getUserSockets())) {
-            if (getUserRoleName(classStateStore.getUser(email) || {}) === ROLE_NAMES.MANAGER) {
+            if (getGlobalPermissionLevelForUser(classStateStore.getUser(email) || {}) >= MANAGER_PERMISSIONS) {
                 for (const socket of Object.values(sockets)) {
                     socket.emit("managerUpdate", users, classrooms);
                 }
@@ -225,6 +261,7 @@ function sortStudentsInPoll(classData) {
     const totalStudentsIncluded = [];
     const totalStudentsExcluded = [];
     for (const student of Object.values(classData.students)) {
+        const permissionLevel = getClassPermissionLevelForUser(student, classData);
         // Store whether the student is included or excluded
         let included = false;
         let excluded = false;
@@ -244,15 +281,15 @@ function sortStudentsInPoll(classData) {
 
         // Check exclusion based on class settings for permission levels
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && getUserRoleName(student) === ROLE_NAMES.GUEST) {
+            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.mods && getClassRoleName(student) === ROLE_NAMES.MOD) {
+            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.teachers && getClassRoleName(student) === ROLE_NAMES.TEACHER) {
+            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
                 excluded = true;
                 included = false;
             }
@@ -265,7 +302,7 @@ function sortStudentsInPoll(classData) {
         }
 
         // Prevent students from being included if they are offline or teacher or higher
-        if ((student.tags && student.tags.includes("Offline")) || isRoleAtLeast(getClassRoleName(student), ROLE_NAMES.TEACHER)) {
+        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
             excluded = true;
             included = false;
         }
@@ -349,10 +386,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         key: hasTeacherPermissions ? classData.key : undefined,
         tags: hasTeacherPermissions ? classData.tags : undefined,
         settings: classData.settings,
-        roles:
-            hasTeacherPermissions && classData.customRoles
-                ? Object.entries(classData.customRoles).map(([name, scopes]) => ({ name, scopes }))
-                : undefined,
+        roles: hasTeacherPermissions ? classData.availableRoles || [] : undefined,
         students: hasTeacherPermissions
             ? Object.fromEntries(
                   Object.entries(classData.students).map(([email, student]) => [
@@ -361,10 +395,8 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           id: student.id,
                           displayName: student.displayName,
                           activeClass: student.activeClass,
-                          permissions: student.permissions,
-                          classPermissions: student.classPermissions,
                           classRole: student.classRole || null,
-                          classRoles: student.classRoles || [],
+                          classRoles: student.classRoleRefs || [],
                           tags: student.tags,
                           pollRes: student.pollRes,
                           help: student.help,
@@ -383,7 +415,7 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         result.myTags = student.tags || [];
         result.myId = student.id;
         result.myRole = student.classRole || null;
-        result.myRoles = student.classRoles || [];
+        result.myRoles = student.classRoleRefs || [];
     }
 
     return result;
@@ -539,21 +571,18 @@ class SocketUpdates {
     classBannedUsersUpdate(classId = this.socket.request.session.classId) {
         try {
             if (!classId) return;
+            dbGetAll(
+                "SELECT users.id, roles.scopes FROM user_roles JOIN roles ON roles.id = user_roles.roleId JOIN users ON users.id = user_roles.userId WHERE user_roles.classId = ?",
+                [classId]
+            )
+                .then((rows) => {
+                    const bannedStudents = rows
+                        .filter((row) => computeClassPermissionLevel(parseStoredScopes(row.scopes)) === BANNED_PERMISSIONS)
+                        .map((row) => row.id);
 
-            database.all(
-                "SELECT users.id FROM classroom JOIN classusers ON classusers.classId = classroom.id AND classusers.permissions = 0 JOIN users ON users.id = classusers.studentId WHERE classusers.classId=?",
-                classId,
-                (err, bannedStudents) => {
-                    try {
-                        if (err) throw err;
-                        bannedStudents = bannedStudents.map((bannedStudent) => bannedStudent.id);
-
-                        advancedEmitToClass("classBannedUsersUpdate", classId, { scope: SCOPES.CLASS.STUDENTS.BAN }, bannedStudents);
-                    } catch (err) {
-                        // Error handled
-                    }
-                }
-            );
+                    advancedEmitToClass("classBannedUsersUpdate", classId, { scope: SCOPES.CLASS.STUDENTS.BAN }, bannedStudents);
+                })
+                .catch(() => {});
         } catch (err) {
             // Error handled
         }

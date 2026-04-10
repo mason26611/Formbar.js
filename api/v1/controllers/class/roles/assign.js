@@ -3,7 +3,7 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam, requireBodyParam } = require("@modules/error-wrapper");
 const { classStateStore } = require("@services/classroom-service");
-const { addStudentRole, removeStudentRole, getStudentRoles, getActingUser } = require("@services/role-service");
+const { addStudentRole, removeStudentRole, getStudentRoleAssignments, getActingUser } = require("@services/role-service");
 const { broadcastClassUpdate } = require("@services/class-service");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -49,7 +49,16 @@ module.exports = (router) => {
      *                     roles:
      *                       type: array
      *                       items:
-     *                         type: string
+     *                         type: object
+     *                         properties:
+     *                           id:
+     *                             type: integer
+     *                           name:
+     *                             type: string
+     *                           scopes:
+     *                             type: array
+     *                             items:
+     *                               type: string
      *       401:
      *         description: Not authenticated
      *         content:
@@ -76,13 +85,13 @@ module.exports = (router) => {
             throw new NotFoundError("Class not found.");
         }
 
-        const roles = await getStudentRoles(classId, userId);
+        const roles = await getStudentRoleAssignments(classId, userId);
         res.status(200).json({ success: true, data: { roles } });
     });
 
     /**
      * @swagger
-     * /api/v1/class/{id}/students/{userId}/roles:
+     * /api/v1/class/{id}/students/{userId}/roles/:roleId:
      *   post:
      *     summary: Add a role to a student
      *     tags:
@@ -108,18 +117,12 @@ module.exports = (router) => {
      *         schema:
      *           type: integer
      *         description: The student's user ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - role
-     *             properties:
-     *               role:
-     *                 type: string
-     *                 example: Mod
+     *       - in: path
+     *         name: roleId
+     *         required: true
+     *         schema:
+     *           type: integer
+     *         description: The id of the role to give to the student.
      *     responses:
      *       200:
      *         description: Role added
@@ -155,25 +158,23 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.post("/class/:id/students/:userId/roles", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
-        const { id: classId, userId } = req.params;
+    router.post("/class/:id/students/:userId/roles/:roleId", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE), async (req, res) => {
+        const { id: classId, userId, roleId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(userId, "userId");
-
-        const { role } = req.body;
-        requireBodyParam(role, "role");
+        requireQueryParam(roleId, "roleId");
 
         const classroom = classStateStore.getClassroom(classId);
         const actingClassUser = getActingUser(classroom, req.user);
 
-        await addStudentRole(classId, userId, role, actingClassUser, classroom);
+        await addStudentRole(classId, userId, roleId, actingClassUser, classroom);
         await broadcastClassUpdate(classId);
         res.status(200).json({ success: true, data: { message: "Role added." } });
     });
 
     /**
      * @swagger
-     * /api/v1/class/{id}/students/{userId}/roles/{roleName}:
+     * /api/v1/class/{id}/students/{userId}/roles/{roleId}:
      *   delete:
      *     summary: Remove a role from a student
      *     tags:
@@ -200,11 +201,11 @@ module.exports = (router) => {
      *           type: integer
      *         description: The student's user ID
      *       - in: path
-     *         name: roleName
+     *         name: roleId
      *         required: true
      *         schema:
-     *           type: string
-     *         description: The role name to remove
+     *           type: integer
+     *         description: The role ID to remove
      *     responses:
      *       200:
      *         description: Role removed
@@ -241,16 +242,16 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/NotFoundError'
      */
     router.delete(
-        "/class/:id/students/:userId/roles/:roleName",
+        "/class/:id/students/:userId/roles/:roleId",
         isAuthenticated,
         hasClassScope(SCOPES.CLASS.STUDENTS.PERM_CHANGE),
         async (req, res) => {
-            const { id: classId, userId, roleName } = req.params;
+            const { id: classId, userId, roleId } = req.params;
             requireQueryParam(classId, "id");
             requireQueryParam(userId, "userId");
-            requireQueryParam(roleName, "roleName");
+            requireQueryParam(roleId, "roleId");
 
-            await removeStudentRole(classId, userId, roleName);
+            await removeStudentRole(classId, userId, roleId);
             await broadcastClassUpdate(classId);
             res.status(200).json({ success: true, data: { message: "Role removed." } });
         }

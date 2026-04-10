@@ -2,9 +2,29 @@ const { dbGetAll, dbGet } = require("@modules/database");
 const jwt = require("jsonwebtoken");
 
 const MANAGER_SORTS = {
-    name: "LOWER(COALESCE(displayName, email)) ASC, id ASC",
-    permission: "permissions DESC, LOWER(COALESCE(displayName, email)) ASC, id ASC",
+    name: "LOWER(COALESCE(u.displayName, u.email)) ASC, u.id ASC",
+    permission: "perm_level DESC, LOWER(COALESCE(u.displayName, u.email)) ASC, u.id ASC",
 };
+
+const GLOBAL_PERMISSION_LEVEL_SQL = `
+    CASE
+        WHEN COALESCE(SUM(CASE WHEN r.name = 'Banned' THEN 1 ELSE 0 END), 0) > 0 THEN 0
+        ELSE COALESCE(
+            MAX(
+                CASE r.name
+                    WHEN 'Manager' THEN 5
+                    WHEN 'Teacher' THEN 4
+                    WHEN 'Mod' THEN 3
+                    WHEN 'Student' THEN 2
+                    WHEN 'Guest' THEN 1
+                    WHEN 'Banned' THEN 0
+                    ELSE 1
+                END
+            ),
+            1
+        )
+    END
+`;
 
 function normalizeManagerSort(sortBy) {
     if (!sortBy) return "name";
@@ -26,7 +46,7 @@ function buildManagerUserSearch(search) {
 
     const searchTerm = normalized;
     return {
-        clause: "WHERE INSTR(LOWER(COALESCE(displayName, email)), ?) > 0 OR INSTR(LOWER(email), ?) > 0",
+        clause: "WHERE INSTR(LOWER(COALESCE(u.displayName, u.email)), ?) > 0 OR INSTR(LOWER(u.email), ?) > 0",
         params: [searchTerm, searchTerm],
     };
 }
@@ -39,20 +59,29 @@ function buildPendingUser(decodedData) {
     return {
         id: decodedData.newSecret,
         email: decodedData.email,
-        permissions: decodedData.permissions,
+        permissions: decodedData.permissions || 0,
+        classPermissions: null,
         displayName: decodedData.displayName,
         verified: 0,
     };
 }
 
 async function getPendingUsers(search = "", sortBy = "name") {
-    const unverifiedUsers = await dbGetAll("SELECT id, email, permissions, displayName, verified FROM users WHERE verified = 0");
+    // Get unverified users and compute their permission levels from roles
+    const unverifiedUsers = await dbGetAll(
+        `SELECT u.id, u.email, u.displayName, u.verified,
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS permissions
+         FROM users u
+         LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
+         LEFT JOIN roles r ON ur.roleId = r.id
+         WHERE u.verified = 0
+         GROUP BY u.id`
+    );
     const tempUsers = await dbGetAll("SELECT token FROM temp_user_creation_data");
     const normalizedSearch = String(search || "")
         .trim()
         .toLowerCase();
 
-    // First, decode all tokens and build candidate pending users.
     const candidates = [];
     for (const tempUser of tempUsers) {
         const decodedData = jwt.decode(tempUser.token);
@@ -69,8 +98,6 @@ async function getPendingUsers(search = "", sortBy = "name") {
     const existingIdSet = new Set(pendingUsers.map((user) => String(user.id)));
     const existingPendingEmailSet = new Set(pendingUsers.map((user) => user.email));
 
-    // Batch query to find emails that already exist in users so we don't show
-    // duplicate legacy pending records alongside real user rows.
     const emails = candidates.map((u) => u.email);
     const existingUserEmailSet =
         emails.length > 0
@@ -115,11 +142,25 @@ async function getPendingUsers(search = "", sortBy = "name") {
 async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sortBy = "name") {
     const normalizedSort = normalizeManagerSort(sortBy);
     const { clause, params } = buildManagerUserSearch(search);
-    const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM users ${clause}`, params);
+    const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM users u ${clause}`, params);
     const users = await dbGetAll(
-        `SELECT id, email, permissions, displayName, verified FROM users ${clause} ORDER BY ${MANAGER_SORTS[normalizedSort]} LIMIT ? OFFSET ?`,
+        `SELECT u.id, u.email, u.displayName, u.verified,
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS perm_level
+         FROM users u
+         LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
+         LEFT JOIN roles r ON ur.roleId = r.id
+         ${clause}
+         GROUP BY u.id
+         ORDER BY ${MANAGER_SORTS[normalizedSort]} LIMIT ? OFFSET ?`,
         [...params, limit, offset]
     );
+
+    // Map perm_level to permissions for API compat
+    for (const user of users) {
+        user.permissions = user.perm_level;
+        user.classPermissions = null;
+        delete user.perm_level;
+    }
 
     return {
         users,
@@ -128,22 +169,27 @@ async function getPaginatedManagerUsers(limit = 24, offset = 0, search = "", sor
 }
 
 async function getManagerData() {
-    //TODO DO NOT PUT ALL USERS IN MEMORY, THIS IS BAD, NEED TO PAGINATE OR SOMETHING
-    const users = await dbGetAll("SELECT id, email, permissions, displayName, verified FROM users");
+    const users = await dbGetAll(
+        `SELECT u.id, u.email, u.displayName, u.verified,
+                ${GLOBAL_PERMISSION_LEVEL_SQL} AS permissions
+         FROM users u
+         LEFT JOIN user_roles ur ON u.id = ur.userId AND ur.classId IS NULL
+         LEFT JOIN roles r ON ur.roleId = r.id
+         GROUP BY u.id`
+    );
     const classrooms = await dbGetAll("SELECT * FROM classroom");
     const pendingUserIds = new Set();
     const existingEmails = new Set(users.map((user) => user.email));
 
     for (const user of users) {
+        user.classPermissions = null;
         if (!user.verified) {
             pendingUserIds.add(String(user.id));
         }
     }
 
-    // Grab the unverified users from the database and insert them into the user data
     const tempUsers = await dbGetAll("SELECT * FROM temp_user_creation_data");
     for (const tempUser of tempUsers) {
-        // Grab the token, decode it, and check if they're already accounted for in the users table
         const token = tempUser.token;
         const decodedData = jwt.decode(token);
         if (!decodedData || pendingUserIds.has(String(decodedData.newSecret)) || existingEmails.has(decodedData.email)) {
@@ -153,7 +199,8 @@ async function getManagerData() {
         users[decodedData.newSecret] = {
             id: decodedData.newSecret,
             email: decodedData.email,
-            permissions: decodedData.permissions,
+            permissions: decodedData.permissions || 0,
+            classPermissions: null,
             displayName: decodedData.displayName,
             verified: false,
         };

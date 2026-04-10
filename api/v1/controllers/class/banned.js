@@ -1,9 +1,26 @@
 const { dbGetAll } = require("@modules/database");
 const { hasClassScope } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES } = require("@modules/permissions");
+const { SCOPES, computeClassPermissionLevel, BANNED_PERMISSIONS } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
+
+function parseStoredScopes(value) {
+    if (Array.isArray(value)) {
+        return value.filter((scope) => typeof scope === "string");
+    }
+
+    if (typeof value !== "string" || !value.trim()) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
+    } catch {
+        return [];
+    }
+}
 
 module.exports = (router) => {
     /**
@@ -79,12 +96,14 @@ module.exports = (router) => {
         }
 
         const rows = await dbGetAll(
-            "SELECT users.id, users.email, users.displayName FROM classusers JOIN users ON users.id = classusers.studentId WHERE classusers.classId=? AND classusers.permissions=0",
+            "SELECT users.id, users.email, users.displayName, roles.scopes FROM user_roles JOIN roles ON roles.id = user_roles.roleId JOIN users ON users.id = user_roles.userId WHERE user_roles.classId = ?",
             [classId]
         );
         res.status(200).json({
             success: true,
-            data: rows || [],
+            data: (rows || [])
+                .filter((row) => computeClassPermissionLevel(parseStoredScopes(row.scopes)) === BANNED_PERMISSIONS)
+                .map(({ id, email, displayName }) => ({ id, email, displayName })),
         });
     });
 };

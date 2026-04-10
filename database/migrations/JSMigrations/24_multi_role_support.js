@@ -15,10 +15,20 @@ module.exports = {
             // Index may already exist
         }
 
+        const classusersColumns = await dbGetAll("PRAGMA table_info(classusers)", [], database);
+        const hasRoleColumn = classusersColumns.some((column) => column.name === "role");
+
+        // Migration 25 removes classusers.role. If it is gone, the legacy source
+        // data is already unavailable and there is nothing left to backfill here.
+        if (!hasRoleColumn) {
+            console.log("Migration 24 skipped: classusers.role no longer exists.");
+            return;
+        }
+
         // Migrate existing classusers.role values into user_roles entries.
         // Only migrate rows that don't already have a corresponding user_roles entry.
         const classUserRows = await dbGetAll(
-            `SELECT cu.classId, cu.studentId, cu.role, cu.permissions
+            `SELECT cu.classId, cu.studentId, cu.role
              FROM classusers cu
              WHERE cu.role IS NOT NULL AND cu.role != ''`,
             [],

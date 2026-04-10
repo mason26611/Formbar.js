@@ -7,6 +7,7 @@
  * unmock it so we can exercise the real implementation.
  */
 const { createTestDb } = require("@test-helpers/db");
+const { setGlobalPermissionLevel } = require("@test-helpers/role-seeding");
 const jwt = require("jsonwebtoken");
 
 // Restore the real manager-service (overrides the jest.setup.js mock)
@@ -54,10 +55,15 @@ async function seedUser(overrides = {}) {
     const email = overrides.email ?? `user${userCounter}@example.com`;
     const displayName = overrides.displayName ?? `User${userCounter}`;
     const permissions = overrides.permissions ?? 2;
-    const id = await mockDatabase.dbRun(
-        "INSERT INTO users (email, password, permissions, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [email, "hashed", permissions, crypto.randomBytes(8).toString("hex"), crypto.randomBytes(8).toString("hex"), displayName, 1]
-    );
+    const id = await mockDatabase.dbRun("INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)", [
+        email,
+        "hashed",
+        crypto.randomBytes(8).toString("hex"),
+        crypto.randomBytes(8).toString("hex"),
+        displayName,
+        1,
+    ]);
+    await setGlobalPermissionLevel(mockDatabase, id, permissions);
     return { id, email, displayName, permissions };
 }
 
@@ -65,6 +71,11 @@ async function seedClassroom(name = "Test Class", ownerId = 1) {
     const key = Math.floor(Math.random() * 9000 + 1000);
     const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", [name, ownerId, key]);
     return { id, name, ownerId, key };
+}
+
+async function addGlobalRole(userId, roleName) {
+    const role = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+    await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
 }
 
 describe("getManagerData()", () => {
@@ -86,6 +97,7 @@ describe("getManagerData()", () => {
         const alpha = result.users.find((u) => u.email === "a@test.com");
         expect(alpha).toBeDefined();
         expect(alpha.permissions).toBe(5);
+        expect(alpha.classPermissions).toBeNull();
     });
 
     it("returns all classrooms", async () => {
@@ -107,6 +119,17 @@ describe("getManagerData()", () => {
         const pendingUser = result.users["secret123"];
         expect(pendingUser).toBeDefined();
         expect(pendingUser.email).toBe(pendingEmail);
+        expect(pendingUser.classPermissions).toBeNull();
+    });
+
+    it("treats banned as overriding other global roles", async () => {
+        const user = await seedUser({ email: "mixed@test.com", displayName: "MixedUser", permissions: 4 });
+        await addGlobalRole(user.id, "Banned");
+
+        const result = await getManagerData();
+        const mixedUser = result.users.find((candidate) => candidate.email === "mixed@test.com");
+
+        expect(mixedUser.permissions).toBe(0);
     });
 });
 
@@ -124,6 +147,7 @@ describe("getManagerDataPaginated()", () => {
         expect(result).toHaveProperty("totalUsers");
         expect(result).toHaveProperty("classrooms");
         expect(result).toHaveProperty("pendingUsers");
+        expect(result.users[0].classPermissions).toBeNull();
     });
 
     it("returns the correct total count", async () => {
@@ -170,9 +194,21 @@ describe("getManagerDataPaginated()", () => {
 
     it("sorts by permission level (descending)", async () => {
         // Give one user elevated permissions
-        await mockDatabase.dbRun("UPDATE users SET permissions = 5 WHERE email = 'user1@test.com'");
+        const row = await mockDatabase.dbGet("SELECT id FROM users WHERE email = 'user1@test.com'");
+        await setGlobalPermissionLevel(mockDatabase, row.id, 5);
         const result = await getManagerDataPaginated({ sortBy: "permission" });
         expect(result.users[0].permissions).toBe(5);
+    });
+
+    it("keeps banned users at permission 0 even if they also have teacher", async () => {
+        const row = await mockDatabase.dbGet("SELECT id FROM users WHERE email = 'user1@test.com'");
+        await setGlobalPermissionLevel(mockDatabase, row.id, 4);
+        await addGlobalRole(row.id, "Banned");
+
+        const result = await getManagerDataPaginated({ sortBy: "permission" });
+        const mixedUser = result.users.find((user) => user.email === "user1@test.com");
+
+        expect(mixedUser.permissions).toBe(0);
     });
 
     it("falls back to name sort for an unknown sortBy value", async () => {

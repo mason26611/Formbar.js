@@ -1,4 +1,4 @@
-const { SCOPES } = require("@modules/permissions");
+const { SCOPES } = require("@modules/scopes");
 
 const ROLE_NAMES = {
     BANNED: "Banned",
@@ -9,9 +9,18 @@ const ROLE_NAMES = {
     MANAGER: "Manager",
 };
 
+const DEFAULT_ROLE_COLORS = {
+    [ROLE_NAMES.BANNED]: "#808080",
+    [ROLE_NAMES.GUEST]: "#95A5A6",
+    [ROLE_NAMES.STUDENT]: "#3498DB",
+    [ROLE_NAMES.MOD]: "#2ECC71",
+    [ROLE_NAMES.TEACHER]: "#F39C12",
+    [ROLE_NAMES.MANAGER]: "#E74C3C",
+};
+
 const DEFAULT_BANNED_SCOPES = {
-    global: [],
-    class: [],
+    global: [SCOPES.GLOBAL.SYSTEM.BLOCKED],
+    class: [SCOPES.CLASS.SYSTEM.BLOCKED],
 };
 
 const DEFAULT_GUEST_SCOPES = {
@@ -25,7 +34,7 @@ const DEFAULT_STUDENT_SCOPES = {
 };
 
 const DEFAULT_MOD_SCOPES = {
-    global: [...DEFAULT_STUDENT_SCOPES.global],
+    global: [SCOPES.GLOBAL.SYSTEM.MODERATE, ...DEFAULT_STUDENT_SCOPES.global],
     class: [
         SCOPES.CLASS.POLL.CREATE,
         SCOPES.CLASS.POLL.END,
@@ -68,7 +77,7 @@ const DEFAULT_TEACHER_SCOPES = {
 
 const DEFAULT_MANAGER_SCOPES = {
     global: [SCOPES.GLOBAL.SYSTEM.ADMIN, SCOPES.GLOBAL.USERS.MANAGE, ...DEFAULT_TEACHER_SCOPES.global],
-    class: [...DEFAULT_TEACHER_SCOPES.class],
+    class: [SCOPES.CLASS.SYSTEM.ADMIN, ...DEFAULT_TEACHER_SCOPES.class],
 };
 
 // Maps role names to their default scope sets
@@ -113,6 +122,7 @@ function isRoleAtLeast(roleName, minRoleName) {
 
 module.exports = {
     ROLE_NAMES,
+    DEFAULT_ROLE_COLORS,
     ROLES,
     LEVEL_TO_ROLE,
     ROLE_TO_LEVEL,

@@ -1,6 +1,6 @@
 const request = require("supertest");
 const { createTestDb } = require("@test-helpers/db");
-const { createTestApp, seedAuthenticatedUser, clearClassStateStore } = require("./helpers/test-app");
+const { createTestApp, seedAuthenticatedUser, seedClassMembership, clearClassStateStore } = require("./helpers/test-app");
 
 let mockDatabase;
 
@@ -146,12 +146,14 @@ async function seedClassroom(ownerId, { key = "TEST1", className = "Test Class" 
  * classPermissions should be a numeric permission level.
  */
 async function enrollUserInClass(user, classId, classPermissions = MOD_PERMISSIONS) {
-    await mockDatabase.dbRun("INSERT INTO classusers (studentId, classId, permissions) VALUES (?, ?, ?)", [user.id, classId, classPermissions]);
+    await seedClassMembership(mockDatabase, user.id, classId, classPermissions);
 
     const student = classStateStore.getUser(user.email);
     if (student) {
         student.activeClass = classId;
         student.classPermissions = classPermissions;
+        student.classRole = classPermissions > 1 ? require("@modules/roles").LEVEL_TO_ROLE[classPermissions] : null;
+        student.classRoles = student.classRole ? [student.classRole] : [];
         classStateStore.setClassroomStudent(classId, user.email, student);
     }
 }
@@ -303,7 +305,7 @@ describe("POST /api/v1/class/:id/join", () => {
         });
 
         // Enroll student in class via DB
-        await mockDatabase.dbRun("INSERT INTO classusers(classId, studentId, permissions) VALUES(?, ?, ?)", [classId, student.id, 2]);
+        await seedClassMembership(mockDatabase, student.id, classId, 2);
 
         const res = await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${studentTokens.accessToken}`);
 

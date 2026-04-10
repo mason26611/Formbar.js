@@ -1,200 +1,288 @@
-const { ROLES, LEVEL_TO_ROLE, ROLE_NAMES, ROLE_TO_LEVEL } = require("@modules/roles");
+const { ROLE_NAMES, LEVEL_TO_ROLE } = require("@modules/roles");
+const {
+    SCOPES,
+    computeGlobalPermissionLevel,
+    computeClassPermissionLevel,
+    getScopesFromRoleLike,
+    hasGlobalAdminScope,
+    MANAGER_PERMISSIONS,
+    TEACHER_PERMISSIONS,
+} = require("@modules/permissions");
+const { getRoleName, getRoleNames } = require("@modules/role-reference");
 
-/**
- * Resolves the effective global scopes for a user.
- * Works with both the new role-based system and the legacy numeric permissions.
- *
- * @param {Object} user - User object from classStateStore or DB
- * @param {string} [user.role] - Named role (new system)
- * @param {number} [user.permissions] - Numeric permission level (legacy)
- * @returns {string[]} Array of granted scope strings
- */
-function resolveUserScopes(user) {
-    if (!user) return [];
+const DEFAULT_CLASS_MEMBER_SCOPES = [SCOPES.CLASS.POLL.READ, SCOPES.CLASS.LINKS.READ];
 
-    // Manager implicitly has all scopes
-    const roleName = getUserRoleName(user);
-    if (roleName === ROLE_NAMES.MANAGER) {
-        return getAllScopes();
-    }
-
-    const roleDefinition = ROLES[roleName];
-    if (!roleDefinition) return [];
-
-    return [...roleDefinition.global];
+function dedupeScopes(scopes) {
+    return [...new Set(scopes.filter((scope) => typeof scope === "string"))];
 }
 
-/**
- * Resolves the effective class scopes for a user within a specific class.
- * Supports multi-role: unions scopes from all assigned roles.
- * Guest scopes are always included as a base.
- * If user has Banned role and no role >= Teacher, returns [].
- *
- * @param {Object} classUser - The user's class-specific data (from classroom.students[email])
- * @param {Object} [classroom] - The classroom object (for per-class role overrides and custom roles)
- * @param {string[]} [classUser.classRoles] - Array of assigned role names (new multi-role system)
- * @param {string} [classUser.classRole] - Single role name (legacy, backward compat)
- * @param {number} [classUser.classPermissions] - Numeric class permission level (legacy)
- * @returns {string[]} Array of granted class scope strings
- */
-function resolveClassScopes(classUser, classroom) {
-    if (!classUser) return [];
-
-    const roleNames = getClassRoleNames(classUser);
-
-    // Manager in any role gets everything
-    if (roleNames.includes(ROLE_NAMES.MANAGER)) {
-        return getAllClassScopes();
+function getGlobalRoleEntries(user) {
+    if (!user) {
+        return [];
     }
 
-    // Banned override: if Banned is present and no role >= Teacher, suppress all scopes
-    if (roleNames.includes(ROLE_NAMES.BANNED)) {
-        const hasTeacherPlus = roleNames.some((r) => (ROLE_TO_LEVEL[r] ?? -1) >= ROLE_TO_LEVEL[ROLE_NAMES.TEACHER]);
-        if (!hasTeacherPlus) {
-            return [];
-        }
+    if (Array.isArray(user.globalRoles) && user.globalRoles.length > 0) {
+        return user.globalRoles;
     }
 
-    // Start with Guest scopes as implicit base
-    const allScopes = new Set(ROLES[ROLE_NAMES.GUEST].class);
-
-    for (const roleName of roleNames) {
-        if (roleName === ROLE_NAMES.GUEST) continue; // Already included as base
-
-        // Check for per-class role scope overrides
-        if (classroom && classroom.roleOverrides && classroom.roleOverrides[roleName]) {
-            for (const scope of classroom.roleOverrides[roleName]) {
-                allScopes.add(scope);
-            }
-            continue;
-        }
-
-        // Built-in role
-        const roleDefinition = ROLES[roleName];
-        if (roleDefinition) {
-            for (const scope of roleDefinition.class) {
-                allScopes.add(scope);
-            }
-            continue;
-        }
-
-        // Custom class role
-        if (classroom && classroom.customRoles && classroom.customRoles[roleName]) {
-            for (const scope of classroom.customRoles[roleName]) {
-                allScopes.add(scope);
-            }
-        }
+    if (Array.isArray(user.roles) && user.roles.length > 0) {
+        return user.roles;
     }
 
-    return [...allScopes];
-}
+    if (user.role) {
+        return [user.role];
+    }
 
-/**
- * Checks if a user has a specific global scope.
- * @param {Object} user - User object
- * @param {string} scope - Scope string to check
- * @returns {boolean}
- */
-function userHasScope(user, scope) {
-    if (!user) return false;
-    const roleName = getUserRoleName(user);
-    if (roleName === ROLE_NAMES.MANAGER) return true;
-    return resolveUserScopes(user).includes(scope);
-}
-
-/**
- * Checks if a class user has a specific class scope.
- * Supports multi-role: checks union of all assigned role scopes.
- * @param {Object} classUser - Class user object
- * @param {Object} [classroom] - Classroom object
- * @param {string} scope - Scope string to check
- * @returns {boolean}
- */
-function classUserHasScope(classUser, classroom, scope) {
-    if (!classUser) return false;
-    const roleNames = getClassRoleNames(classUser);
-    if (roleNames.includes(ROLE_NAMES.MANAGER)) return true;
-    return resolveClassScopes(classUser, classroom).includes(scope);
-}
-
-/**
- * Derives the role name from a user object.
- * Prefers the explicit `role` field, falls back to mapping from numeric permissions.
- * @param {Object} user
- * @returns {string} Role name
- */
-function getUserRoleName(user) {
-    if (user.role && ROLES[user.role]) {
-        return user.role;
-    }
-    if (typeof user.permissions === "number") {
-        return LEVEL_TO_ROLE[user.permissions] || ROLE_NAMES.GUEST;
-    }
-    return ROLE_NAMES.GUEST;
-}
-
-/**
- * Derives the class role name from a class user object (backward compat — returns primary role).
- * Prefers the explicit `classRole` field, falls back to highest role in classRoles,
- * then mapping from numeric classPermissions.
- * @param {Object} classUser
- * @returns {string} Role name
- */
-function getClassRoleName(classUser) {
-    // If classRoles array exists and is populated, return the primary (highest) role
-    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        let highest = null;
-        let highestLevel = -1;
-        for (const roleName of classUser.classRoles) {
-            const level = ROLE_TO_LEVEL[roleName];
-            if (level !== undefined && level > highestLevel) {
-                highest = roleName;
-                highestLevel = level;
-            }
-        }
-        return highest || classUser.classRoles[0];
-    }
-    if (classUser.classRole) {
-        return classUser.classRole;
-    }
-    if (typeof classUser.classPermissions === "number") {
-        return LEVEL_TO_ROLE[classUser.classPermissions] || ROLE_NAMES.GUEST;
-    }
-    return ROLE_NAMES.GUEST;
-}
-
-/**
- * Returns all class role names for a class user.
- * Supports multi-role: returns the classRoles array if available,
- * falls back to single classRole, then numeric classPermissions.
- * @param {Object} classUser
- * @returns {string[]} Array of role names
- */
-function getClassRoleNames(classUser) {
-    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        return classUser.classRoles;
-    }
-    if (classUser.classRole) {
-        return [classUser.classRole];
-    }
-    if (typeof classUser.classPermissions === "number") {
-        const roleName = LEVEL_TO_ROLE[classUser.classPermissions];
-        return roleName ? [roleName] : [];
-    }
     return [];
 }
 
-/**
- * Returns all possible global scope strings (for Manager bypass).
- * @returns {string[]}
- */
+function getClassRoleEntries(classUser) {
+    if (!classUser) {
+        return [];
+    }
+
+    if (Array.isArray(classUser.classRoleRefs) && classUser.classRoleRefs.length > 0) {
+        return classUser.classRoleRefs;
+    }
+
+    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
+        return classUser.classRoles;
+    }
+
+    if (classUser.classRole) {
+        return [classUser.classRole];
+    }
+
+    return [];
+}
+
+function isClassOwner(classUser, classroom) {
+    if (!classUser || !classroom) {
+        return Boolean(classUser && classUser.isClassOwner);
+    }
+
+    return (
+        classUser.isClassOwner === true ||
+        (classUser.id != null && Number(classroom.owner) === Number(classUser.id)) ||
+        (classUser.email && String(classroom.owner) === String(classUser.email))
+    );
+}
+
+function getGlobalScopesForRole(role) {
+    return getScopesFromRoleLike(role, "global");
+}
+
+function getClassScopesForRole(role, classroom) {
+    const roleId = role && typeof role === "object" ? role.id : null;
+    const roleName = getRoleName(role);
+    if (roleName && classroom?.roleOverrides?.[roleName]) {
+        return dedupeScopes(classroom.roleOverrides[roleName]);
+    }
+    if (roleId != null && classroom?.customRoles?.[roleId]) {
+        return dedupeScopes(classroom.customRoles[roleId]);
+    }
+    if (roleName && classroom?.customRoles?.[roleName]) {
+        return dedupeScopes(classroom.customRoles[roleName]);
+    }
+
+    const scopes = getScopesFromRoleLike(role, "class", {
+        availableRoles: Array.isArray(classroom?.availableRoles) ? classroom.availableRoles : [],
+    });
+    if (scopes.length > 0) {
+        return scopes;
+    }
+
+    return scopes;
+}
+
+function resolveUserScopes(user) {
+    if (!user) return [];
+
+    if (Array.isArray(user.globalScopes)) {
+        const scopes = dedupeScopes(user.globalScopes);
+        return hasGlobalAdminScope(scopes) ? getAllScopes() : computeGlobalPermissionLevel(scopes) === 0 ? [] : scopes;
+    }
+
+    const scopes = [];
+    for (const role of getGlobalRoleEntries(user)) {
+        scopes.push(...getGlobalScopesForRole(role));
+    }
+
+    const resolvedScopes = dedupeScopes(scopes);
+    if (hasGlobalAdminScope(resolvedScopes)) {
+        return getAllScopes();
+    }
+
+    const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.GLOBAL.SYSTEM.BLOCKED);
+    if (computeGlobalPermissionLevel(resolvedScopes) === 0 && computeGlobalPermissionLevel(unblockedScopes) < MANAGER_PERMISSIONS) {
+        return [];
+    }
+
+    return computeGlobalPermissionLevel(unblockedScopes) >= MANAGER_PERMISSIONS ? getAllScopes() : resolvedScopes;
+}
+
+function resolveClassScopes(classUser, classroom) {
+    if (!classUser) return [];
+
+    const globalScopes = resolveUserScopes(classUser);
+    const ownerBypass = isClassOwner(classUser, classroom);
+    const scopes = [...DEFAULT_CLASS_MEMBER_SCOPES];
+
+    if (Array.isArray(classUser.classScopes) && classUser.classScopes.length > 0) {
+        scopes.push(...classUser.classScopes);
+    } else {
+        for (const role of getClassRoleEntries(classUser)) {
+            scopes.push(...getClassScopesForRole(role, classroom));
+        }
+    }
+
+    const resolvedScopes = dedupeScopes(scopes);
+    const permissionLevel = computeClassPermissionLevel(resolvedScopes, {
+        isOwner: ownerBypass,
+        globalScopes,
+    });
+    const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.CLASS.SYSTEM.BLOCKED);
+    const unblockedPermissionLevel = computeClassPermissionLevel(unblockedScopes, {
+        isOwner: ownerBypass,
+        globalScopes,
+    });
+
+    if (permissionLevel === 0 && unblockedPermissionLevel < TEACHER_PERMISSIONS && !ownerBypass) {
+        return [];
+    }
+
+    if (permissionLevel === 5 || unblockedPermissionLevel === 5) {
+        return getAllClassScopes();
+    }
+
+    return unblockedPermissionLevel >= TEACHER_PERMISSIONS ? unblockedScopes : resolvedScopes;
+}
+
+function userHasScope(user, scope) {
+    if (!user) return false;
+    const scopes = resolveUserScopes(user);
+    if (hasGlobalAdminScope(scopes)) return true;
+    return scopes.includes(scope);
+}
+
+function classUserHasScope(classUser, classroom, scope) {
+    if (!classUser) return false;
+    const scopes = resolveClassScopes(classUser, classroom);
+    if (
+        computeClassPermissionLevel(scopes, {
+            isOwner: isClassOwner(classUser, classroom),
+            globalScopes: resolveUserScopes(classUser),
+        }) >= MANAGER_PERMISSIONS
+    ) {
+        return true;
+    }
+    return scopes.includes(scope);
+}
+
+function selectHighestRoleName(roles, domain, options = {}) {
+    let highestName = null;
+    let highestLevel = -1;
+
+    for (const role of roles) {
+        const roleName = getRoleName(role);
+        if (!roleName) {
+            continue;
+        }
+
+        const scopes = domain === "global" ? getGlobalScopesForRole(role) : getClassScopesForRole(role, options.classroom);
+        const level =
+            domain === "global"
+                ? computeGlobalPermissionLevel(scopes)
+                : computeClassPermissionLevel(scopes, {
+                      isOwner: false,
+                      globalScopes: options.globalScopes,
+                  });
+
+        if (level > highestLevel) {
+            highestName = roleName;
+            highestLevel = level;
+        }
+    }
+
+    return highestName;
+}
+
+function getUserRoleName(user) {
+    if (!user) {
+        return ROLE_NAMES.GUEST;
+    }
+
+    const roles = getGlobalRoleEntries(user);
+    if (roles.length > 0) {
+        return selectHighestRoleName(roles, "global") || getRoleName(roles[0]) || ROLE_NAMES.GUEST;
+    }
+
+    if (user.role && typeof user.role === "string") {
+        return user.role;
+    }
+
+    if (typeof user.permissions === "number" && Number.isInteger(user.permissions)) {
+        return LEVEL_TO_ROLE[user.permissions] || ROLE_NAMES.GUEST;
+    }
+
+    const permissionLevel = computeGlobalPermissionLevel(resolveUserScopes(user));
+    return LEVEL_TO_ROLE[permissionLevel] || ROLE_NAMES.GUEST;
+}
+
+function getClassRoleName(classUser, classroom) {
+    if (!classUser) {
+        return ROLE_NAMES.GUEST;
+    }
+
+    const roles = getClassRoleEntries(classUser);
+    if (roles.length > 0) {
+        return (
+            selectHighestRoleName(roles, "class", {
+                classroom,
+                globalScopes: resolveUserScopes(classUser),
+            }) ||
+            getRoleName(roles[0]) ||
+            ROLE_NAMES.GUEST
+        );
+    }
+
+    if (classUser.classRole && typeof classUser.classRole === "string") {
+        return classUser.classRole;
+    }
+
+    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
+        return LEVEL_TO_ROLE[classUser.classPermissions] || ROLE_NAMES.GUEST;
+    }
+
+    return ROLE_NAMES.GUEST;
+}
+
+function getClassRoleNames(classUser) {
+    if (!classUser) {
+        return [];
+    }
+
+    const roles = getClassRoleEntries(classUser);
+    if (roles.length > 0) {
+        return getRoleNames(roles);
+    }
+
+    if (typeof classUser.classPermissions === "number" && Number.isInteger(classUser.classPermissions)) {
+        const roleName = LEVEL_TO_ROLE[classUser.classPermissions];
+        return roleName && roleName !== ROLE_NAMES.GUEST ? [roleName] : [];
+    }
+
+    return [];
+}
+
 function getAllScopes() {
-    const { SCOPES } = require("@modules/permissions");
     const scopes = [];
     function collect(obj) {
         for (const value of Object.values(obj)) {
             if (typeof value === "string") {
-                scopes.push(value);
+                if (value !== SCOPES.GLOBAL.SYSTEM.BLOCKED) {
+                    scopes.push(value);
+                }
             } else if (typeof value === "object" && value !== null) {
                 collect(value);
             }
@@ -204,12 +292,7 @@ function getAllScopes() {
     return scopes;
 }
 
-/**
- * Returns all class-level scope strings (for Manager class bypass).
- * @returns {string[]}
- */
 function getAllClassScopes() {
-    const { SCOPES } = require("@modules/permissions");
     const scopes = [];
     function collect(obj) {
         for (const value of Object.values(obj)) {
@@ -232,5 +315,6 @@ module.exports = {
     getUserRoleName,
     getClassRoleName,
     getClassRoleNames,
+    isClassOwner,
     getAllClassScopes,
 };

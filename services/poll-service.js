@@ -3,8 +3,8 @@ const { classStateStore } = require("@services/classroom-service");
 const { generateColors } = require("@modules/util");
 const { advancedEmitToClass, userUpdateSocket } = require("@services/socket-updates-service");
 const { database, dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { getClassRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES } = require("@modules/roles");
+const { resolveClassScopes } = require("@modules/scope-resolver");
+const { computeClassPermissionLevel, MANAGER_PERMISSIONS } = require("@modules/permissions");
 const { userSocketUpdates } = require("../sockets/init");
 const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
@@ -283,7 +283,7 @@ async function updatePoll(classId, options, userSession) {
  */
 async function getPreviousPolls(classId, offset = 0, limit = 20) {
     requireInternalParam(classId, "classId");
-    
+
     const totalRow = await dbGet(`SELECT COUNT(*) AS count FROM poll_history WHERE class = ?`, [classId]);
     const polls = await dbGetAll(
         `SELECT *, ROW_NUMBER() OVER (ORDER BY id) AS pollId
@@ -388,7 +388,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
     }
 
     for (const student of Object.values(classroom.students)) {
-        if (getClassRoleName(student) !== ROLE_NAMES.MANAGER) {
+        if (computeClassPermissionLevel(resolveClassScopes(student, classroom)) !== MANAGER_PERMISSIONS) {
             const buttonRes = student.pollRes.buttonRes;
             let buttonResponse = null;
             if (Array.isArray(buttonRes) && buttonRes.length > 0) {

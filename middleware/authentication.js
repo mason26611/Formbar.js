@@ -1,11 +1,10 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { getUserRoleName } = require("@modules/scope-resolver");
-const { ROLE_NAMES } = require("@modules/roles");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 const { compare } = require("@modules/crypto");
 const { createStudentFromUserData } = require("@services/student-service");
+const { getUserDataFromDb } = require("@services/user-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const AuthError = require("@errors/auth-error");
@@ -35,6 +34,37 @@ async function cleanRefreshTokens() {
     }
 }
 
+async function loadComputedUserByEmail(email) {
+    const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [email]);
+    if (!userRow) {
+        return null;
+    }
+
+    return getUserDataFromDb(userRow.id);
+}
+
+function syncUserIntoClassStateStore(userData) {
+    let user = classStateStore.getUser(userData.email);
+
+    if (!user) {
+        user = createStudentFromUserData(userData, { isGuest: false });
+        classStateStore.setUser(userData.email, user);
+        return user;
+    }
+
+    classStateStore.updateUser(userData.email, {
+        id: userData.id,
+        API: userData.API,
+        displayName: userData.displayName,
+        verified: userData.verified,
+        role: userData.role,
+        globalRoles: userData.globalRoles || [],
+        permissions: userData.permissions,
+    });
+
+    return classStateStore.getUser(userData.email);
+}
+
 /**
  * Middleware to verify that a user is authenticated.
  *
@@ -60,7 +90,7 @@ async function isAuthenticated(req, res, next) {
         // Fast path: check the in-memory cache to avoid bcrypt comparisons on repeat requests.
         const cachedEmail = apiKeyCacheStore.get(apiKey);
         if (cachedEmail) {
-            apiUser = await dbGet("SELECT * FROM users WHERE email = ?", [cachedEmail]);
+            apiUser = await loadComputedUserByEmail(cachedEmail);
         }
 
         // Slow path: cache miss — scan all users with an API key and bcrypt-compare each one.
@@ -70,7 +100,7 @@ async function isAuthenticated(req, res, next) {
                 if (!user.API) continue;
                 const matches = await compare(apiKey, user.API);
                 if (matches) {
-                    apiUser = user;
+                    apiUser = await getUserDataFromDb(user.id);
                     apiKeyCacheStore.set(apiKey, user.email);
                     break;
                 }
@@ -82,11 +112,7 @@ async function isAuthenticated(req, res, next) {
             throw new AuthError("Invalid API key provided.");
         }
 
-        let user = classStateStore.getUser(apiUser.email);
-        if (!user) {
-            user = createStudentFromUserData(apiUser, { isGuest: false });
-            classStateStore.setUser(apiUser.email, user);
-        }
+        let user = syncUserIntoClassStateStore(apiUser);
 
         req.user = {
             email: apiUser.email,
@@ -118,10 +144,14 @@ async function isAuthenticated(req, res, next) {
         throw new AuthError("Invalid access token provided. Missing 'email'.");
     }
 
-    const user = classStateStore.getUser(email);
-    if (!user) {
-        req.warnEvent("auth.user_not_found", `User not found in ClassStateStore: ${email}`, { email });
-        throw new AuthError("User is not authenticated");
+    let user = classStateStore.getUser(email);
+    if (!user || !user.role) {
+        const computedUser = await loadComputedUserByEmail(email);
+        if (!computedUser) {
+            req.warnEvent("auth.user_not_found", `User not found in ClassStateStore: ${email}`, { email });
+            throw new AuthError("User is not authenticated");
+        }
+        user = syncUserIntoClassStateStore(computedUser);
     }
 
     // Attach user data to req.user for stateless API authentication
@@ -165,7 +195,7 @@ async function isVerified(req, res, next) {
     }
 
     // Guests bypass email verification.
-    if (user && getUserRoleName(user) === ROLE_NAMES.GUEST) {
+    if (user && user.isGuest) {
         next();
         return;
     }
