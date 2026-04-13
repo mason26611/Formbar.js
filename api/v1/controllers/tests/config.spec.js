@@ -66,7 +66,7 @@ describe("GET /api/v1/config", () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toEqual({
             emailEnabled: false,
-            googleOauthEnabled: false,
+            oidcProviders: [],
         });
     });
 
@@ -74,7 +74,7 @@ describe("GET /api/v1/config", () => {
         const res = await request(app).get("/api/v1/config");
 
         expect(res.status).toBe(200);
-        expect(Object.keys(res.body.data)).toEqual(expect.arrayContaining(["emailEnabled", "googleOauthEnabled"]));
+        expect(Object.keys(res.body.data)).toEqual(expect.arrayContaining(["emailEnabled", "oidcProviders"]));
         expect(Object.keys(res.body.data)).toHaveLength(2);
     });
 });

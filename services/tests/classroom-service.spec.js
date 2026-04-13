@@ -47,14 +47,8 @@ afterAll(async () => {
     await mockDatabase.close();
 });
 
-async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null, settings = null } = {}) {
-    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags, settings) VALUES (?, ?, ?, ?, ?)", [
-        name,
-        owner,
-        key,
-        tags,
-        settings ? JSON.stringify(settings) : null,
-    ]);
+async function seedClassroom({ name = "Test Class", owner = 1, key = 1234, tags = null } = {}) {
+    const id = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key, tags) VALUES (?, ?, ?, ?)", [name, owner, key, tags]);
     return { id, name, owner, key };
 }
 
@@ -75,12 +69,6 @@ describe("Classroom constructor", () => {
     it("initialises students as an empty object", () => {
         const c = new Classroom({ id: 1, className: "History", owner: 1, key: 1111 });
         expect(c.students).toEqual({});
-    });
-
-    it("parses JSON string settings", () => {
-        const settings = { mute: true };
-        const c = new Classroom({ id: 1, className: "Art", owner: 1, key: 2222, settings: JSON.stringify(settings) });
-        expect(c.settings.mute).toBe(true);
     });
 
     it("adds 'Offline' tag when tags do not already include it", () => {

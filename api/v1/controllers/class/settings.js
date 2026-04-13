@@ -2,23 +2,23 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { SCOPES } = require("@modules/permissions");
 const { updateClassSetting } = require("@services/class-service");
-
-const ValidationError = require("@errors/validation-error");
+const { requireQueryParam } = require("@modules/error-wrapper");
 
 module.exports = (router) => {
     /**
      * @swagger
      * /api/v1/class/{id}/settings:
      *   patch:
-     *     summary: Update a class setting
+     *     summary: Update class settings
      *     tags:
      *       - Class
      *     description: |
-     *       Updates a single class setting. Valid settings are `mute`, `filter`, `sort`, and `isExcluded`.
+     *       Updates one or more mutable settings for an active class session.
      *
-     *       When `isExcluded` is changed, poll votes from newly excluded students are automatically cleared.
+     *       **Required scope:** `class.session.settings`
      *
-     *       **Required Scope:** `class.session.settings`
+     *       Currently supported request fields:
+     *       - `name`: Renames the class
      *     security:
      *       - bearerAuth: []
      *       - apiKeyAuth: []
@@ -36,22 +36,15 @@ module.exports = (router) => {
      *           schema:
      *             type: object
      *             required:
-     *               - setting
-     *               - value
+     *               - name
      *             properties:
-     *               setting:
+     *               name:
      *                 type: string
-     *                 enum: [mute, filter, sort, isExcluded]
-     *                 description: The setting key to update
-     *               value:
-     *                 description: The new value for the setting
-     *                 oneOf:
-     *                   - type: boolean
-     *                   - type: string
-     *                   - type: object
+     *                 description: New class name
+     *                 example: Algebra I
      *     responses:
      *       200:
-     *         description: Setting updated successfully
+     *         description: Class setting updated successfully
      *         content:
      *           application/json:
      *             schema:
@@ -61,11 +54,11 @@ module.exports = (router) => {
      *                   type: boolean
      *                   example: true
      *       400:
-     *         description: Invalid parameters
+     *         description: Missing class ID, unsupported setting field, or invalid value
      *         content:
      *           application/json:
      *             schema:
-     *               $ref: '#/components/schemas/ValidationError'
+     *               $ref: '#/components/schemas/Error'
      *       401:
      *         description: Not authenticated
      *         content:
@@ -79,29 +72,28 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/Error'
      *       404:
-     *         description: Class not started
+     *         description: Class not started or not found
      *         content:
      *           application/json:
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
+     *       500:
+     *         description: Server error
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/ServerError'
      */
     router.patch("/class/:id/settings", isAuthenticated, hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (req, res) => {
         const classId = req.params.id;
-        const { setting, value } = req.body;
+        const classSettings = req.body;
+        requireQueryParam(classId, "id");
 
-        if (typeof setting !== "string") {
-            throw new ValidationError("Setting must be a string.");
-        }
+        req.infoEvent("class.settings.update", "Updating class settings", { classId, classSettings });
 
-        if (value === undefined) {
-            throw new ValidationError("Value is required.");
-        }
+        await updateClassSetting(classId, classSettings);
 
-        req.infoEvent("class.settings.update", "Updating class setting", { classId, setting });
-
-        await updateClassSetting(classId, setting, value);
-
-        req.infoEvent("class.settings.updated", "Class setting updated", { classId, setting });
+        req.infoEvent("class.settings.updated", "Class settings updated", { classId, classSettings });
 
         res.status(200).json({ success: true });
     });

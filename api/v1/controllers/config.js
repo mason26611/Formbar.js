@@ -38,7 +38,6 @@ module.exports = (router) => {
             success: true,
             data: {
                 emailEnabled: settings.emailEnabled,
-                googleOauthEnabled: settings.googleOauthEnabled,
                 oidcProviders: getAvailableProviders(),
             },
         });

@@ -83,7 +83,6 @@ function createTestClass(code, name) {
         owner: testData.userId,
         permissions: null,
         tags: null,
-        settings: null,
     });
     classroom.id = testData.classId;
     classStateStore.setClassroom(testData.classId, classroom);
