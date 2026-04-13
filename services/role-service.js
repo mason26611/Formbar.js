@@ -802,10 +802,9 @@ function validateScopes(scopes) {
  * Ensures the acting user isn't granting scopes they don't have.
  */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
-    const actorScopes = new Set([
-        ...resolveClassScopes(actingClassUser, classroom),
-        ...resolveUserScopes(actingClassUser),
-    ]);
+    const actorGlobalScopes = new Set(resolveUserScopes(actingClassUser));
+    const actorClassScopes = new Set(resolveClassScopes(actingClassUser, classroom));
+    const actorScopes = new Set([...actorGlobalScopes, ...actorClassScopes]);
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
@@ -837,7 +836,7 @@ function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
     return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
         isOwner: Boolean(classUser.isClassOwner),
-        globalScopes: resolveUserScopes(classUser),
+        globalScopes: classUser.globalRoles || [],
     });
 }
 
@@ -861,19 +860,7 @@ async function getEmailForUserId(userId) {
 function getActingUser(classroom, reqUser) {
     if (!classroom) return null;
     const student = classroom.students[reqUser.email];
-    if (student) {
-        return {
-            ...student,
-            id: student.id != null ? student.id : reqUser.id,
-            email: student.email || reqUser.email,
-            globalRoles:
-                Array.isArray(student.globalRoles) && student.globalRoles.length > 0 ? student.globalRoles : reqUser.globalRoles || [],
-            globalScopes:
-                Array.isArray(student.globalScopes) && student.globalScopes.length > 0
-                    ? student.globalScopes
-                    : reqUser.globalScopes || [],
-        };
-    }
+    if (student) return student;
 
     if (classroom.owner === reqUser.id || classroom.owner === reqUser.email) {
         return {
