@@ -74,7 +74,7 @@ async function seedClassroom(name = "Test Class", ownerId = 1) {
 }
 
 async function addGlobalRole(userId, roleName) {
-    const role = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName]);
+    const role = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND isDefault = 1", [roleName]);
     await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [userId, role.id]);
 }
 

@@ -1114,7 +1114,7 @@ async function updateClassSetting(classId, classSettings) {
         return;
     }
 
-    throw new ValidationError(`Invalid setting ${setting} provided.`);
+    throw new ValidationError("Invalid setting provided.");
 }
 
 module.exports = {
