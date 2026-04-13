@@ -130,7 +130,7 @@ function isImplicitGuestRole(role) {
  * class-scoped role by scopes rather than by name.
  * @param {string|number} classId
  * @param {string|number} roleId
- * @returns {Promise<{id: number, name: string, scopes: string}|null>}
+ * @returns {Promise<{id: number, name: string, scopes: string, color: string|null}|null>} Raw role row, where `scopes` is stored JSON.
  */
 async function getRoleByIdForClass(classId, roleId) {
     requireInternalParam(classId, "classId");
