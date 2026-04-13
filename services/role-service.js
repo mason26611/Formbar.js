@@ -289,7 +289,7 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         [roleId, classId]
     );
     if (!role) {
-        throw new NotFoundError("Role does not exist.");
+        throw new NotFoundError("Role not found in this class.");
     }
     const isDefault = role.isDefault === 1;
 
