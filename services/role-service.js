@@ -31,11 +31,6 @@ function getDefaultClassRoleScopes(roleName) {
 async function ensureDefaultClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
-    const existingRows = await dbGetAll("SELECT roleId FROM class_roles WHERE classId = ?", [classId]);
-    if (existingRows.length > 0) {
-        return;
-    }
-
     await dbRun(
         `INSERT OR IGNORE INTO class_roles (roleId, classId)
          SELECT id, ?
