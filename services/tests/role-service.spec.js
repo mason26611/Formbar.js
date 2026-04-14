@@ -132,12 +132,12 @@ async function getRoleIdByName(roleName, classId = null) {
         classId == null
             ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND isDefault = 1", [roleName])
             : await mockDatabase.dbGet(
-                `SELECT r.id
+                  `SELECT r.id
                  FROM roles r
                  JOIN class_roles cr ON cr.roleId = r.id
                  WHERE r.name = ? AND cr.classId = ?`,
-                [roleName, classId]
-            );
+                  [roleName, classId]
+              );
 
     return row ? row.id : null;
 }
