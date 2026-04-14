@@ -38,10 +38,24 @@ module.exports = {
         for (const row of classUserRows) {
             const roleName = row.role;
 
-            // Look up the role ID: first check for a class-specific custom role, then fall back to a global built-in role
-            let role = await dbGet(`SELECT id FROM roles WHERE name = ? AND classId = ?`, [roleName, row.classId], database);
+            // Look up the role ID: first check class-associated roles, then fall back to a global built-in role
+            let role = await dbGet(
+                `SELECT r.id
+                 FROM roles r
+                 JOIN class_roles cr ON cr.roleId = r.id
+                 WHERE r.name = ? AND cr.classId = ?`,
+                [roleName, row.classId],
+                database
+            );
             if (!role) {
-                role = await dbGet(`SELECT id FROM roles WHERE name = ? AND classId IS NULL`, [roleName], database);
+                role = await dbGet(
+                    `SELECT r.id
+                     FROM roles r
+                     WHERE r.name = ?
+                                             AND r.isDefault = 1`,
+                    [roleName],
+                    database
+                );
             }
 
             if (!role) continue; // Role doesn't exist in DB, skip

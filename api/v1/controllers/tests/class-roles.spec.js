@@ -109,8 +109,14 @@ async function setupClassWithTeacherAndStudent() {
 async function getRoleIdByName(roleName, classId = null) {
     const row =
         classId == null
-            ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName])
-            : await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId = ?", [roleName, classId]);
+            ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND isDefault = 1", [roleName])
+            : await mockDatabase.dbGet(
+                  `SELECT r.id
+                 FROM roles r
+                 JOIN class_roles cr ON cr.roleId = r.id
+                 WHERE r.name = ? AND cr.classId = ?`,
+                  [roleName, classId]
+              );
 
     return row ? row.id : null;
 }
@@ -410,7 +416,7 @@ describe("DELETE /api/v1/class/:id/roles/:roleId", () => {
 
 describe("POST /api/v1/class/:id/students/:userId/roles", () => {
     it("returns 401 without authentication", async () => {
-        const res = await request(app).post("/api/v1/class/1/students/1/roles").send({ roleId: 1 });
+        const res = await request(app).post("/api/v1/class/1/students/1/roles/1");
         expect(res.status).toBe(401);
     });
 
@@ -419,9 +425,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const modRoleId = await getRoleIdByName("Mod");
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${studentTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         expect(res.status).toBe(403);
     });
@@ -431,9 +437,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const modRoleId = await getRoleIdByName("Mod");
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         expect(res.status).toBe(200);
         expect(res.body.data.message).toBe("Role added.");
@@ -449,9 +455,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const customRoleId = createRoleRes.body.data.id;
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${customRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: customRoleId });
+            .send({});
 
         expect(res.status).toBe(200);
     });
@@ -460,9 +466,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const { classId, teacherTokens, student } = await setupClassWithTeacherAndStudent();
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/999999`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: 999999 });
+            .send({});
 
         expect(res.status).toBe(400);
     });
@@ -475,7 +481,7 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
             .send({});
 
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(404);
     });
 
     it("returns 404 for a non-member user", async () => {
@@ -488,9 +494,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const modRoleId = await getRoleIdByName("Mod");
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${outsider.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${outsider.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         expect(res.status).toBe(404);
     });
@@ -500,9 +506,9 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const guestRoleId = await getRoleIdByName("Guest");
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${guestRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: guestRoleId });
+            .send({});
 
         expect(res.status).toBe(400);
     });
@@ -512,14 +518,14 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const modRoleId = await getRoleIdByName("Mod");
 
         await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         const res = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         expect(res.status).toBe(400);
     });
@@ -535,15 +541,15 @@ describe("POST /api/v1/class/:id/students/:userId/roles", () => {
         const helperRoleId = createRoleRes.body.data.id;
 
         const res1 = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
         expect(res1.status).toBe(200);
 
         const res2 = await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${helperRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: helperRoleId });
+            .send({});
         expect(res2.status).toBe(200);
 
         // Verify both roles are listed
@@ -579,9 +585,9 @@ describe("DELETE /api/v1/class/:id/students/:userId/roles/:roleId", () => {
 
         // Add the role first
         await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         // Remove it
         const res = await request(app)
@@ -652,9 +658,9 @@ describe("GET /api/v1/class/:id/students/:userId/roles", () => {
         const modRoleId = await getRoleIdByName("Mod");
 
         await request(app)
-            .post(`/api/v1/class/${classId}/students/${student.id}/roles`)
+            .post(`/api/v1/class/${classId}/students/${student.id}/roles/${modRoleId}`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ roleId: modRoleId });
+            .send({});
 
         const res = await request(app)
             .get(`/api/v1/class/${classId}/students/${student.id}/roles`)

@@ -130,8 +130,14 @@ function setupMockClassroom(classId, ownerId, students = {}) {
 async function getRoleIdByName(roleName, classId = null) {
     const row =
         classId == null
-            ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId IS NULL", [roleName])
-            : await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND classId = ?", [roleName, classId]);
+            ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND isDefault = 1", [roleName])
+            : await mockDatabase.dbGet(
+                  `SELECT r.id
+                 FROM roles r
+                 JOIN class_roles cr ON cr.roleId = r.id
+                 WHERE r.name = ? AND cr.classId = ?`,
+                  [roleName, classId]
+              );
 
     return row ? row.id : null;
 }
@@ -207,7 +213,7 @@ describe("getStudentRoles()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
 
-        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND classId IS NULL");
+        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND isDefault = 1");
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
 
         const roles = await getStudentRoles(classId, user.id);
@@ -219,8 +225,8 @@ describe("getStudentRoles()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
 
-        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND classId IS NULL");
-        const studentRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Student' AND classId IS NULL");
+        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND isDefault = 1");
+        const studentRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Student' AND isDefault = 1");
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, studentRole.id, classId]);
 
@@ -242,7 +248,14 @@ describe("createClassRole()", () => {
         const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
         const classroom = mockClassrooms[classId];
 
-        const role = await createClassRole(classId, "Helper", ["class.poll.create"], actingUser, classroom, "#123456");
+        const role = await createClassRole({
+            classId,
+            name: "Helper",
+            scopes: ["class.poll.create"],
+            actingClassUser: actingUser,
+            classroom,
+            color: "#123456",
+        });
 
         expect(role.name).toBe("Helper");
         expect(role.scopes).toEqual(["class.poll.create"]);
@@ -260,7 +273,13 @@ describe("createClassRole()", () => {
         const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
         const classroom = mockClassrooms[classId];
 
-        const role = await createClassRole(classId, "DefaultColorRole", ["class.poll.create"], actingUser, classroom);
+        const role = await createClassRole({
+            classId,
+            name: "DefaultColorRole",
+            scopes: ["class.poll.create"],
+            actingClassUser: actingUser,
+            classroom,
+        });
 
         expect(role.color).toBe("#808080");
     });
@@ -338,15 +357,16 @@ describe("addStudentRole()", () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
-        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes) VALUES (?, ?, ?)", [
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
             "Helper",
-            classId,
             '["class.poll.create"]',
+            "#808080",
         ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
         setupMockClassroom(classId, user.id, {
             [user.email]: { classRoles: [], classRole: null },
         });
-        mockClassrooms[classId].customRoles = { Helper: ["class.poll.create"] };
+        mockClassrooms[classId].customRoles = { [helperRoleId]: ["class.poll.create"] };
 
         await addStudentRole(classId, user.id, helperRoleId);
 
@@ -380,13 +400,19 @@ describe("removeStudentRole()", () => {
         });
 
         await getClassRoles(classId);
-        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND classId = ?", [classId]);
+        const modRole = await mockDatabase.dbGet(
+            `SELECT r.id
+             FROM roles r
+             JOIN class_roles cr ON cr.roleId = r.id
+             WHERE r.name = 'Mod' AND cr.classId = ?`,
+            [classId]
+        );
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
 
         await removeStudentRole(classId, user.id, modRole.id);
 
         const roles = await getStudentRoles(classId, user.id);
-        expect(roles).toEqual([]);
+        expect(roles).toEqual(["Student"]);
     });
 
     it("updates in-memory classRoles after removal", async () => {
@@ -398,7 +424,13 @@ describe("removeStudentRole()", () => {
         });
 
         await getClassRoles(classId);
-        const modRole = await mockDatabase.dbGet("SELECT id FROM roles WHERE name = 'Mod' AND classId = ?", [classId]);
+        const modRole = await mockDatabase.dbGet(
+            `SELECT r.id
+             FROM roles r
+             JOIN class_roles cr ON cr.roleId = r.id
+             WHERE r.name = 'Mod' AND cr.classId = ?`,
+            [classId]
+        );
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
 
         await removeStudentRole(classId, user.id, modRole.id);
@@ -450,7 +482,12 @@ describe("getClassRoles()", () => {
     it("includes custom roles for the class", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
-        await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes) VALUES (?, ?, ?)", ["Helper", classId, '["class.poll.create"]']);
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
+            "Helper",
+            '["class.poll.create"]',
+            "#808080",
+        ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
 
         const roles = await getClassRoles(classId);
         const custom = roles.find((r) => r.name === "Helper");
@@ -491,12 +528,12 @@ describe("getClassRoles()", () => {
     it("returns custom role colors", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
-        await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
             "Helper",
-            classId,
             '["class.poll.create"]',
             "#123456",
         ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
 
         const roles = await getClassRoles(classId);
         const custom = roles.find((r) => r.name === "Helper");

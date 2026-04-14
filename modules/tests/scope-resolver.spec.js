@@ -1,4 +1,4 @@
-const { userHasScope, classUserHasScope, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { userHasScope, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
@@ -52,18 +52,18 @@ describe("userHasScope", () => {
     });
 });
 
-describe("classUserHasScope", () => {
+describe("userHasScope", () => {
     it("Manager has any class scope", () => {
-        expect(classUserHasScope({ classRole: "Manager" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(true);
-        expect(classUserHasScope({ classRole: "Manager" }, null, "anything")).toBe(true);
+        expect(userHasScope({ classRole: "Manager" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(true);
+        expect(userHasScope({ classRole: "Manager" }, null, "anything")).toBe(true);
     });
 
     it("Guest has class.poll.read", () => {
-        expect(classUserHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.READ)).toBe(true);
+        expect(userHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.READ)).toBe(true);
     });
 
     it("Guest does not have class.poll.create", () => {
-        expect(classUserHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(false);
+        expect(userHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(false);
     });
 });
 

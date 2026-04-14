@@ -299,7 +299,12 @@ describe("getStudentsInClass()", () => {
         await seedClassUser(10, user.id);
 
         // Seed a custom role and user_roles entry for the multi-role system
-        const roleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes) VALUES (?, ?, ?)", ["helper", 10, "[]"]);
+        const roleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
+            "helper",
+            "[]",
+            "#808080",
+        ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [roleId, 10]);
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, roleId, 10]);
 
         const result = await getStudentsInClass(10);
@@ -317,19 +322,19 @@ describe("getStudentsInClass()", () => {
         const user = await seedUser({ email: "multi@test.com" });
         await seedClassUser(11, user.id);
 
-        const globalStudentRole = await mockDatabase.dbGet("SELECT scopes, color FROM roles WHERE name = 'Student' AND classId IS NULL");
-        const classStudentRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+        const globalStudentRole = await mockDatabase.dbGet("SELECT scopes, color FROM roles WHERE name = 'Student' AND isDefault = 1");
+        const classStudentRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
             "Student",
-            11,
             globalStudentRole.scopes,
             globalStudentRole.color,
         ]);
-        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, classId, scopes, color) VALUES (?, ?, ?, ?)", [
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [classStudentRoleId, 11]);
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
             "Helper",
-            11,
             JSON.stringify(["class.session.start"]),
             "#123456",
         ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, 11]);
 
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, classStudentRoleId, 11]);
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, helperRoleId, 11]);

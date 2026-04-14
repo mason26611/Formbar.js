@@ -3,7 +3,7 @@ const { isSelfOrHasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserDataFromDb } = require("@services/user-service");
-const { getUserScopes, getUserRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const NotFoundError = require("@errors/not-found-error");
 
 module.exports = (router) => {

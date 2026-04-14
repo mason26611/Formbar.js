@@ -45,11 +45,11 @@ jest.mock("@services/user-service", () => ({
 
 jest.mock("@modules/scope-resolver", () => ({
     ...jest.requireActual("@modules/scope-resolver"),
-    classUserHasScope: jest.fn().mockReturnValue(true),
+    userHasScope: jest.fn().mockReturnValue(true),
 }));
 
 const { getUser } = require("@services/user-service");
-const { classUserHasScope } = require("@modules/scope-resolver");
+const { userHasScope } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
 
 const apiPermissionCheckController = require("../api-permission-check");
@@ -63,7 +63,7 @@ afterEach(async () => {
     await mockDatabase.reset();
     clearClassStateStore();
     jest.clearAllMocks();
-    classUserHasScope.mockReturnValue(true);
+    userHasScope.mockReturnValue(true);
 });
 
 afterAll(async () => {
@@ -164,7 +164,7 @@ describe("GET /api/v1/apiPermissionCheck", () => {
     it("returns 403 when user doesn't have enough permissions", async () => {
         mockLoggedInUser();
         seedClassroom();
-        classUserHasScope.mockReturnValue(false);
+        userHasScope.mockReturnValue(false);
 
         const res = await request(app).get("/api/v1/apiPermissionCheck").query({ api: "some-api-key", permissionType: "games", classId: 42 });
 

@@ -102,12 +102,12 @@ function getClassScopesForRole(role, classroom) {
     return scopes;
 }
 
-function getUserScopes(user) {
+function getUserScopes(user, classroom) {
     if (!user) {
         throw new AppError("No user defined");
     }
 
-    const classId = user.activeClass;
+    const classId = classroom.id || user.activeClass;
     const scopes = {
         global: [],
         class: [],
@@ -204,24 +204,12 @@ function getUserScopes(user) {
 //     return unblockedPermissionLevel >= TEACHER_PERMISSIONS ? unblockedScopes : resolvedScopes;
 // }
 
-function userHasScope(user, scope) {
+function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
-    const scopes = getUserScopes(user).global;
-    if (hasGlobalAdminScope(scopes)) return true;
-    return scopes.includes(scope);
-}
 
-function classUserHasScope(classUser, classroom, scope) {
-    if (!classUser) return false;
-    const scopes = getUserScopes(classUser, classroom).class;
-    if (
-        computeClassPermissionLevel(scopes, {
-            isOwner: isClassOwner(classUser, classroom),
-            globalScopes: getUserScopes(classUser).global,
-        }) >= MANAGER_PERMISSIONS
-    ) {
-        return true;
-    }
+    const userScopes = getUserScopes(user, classroom);    
+    const scopes = classroom ? userScopes.global.concat(userScopes.class) : userScopes.global;
+    if (hasGlobalAdminScope(scopes)) return true;
     return scopes.includes(scope);
 }
 
@@ -336,7 +324,6 @@ function getAllClassScopes() {
 module.exports = {
     getUserScopes,
     userHasScope,
-    classUserHasScope,
     getUserRoleName,
     getClassRoleName,
     getClassRoleNames,

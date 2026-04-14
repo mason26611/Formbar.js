@@ -11,9 +11,7 @@ const { Classroom, classStateStore, getClassIDFromCode } = require("@services/cl
 const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const {
-    SCOPES,
     computeClassPermissionLevel,
-    computeGlobalPermissionLevel,
     BANNED_PERMISSIONS,
     GUEST_PERMISSIONS,
     MOD_PERMISSIONS,
@@ -148,7 +146,7 @@ async function createClass(className, ownerId, ownerEmail) {
     // Use the ID of the newly created classroom returned by dbRun
     const classId = insertResult;
     if (!classId) {
-        throw new AppError("Class was not created successfully");
+        throw new AppError("Class was not created successfully", { event: "class.create.failed", reason: "db_insert_failed", className, ownerId });
     }
 
     const classroom = {
@@ -1110,7 +1108,7 @@ async function updateClassSetting(classId, classSettings) {
         return;
     }
 
-    throw new ValidationError(`Invalid setting ${setting} provided.`);
+    throw new ValidationError("Invalid setting provided.");
 }
 
 module.exports = {

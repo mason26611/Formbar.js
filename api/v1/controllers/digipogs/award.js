@@ -100,7 +100,7 @@ module.exports = (router) => {
             ...(to ? {} : { to: { id: userId || studentId, type: "user" } }),
         };
 
-        req.infoEvent("digipogs.award.attempt", "Attempting to award digipogs", { amount });
+        req.infoEvent("digipogs.award.attempt", "Attempting to award digipogs", { amount, to: awardPayload.to });
 
         const result = await awardDigipogs(awardPayload, req.user);
         if (!result.success) {
@@ -111,7 +111,7 @@ module.exports = (router) => {
             });
         }
 
-        req.infoEvent("digipogs.award.success", "Digipogs awarded successfully", { amount });
+        req.infoEvent("digipogs.award.success", "Digipogs awarded successfully", { amount, to: awardPayload.to });
         res.status(200).json({
             success: true,
             data: result,

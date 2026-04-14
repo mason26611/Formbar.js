@@ -163,7 +163,7 @@ describe("PATCH /api/v1/class/:id/settings", () => {
         const res = await request(app)
             .patch(`/api/v1/class/${classId}/settings`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ setting: "name", value: newName });
+            .send({ name: newName });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -179,7 +179,7 @@ describe("PATCH /api/v1/class/:id/settings", () => {
         const res = await request(app)
             .patch(`/api/v1/class/${classId}/settings`)
             .set("Authorization", `Bearer ${teacherTokens.accessToken}`)
-            .send({ setting: "name", value: "@@@" });
+            .send({ name: "@@@" });
 
         expect(res.status).toBe(400);
     });
