@@ -120,7 +120,7 @@ module.exports = (router) => {
             });
         }
 
-        if (!userHasScope(studentObj, classroom, scopeString)) {
+        if (!userHasScope(studentObj, scopeString, classroom)) {
             throw new ForbiddenError("User does not have enough permissions.", {
                 event: "api.permission.check.failed",
                 reason: "insufficient_permissions",

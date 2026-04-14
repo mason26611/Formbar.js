@@ -70,7 +70,7 @@ function hasClassScope(scope) {
             throw new AuthError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
         }
 
-        if (userHasScope(classUser, classroom, scope)) {
+        if (userHasScope(classUser, scope, classroom)) {
             return next();
         }
 

@@ -2,7 +2,6 @@ const {
     resolveUserGlobalScopes,
     resolveUserClassScopes,
     userHasScope,
-    userHasScope,
     getUserRoleName,
     getClassRoleName,
     getClassRoleNames,

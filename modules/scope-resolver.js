@@ -299,7 +299,6 @@ module.exports = {
     resolveUserGlobalScopes,
     resolveUserClassScopes,
     userHasScope,
-    userHasScope,
     getUserRoleName,
     getClassRoleName,
     getClassRoleNames,

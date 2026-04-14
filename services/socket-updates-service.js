@@ -130,7 +130,7 @@ function parseStoredScopes(value) {
  * @returns {boolean}
  */
 function hasControlPanelAccess(user, classroom) {
-    return CONTROL_PANEL_SCOPES.some((scope) => userHasScope(user, classroom, scope));
+    return CONTROL_PANEL_SCOPES.some((scope) => userHasScope(user, scope, classroom));
 }
 
 /**
@@ -150,8 +150,8 @@ async function advancedEmitToClass(event, classId, options, ...data) {
         let hasAPI = false;
         if (!user) continue;
 
-        if (options.scope && !userHasScope(user, classData, options.scope)) continue;
-        if (options.scopes && !options.scopes.some((s) => userHasScope(user, classData, s))) continue;
+        if (options.scope && !userHasScope(user, options.scope, classData)) continue;
+        if (options.scopes && !options.scopes.some((s) => userHasScope(user, s, classData))) continue;
         if (options.email && user.email != options.email) continue;
 
         for (let room of socket.rooms) {

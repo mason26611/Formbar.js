@@ -83,7 +83,7 @@ module.exports = (router) => {
                 name: rawClassData.className,
                 isActive: rawClassData.isActive,
                 owner: rawClassData.owner,
-                students: userHasScope(rawClassData.students[user.email], rawClassData, SCOPES.CLASS.STUDENTS.READ)
+                students: userHasScope(rawClassData.students[user.email], SCOPES.CLASS.STUDENTS.READ, rawClassData)
                     ? classUsers
                     : { [user.email]: classUsers[user.email] },
                 tags: rawClassData.tags,

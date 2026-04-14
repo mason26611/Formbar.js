@@ -668,7 +668,7 @@ async function getStudentRoleAssignments(classId, userId) {
 
     // ...existing code...
     const rows = await dbGetAll(
-        `SELECT r.id, r.name, r.scopes
+        `SELECT r.id, r.name, r.scopes, r.color
          FROM user_roles ur
          JOIN roles r ON ur.roleId = r.id
          WHERE ur.userId = ?
