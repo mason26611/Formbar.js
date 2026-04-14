@@ -44,7 +44,8 @@ module.exports = {
                 const userData = await getSocketUserData(socket, email);
                 const currentTime = Date.now();
                 const timeFrame = 1000; // 1 Second
-                const limit = computeGlobalPermissionLevel(resolveUserGlobalScopes(userData || socket.request.session)) >= TEACHER_PERMISSIONS ? 100 : 30;
+                const limit =
+                    computeGlobalPermissionLevel(resolveUserGlobalScopes(userData || socket.request.session)) >= TEACHER_PERMISSIONS ? 100 : 30;
                 const userRequests = socketStateStore.getUserRateLimits(email, true);
                 userRequests[event] = userRequests[event] || [];
                 while (userRequests[event].length && currentTime - userRequests[event][0] > timeFrame) {

@@ -166,7 +166,6 @@ function userHasScope(user, scope, classroom = null) {
     return scopes.includes(scope);
 }
 
-
 function selectHighestRoleName(roles, domain, options = {}) {
     let highestName = null;
     let highestLevel = -1;
