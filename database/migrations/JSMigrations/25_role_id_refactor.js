@@ -84,15 +84,15 @@ module.exports = {
 
                 if (!roleName || roleName === "Guest") continue; // Guest is implicit
 
-                                // Look up the global role ID
-                                const role = await dbGet(
-                                        `SELECT r.id
+                // Look up the global role ID
+                const role = await dbGet(
+                    `SELECT r.id
                                          FROM roles r
                                          WHERE r.name = ?
                                              AND r.isDefault = 1`,
-                                        [roleName],
-                                        database
-                                );
+                    [roleName],
+                    database
+                );
                 if (!role) continue;
 
                 // Insert only if not already present

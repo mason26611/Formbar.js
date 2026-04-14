@@ -53,17 +53,9 @@ module.exports = {
         );
 
         // Create index on classId for faster queries
-        await dbRun(
-            `CREATE INDEX IF NOT EXISTS "idx_class_roles_classId" ON "class_roles" ("classId")`,
-            [],
-            database
-        );
+        await dbRun(`CREATE INDEX IF NOT EXISTS "idx_class_roles_classId" ON "class_roles" ("classId")`, [], database);
 
-        await dbRun(
-            `CREATE UNIQUE INDEX IF NOT EXISTS "idx_class_roles_unique" ON "class_roles" ("classId", "roleId")`,
-            [],
-            database
-        );
+        await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_class_roles_unique" ON "class_roles" ("classId", "roleId")`, [], database);
 
         // Create unique index for user_roles (handles NULL classId)
         try {

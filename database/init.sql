@@ -166,10 +166,3 @@ CREATE TABLE IF NOT EXISTS "user_roles"
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_roles_unique" ON "user_roles" ("userId", "roleId", COALESCE("classId", -1));
-
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Banned', '[]', '#808080', 1);
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Guest', '["class.poll.read","class.links.read"]', '#95A5A6', 1);
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Student', '["global.pools.manage","global.digipogs.transfer","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#3498DB', 1);
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Mod', '["global.pools.manage","global.digipogs.transfer","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve","class.auxiliary.control","class.games.access","class.tags.manage","class.links.manage","class.poll.read","class.poll.vote","class.break.request","class.help.request","class.links.read"]', '#2ECC71', 1);
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Teacher', '["global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick","class.students.ban","class.students.perm_change","class.session.start","class.session.end","class.session.rename","class.session.settings","class.session.regenerate_code","class.timer.control","class.digipogs.award","class.poll.create","class.poll.end","class.poll.delete","class.poll.share","class.break.approve","class.help.approve"]', '#F39C12', 1);
-INSERT INTO "roles" ("name", "scopes", "color", "isDefault") VALUES ('Manager', '["global.system.admin","global.users.manage","global.class.create","global.class.delete","global.digipogs.award","global.pools.manage","global.digipogs.transfer","class.students.read","class.students.kick"]','#E74C3C', 1);

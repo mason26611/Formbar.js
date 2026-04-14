@@ -31,11 +31,6 @@ function getDefaultClassRoleScopes(roleName) {
 async function ensureDefaultClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
-    const existingRows = await dbGetAll("SELECT roleId FROM class_roles WHERE classId = ?", [classId]);
-    if (existingRows.length > 0) {
-        return;
-    }
-
     await dbRun(
         `INSERT OR IGNORE INTO class_roles (roleId, classId)
          SELECT id, ?
@@ -130,7 +125,7 @@ function isImplicitGuestRole(role) {
  * class-scoped role by scopes rather than by name.
  * @param {string|number} classId
  * @param {string|number} roleId
- * @returns {Promise<{id: number, name: string, scopes: string}|null>}
+ * @returns {Promise<{id: number, name: string, scopes: string, color: string|null}|null>} Raw role row, where `scopes` is stored JSON.
  */
 async function getRoleByIdForClass(classId, roleId) {
     requireInternalParam(classId, "classId");
@@ -206,19 +201,19 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
     const rows =
         classId == null
             ? await dbGetAll(
-                `SELECT r.id, r.name, r.scopes, r.color
+                  `SELECT r.id, r.name, r.scopes, r.color
                  FROM roles r
                  WHERE r.isDefault = 1
                  ORDER BY r.id`
-            )
+              )
             : await dbGetAll(
-                `SELECT r.id, r.name, r.scopes, r.color
+                  `SELECT r.id, r.name, r.scopes, r.color
                  FROM roles r
                  JOIN class_roles cr ON cr.roleId = r.id
                  WHERE cr.classId = ?
                  ORDER BY r.id`,
-                [classId]
-            );
+                  [classId]
+              );
 
     const matcher = classId == null ? getGlobalRolePermissionLevel : getClassRolePermissionLevel;
     return rows.find((row) => matcher(row) === permissionLevel) || null;
@@ -226,14 +221,16 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
 
 /**
  * Creates a custom role for a class.
- * @param {string|number} classId
- * @param {string} name
- * @param {string[]} scopes
- * @param {Object} actingClassUser - The class user creating the role (for privilege escalation check)
- * @param {Object} classroom - The classroom object
- * @returns {Promise<{id: number, name: string, scopes: string[]}>}
+ * @param {Object} params
+ * @param {string|number} params.classId
+ * @param {string} params.name
+ * @param {string[]} params.scopes
+ * @param {Object} params.actingClassUser - The class user creating the role (for privilege escalation check)
+ * @param {Object} params.classroom - The classroom object
+ * @param {string} params.color
+ * @returns {Promise<{id: number, name: string, scopes: string[], color: string}>}
  */
-async function createClassRole({classId, name, scopes, actingClassUser, classroom, color}) {
+async function createClassRole({ classId, name, scopes, actingClassUser, classroom, color }) {
     requireInternalParam(classId, "classId");
 
     await ensureDefaultClassRoles(classId);
@@ -294,7 +291,7 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         [roleId, classId]
     );
     if (!role) {
-        throw new NotFoundError("Role does not exist.");
+        throw new NotFoundError("Role not found in this class.");
     }
     const isDefault = role.isDefault === 1;
 
