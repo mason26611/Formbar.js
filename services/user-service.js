@@ -10,7 +10,7 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName, resolveUserScopes, resolveClassScopes } = require("@modules/scope-resolver");
+const { getUserRoleName, getUserScopes } = require("@modules/scope-resolver");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
@@ -21,6 +21,7 @@ const { hash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
+
 
 let passwordResetTemplate;
 let verifyEmailTemplate;
@@ -194,7 +195,7 @@ async function getUserDataFromDb(userId) {
     );
     const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const role = getUserRoleName({ globalRoles });
-    const globalScopes = resolveUserScopes({ globalRoles });
+    const globalScopes = getUserScopes({ globalRoles }).global;
 
     return {
         ...user,
@@ -460,10 +461,10 @@ async function getUser(userIdentifier) {
                   ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
                   : null;
             if (effectiveClassUser) {
-                const classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                const classScopes = getUserScopes(effectiveClassUser, classroom).class;
                 userData.classPermissions = computeClassPermissionLevel(classScopes, {
                     isOwner: Boolean(effectiveClassUser.isClassOwner),
-                    globalScopes: resolveUserScopes(effectiveClassUser),
+                    globalScopes: getUserScopes(effectiveClassUser).class,
                 });
             }
         }

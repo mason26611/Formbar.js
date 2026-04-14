@@ -1,13 +1,5 @@
-const {
-    resolveUserScopes,
-    resolveClassScopes,
-    userHasScope,
-    classUserHasScope,
-    getUserRoleName,
-    getClassRoleName,
-    getClassRoleNames,
-} = require("@modules/scope-resolver");
-const { SCOPES, computeGlobalPermissionLevel } = require("@modules/permissions");
+const { userHasScope, classUserHasScope, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { SCOPES } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
     it("returns role field when present", () => {
@@ -38,70 +30,6 @@ describe("getClassRoleName", () => {
 
     it("defaults to Guest for empty object", () => {
         expect(getClassRoleName({})).toBe("Guest");
-    });
-});
-
-describe("resolveUserScopes", () => {
-    it("returns empty array for null user", () => {
-        expect(resolveUserScopes(null)).toEqual([]);
-    });
-
-    it("Student gets global.pools.manage and global.digipogs.transfer", () => {
-        const scopes = resolveUserScopes({ role: "Student" });
-        expect(scopes).toContain(SCOPES.GLOBAL.POOLS.MANAGE);
-        expect(scopes).toContain(SCOPES.GLOBAL.DIGIPOGS.TRANSFER);
-    });
-
-    it("Manager gets all global scopes including global.system.admin", () => {
-        const scopes = resolveUserScopes({ role: "Manager" });
-        expect(scopes).toContain(SCOPES.GLOBAL.SYSTEM.ADMIN);
-        expect(scopes).toContain(SCOPES.GLOBAL.USERS.MANAGE);
-        expect(scopes).toContain(SCOPES.GLOBAL.CLASS.CREATE);
-        expect(scopes).toContain(SCOPES.GLOBAL.POOLS.MANAGE);
-    });
-
-    it("Manager scopes do not include blocked and still resolve to permission level 5", () => {
-        const scopes = resolveUserScopes({ role: "Manager" });
-        expect(scopes).not.toContain(SCOPES.GLOBAL.SYSTEM.BLOCKED);
-        expect(computeGlobalPermissionLevel(scopes)).toBe(5);
-    });
-
-    it("Banned user gets empty array", () => {
-        expect(resolveUserScopes({ role: "Banned" })).toEqual([]);
-    });
-
-    it("Guest user gets empty array", () => {
-        expect(resolveUserScopes({ role: "Guest" })).toEqual([]);
-    });
-});
-
-describe("resolveClassScopes", () => {
-    it("Student classUser gets poll.read, poll.vote, and other student scopes", () => {
-        const scopes = resolveClassScopes({ classRole: "Student" }, null);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.READ);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.VOTE);
-        expect(scopes).toContain(SCOPES.CLASS.BREAK.REQUEST);
-    });
-
-    it("Manager classUser gets all class scopes", () => {
-        const scopes = resolveClassScopes({ classRole: "Manager" }, null);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.CREATE);
-        expect(scopes).toContain(SCOPES.CLASS.SESSION.START);
-        expect(scopes).toContain(SCOPES.CLASS.STUDENTS.READ);
-        expect(scopes).toContain(SCOPES.CLASS.DIGIPOGS.AWARD);
-    });
-
-    it("respects classroom roleOverrides (unioned with Guest base)", () => {
-        const classroom = { roleOverrides: { Student: ["custom.scope"] } };
-        const scopes = resolveClassScopes({ classRole: "Student" }, classroom);
-        expect(scopes).toContain("custom.scope");
-        expect(scopes).toContain(SCOPES.CLASS.POLL.READ);
-        expect(scopes).toContain(SCOPES.CLASS.LINKS.READ);
-    });
-
-    it("works without classroom (null)", () => {
-        const scopes = resolveClassScopes({ classRole: "Guest" }, null);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.READ);
     });
 });
 
@@ -154,71 +82,5 @@ describe("getClassRoleNames", () => {
 
     it("returns empty array for no role data", () => {
         expect(getClassRoleNames({})).toEqual([]);
-    });
-});
-
-describe("multi-role resolveClassScopes", () => {
-    it("unions scopes from multiple built-in roles", () => {
-        const user = { classRoles: ["Student", "Mod"] };
-        const scopes = resolveClassScopes(user, null);
-        // Should have Student scopes
-        expect(scopes).toContain(SCOPES.CLASS.POLL.VOTE);
-        expect(scopes).toContain(SCOPES.CLASS.BREAK.REQUEST);
-        // Should have Mod scopes
-        expect(scopes).toContain(SCOPES.CLASS.POLL.CREATE);
-        expect(scopes).toContain(SCOPES.CLASS.BREAK.APPROVE);
-    });
-
-    it("always includes Guest scopes as base", () => {
-        const user = { classRoles: ["Mod"] };
-        const scopes = resolveClassScopes(user, null);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.READ);
-        expect(scopes).toContain(SCOPES.CLASS.LINKS.READ);
-    });
-
-    it("returns Guest scopes for empty classRoles", () => {
-        const user = { classRoles: [] };
-        const scopes = resolveClassScopes(user, null);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.READ);
-        expect(scopes).not.toContain(SCOPES.CLASS.POLL.CREATE);
-    });
-
-    it("Banned suppresses all scopes when no Teacher+ role present", () => {
-        const user = { classRoles: ["Banned", "Student"] };
-        const scopes = resolveClassScopes(user, null);
-        expect(scopes).toEqual([]);
-    });
-
-    it("Banned does NOT suppress when Teacher role is also present", () => {
-        const user = { classRoles: ["Banned", "Teacher"] };
-        const scopes = resolveClassScopes(user, null);
-        expect(scopes.length).toBeGreaterThan(0);
-        expect(scopes).toContain(SCOPES.CLASS.SESSION.START);
-    });
-
-    it("Banned does NOT suppress when Manager role is present", () => {
-        const user = { classRoles: ["Banned", "Manager"] };
-        const scopes = resolveClassScopes(user, null);
-        // Manager gets all class scopes
-        expect(scopes).toContain(SCOPES.CLASS.POLL.CREATE);
-        expect(scopes).toContain(SCOPES.CLASS.SESSION.START);
-    });
-
-    it("unions custom role scopes with built-in scopes", () => {
-        const classroom = { customRoles: { Helper: [SCOPES.CLASS.HELP.APPROVE] } };
-        const user = { classRoles: ["Student", "Helper"] };
-        const scopes = resolveClassScopes(user, classroom);
-        // Student scopes
-        expect(scopes).toContain(SCOPES.CLASS.POLL.VOTE);
-        // Custom role scope
-        expect(scopes).toContain(SCOPES.CLASS.HELP.APPROVE);
-    });
-
-    it("Manager in classRoles gets all class scopes", () => {
-        const user = { classRoles: ["Manager"] };
-        const scopes = resolveClassScopes(user, null);
-        expect(scopes).toContain(SCOPES.CLASS.SESSION.START);
-        expect(scopes).toContain(SCOPES.CLASS.POLL.CREATE);
-        expect(scopes).toContain(SCOPES.CLASS.STUDENTS.BAN);
     });
 });

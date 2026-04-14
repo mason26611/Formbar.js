@@ -65,6 +65,15 @@ function hasAnyScope(scopeSet, candidateScopes) {
     return candidateScopes.some((scope) => scopeSet.has(scope));
 }
 
+/**
+ * Normalizes mixed permission inputs into a unique array of scope strings.
+ * Entries may already be scope keys, or may be role-like values that need to be
+ * expanded via {@link getScopesFromRoleLike} for the requested domain.
+ *
+ * @param {Array<string|number|object>} input
+ * @param {{domain?: "global"|"class", availableRoles?: Array<{id: number|string, scopes?: string[]|string}>}} [options={}]
+ * @returns {string[]}
+ */
 function normalizeScopes(input, options = {}) {
     if (!Array.isArray(input) || input.length === 0) {
         return [];

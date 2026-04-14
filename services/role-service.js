@@ -2,13 +2,14 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS } = require("@modules/roles");
 const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { resolveClassScopes, getAllClassScopes } = require("@modules/scope-resolver");
+const { getUserScopes, getAllClassScopes } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
+const { getUser } = require("@services/user-service");
 
 const BUILT_IN_ROLE_NAMES = new Set(Object.values(ROLE_NAMES));
 const DEFAULT_CLASS_ROLE_NAMES = Object.values(ROLE_NAMES);
@@ -487,6 +488,27 @@ async function removeStudentRole(classId, userId, roleId) {
     }
 }
 
+async function getUserRoles(user) {
+    requireInternalParam(userId);
+
+    const roles = {
+        global: [],
+        class: [],
+    };
+
+    roles.global = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId IS NULL AND ur.userId = ?`, [userId]);
+
+    const classId = user.activeClass;
+    if (classId) {
+        roles.class = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId = ? AND ur.userId = ?`, [
+            classId,
+            userId,
+        ]);
+    }
+
+    return roles;
+}
+
 /**
  * Gets all role names assigned to a student in a class.
  * @param {string|number} classId
@@ -497,12 +519,7 @@ async function getStudentRoles(classId, userId) {
     requireInternalParam(classId, "classId");
     requireInternalParam(userId, "userId");
 
-    const rows = await dbGetAll(
-        `SELECT r.name FROM user_roles ur
-         JOIN roles r ON ur.roleId = r.id
-         WHERE ur.classId = ? AND ur.userId = ?`,
-        [classId, userId]
-    );
+    const rows = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId = ? AND ur.userId = ?`,  [classId, userId] );
     return rows.map((r) => r.name);
 }
 
@@ -630,7 +647,7 @@ function validateScopes(scopes) {
  * Ensures the acting user isn't granting scopes they don't have.
  */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
-    const actorScopes = new Set(resolveClassScopes(actingClassUser, classroom));
+    const actorScopes = new Set(getUserScopes(actingClassUser, classroom).class);
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
@@ -660,10 +677,10 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
  */
 function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(getUserScopes(classUser, classroom), {
         isOwner: Boolean(classUser.isClassOwner),
         globalScopes: classUser.globalRoles || [],
-    });
+    }.class);
 }
 
 /**
@@ -703,6 +720,7 @@ function getActingUser(classroom, reqUser) {
 }
 
 module.exports = {
+    getUserRoles,
     getClassRoles,
     createClassRole,
     updateClassRole,

@@ -10,10 +10,11 @@ const {
     MANAGER_PERMISSIONS,
     BANNED_PERMISSIONS,
 } = require("@modules/permissions");
-const { classUserHasScope, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { classUserHasScope, isClassOwner, getUserScopes } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
+const { getUser } = require("@services/user-service");
 
 const runningTimers = socketStateStore.getRunningTimers();
 const rateLimits = socketStateStore.getRateLimits();
@@ -96,14 +97,14 @@ function userUpdateSocket(email, methodName, ...args) {
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
 function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserScopes(user));
+    return computeGlobalPermissionLevel(getUserScopes(user).global);
 }
 
 function getClassPermissionLevelForUser(classUser, classroom) {
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(getUserScopes(classUser, classroom), {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserScopes(classUser),
-    });
+        globalScopes: getUserScopes(classUser).global,
+    }.class);
 }
 
 function parseStoredScopes(value) {

@@ -20,18 +20,18 @@ const {
     TEACHER_PERMISSIONS,
     MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
-const { getUserRoleName, getClassRoleName, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
 const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, findRoleByPermissionLevel } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
+const { buildRoleReferences } = require("@modules/role-reference");
 const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
-const { buildRoleReferences } = require("@modules/role-reference");
 
 function getUserJoinedClasses(userId) {
     return dbGetAll(
@@ -49,19 +49,15 @@ async function getClassCode(classId) {
     return result ? result.key : null;
 }
 
-function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserScopes(user));
-}
-
 function getClassPermissionLevelForUser(classUser, classroom) {
     if (!classUser) {
         return GUEST_PERMISSIONS;
     }
 
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(getUserScopes(classUser, classroom), {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserScopes(classUser),
-    });
+        globalScopes: getUserScopes(classUser).global,
+    }.class);
 }
 
 function hasClassPermissionLevel(classUser, classroom, minimumLevel) {

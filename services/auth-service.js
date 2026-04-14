@@ -5,7 +5,7 @@ const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMI
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
 const { findRoleByPermissionLevel } = require("@services/role-service");
 const crypto = require("crypto");
@@ -13,10 +13,11 @@ const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
+const { getUser } = require("@services/user-service");
 
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 
-async function withComputedGlobalRole(userData) {
+async function normalizeUserData(userData) {
     if (!userData || !userData.id) {
         return userData;
     }
@@ -29,15 +30,14 @@ async function withComputedGlobalRole(userData) {
         [userData.id]
     );
     const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
-    const role = getUserRoleName({ globalRoles });
-    const globalScopes = resolveUserScopes({ globalRoles });
+    const scopes = getUserScopes({ globalRoles });
 
     return {
         ...userData,
-        globalRoles,
-        role,
-        permissions: computeGlobalPermissionLevel(globalScopes),
-        classPermissions: null,
+        permissions: computeGlobalPermissionLevel(scopes.global),
+        classPermissions: computeClassPermissionLevel(classStateStore.getClassroom(userData.activeClass)),
+        globalRoles: globalRoles,
+        scopes,
     };
 }
 
@@ -68,10 +68,10 @@ async function getActiveClassContext(user) {
     }
 
     if (effectiveClassUser) {
-        classScopes = resolveClassScopes(effectiveClassUser, classroom);
+        classScopes = getUserScopes(effectiveClassUser, classroom).class;
         classPermissions = computeClassPermissionLevel(classScopes, {
             isOwner: Boolean(effectiveClassUser.isClassOwner),
-            globalScopes: resolveUserScopes(effectiveClassUser),
+            globalScopes: getUserScopes(effectiveClassUser).global,
         });
     }
 
@@ -204,7 +204,7 @@ async function register(email, password, displayName) {
     }
 
     const hashedPassword = await hash(password, 10);
-    const userData = await withComputedGlobalRole(
+    const userData = await normalizeUserData(
         await createUser({
             email,
             password: hashedPassword,
@@ -239,7 +239,7 @@ async function login(email, password) {
     // Normalize email to lowercase to prevent login issues
     email = normalizeEmail(email);
 
-    const userData = await withComputedGlobalRole(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
+    const userData = await normalizeUserData(await dbGet("SELECT * FROM users WHERE email = ?", [email]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -278,7 +278,7 @@ async function refreshLogin(refreshToken) {
     }
 
     // Load user data to include email and displayName in the new token
-    const userData = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
+    const userData = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [dbRefreshToken.user_id]));
     if (!userData) {
         return invalidCredentials();
     }
@@ -316,6 +316,7 @@ function generateAuthTokens(userData) {
             email: userData.email,
             displayName: userData.displayName,
             permissions: userData.permissions,
+            scopes: getUserScopes(userData),
         },
         privateKey,
         { algorithm: "RS256", expiresIn: "15m" }
@@ -404,7 +405,7 @@ async function oidcLogin(provider, email, displayName, options = {}) {
         }
     }
 
-    userData = await withComputedGlobalRole(userData);
+    userData = await normalizeUserData(userData);
     return { provider, tokens: await issueAuthTokens(userData), user: userData };
 }
 
@@ -482,7 +483,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
+    const user = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [authorizationCodeData.sub]));
     if (!user) {
         throw new AppError("User associated with the authorization code was not found.", { statusCode: 404 });
     }
@@ -516,9 +517,8 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserScopes(user),
         classRoles,
-        classScopes,
+        scopes: getUserScopes(user),
     };
 }
 
@@ -545,7 +545,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
-    const user = await withComputedGlobalRole(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
+    const user = await normalizeUserData(await dbGet("SELECT id, email, displayName FROM users WHERE id = ?", [refreshTokenData.id]));
     if (!user) {
         throw new AppError("User associated with the refresh token was not found.", { statusCode: 404 });
     }
@@ -580,7 +580,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserScopes(user),
+        scopes: getUserScopes(user),
     };
 }
 
