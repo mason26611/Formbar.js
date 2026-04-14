@@ -2,7 +2,7 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS } = require("@modules/roles");
 const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { resolveClassScopes, resolveUserScopes, getAllClassScopes } = require("@modules/scope-resolver");
+const { resolveUserClassScopes, resolveUserGlobalScopes, getAllClassScopes } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
@@ -802,8 +802,8 @@ function validateScopes(scopes) {
  * Ensures the acting user isn't granting scopes they don't have.
  */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
-    const actorGlobalScopes = new Set(resolveUserScopes(actingClassUser));
-    const actorClassScopes = new Set(resolveClassScopes(actingClassUser, classroom));
+    const actorGlobalScopes = new Set(resolveUserGlobalScopes(actingClassUser));
+    const actorClassScopes = new Set(resolveUserClassScopes(actingClassUser, classroom));
     const actorScopes = new Set([...actorGlobalScopes, ...actorClassScopes]);
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
@@ -834,7 +834,7 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
  */
 function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(resolveUserClassScopes(classUser, classroom), {
         isOwner: Boolean(classUser.isClassOwner),
         globalScopes: classUser.globalRoles || [],
     });

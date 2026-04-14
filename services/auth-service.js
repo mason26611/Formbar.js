@@ -5,7 +5,7 @@ const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMI
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { resolveUserScopes, resolveClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { resolveUserGlobalScopes, resolveUserClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
 const { findRoleByPermissionLevel } = require("@services/role-service");
 const crypto = require("crypto");
@@ -30,7 +30,7 @@ async function withComputedGlobalRole(userData) {
     );
     const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const role = getUserRoleName({ globalRoles });
-    const globalScopes = resolveUserScopes({ globalRoles });
+    const globalScopes = resolveUserGlobalScopes({ globalRoles });
 
     return {
         ...userData,
@@ -68,10 +68,10 @@ async function getActiveClassContext(user) {
     }
 
     if (effectiveClassUser) {
-        classScopes = resolveClassScopes(effectiveClassUser, classroom);
+        classScopes = resolveUserClassScopes(effectiveClassUser, classroom);
         classPermissions = computeClassPermissionLevel(classScopes, {
             isOwner: Boolean(effectiveClassUser.isClassOwner),
-            globalScopes: resolveUserScopes(effectiveClassUser),
+            globalScopes: resolveUserGlobalScopes(effectiveClassUser),
         });
     }
 
@@ -516,7 +516,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserScopes(user),
+        scopes: resolveUserGlobalScopes(user),
         classRoles,
         classScopes,
     };
@@ -580,7 +580,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        scopes: resolveUserScopes(user),
+        scopes: resolveUserGlobalScopes(user),
     };
 }
 

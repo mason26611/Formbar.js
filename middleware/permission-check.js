@@ -1,6 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet } = require("@modules/database");
-const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
+const { userHasScope } = require("@modules/scope-resolver");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -70,7 +70,7 @@ function hasClassScope(scope) {
             throw new AuthError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
         }
 
-        if (classUserHasScope(classUser, classroom, scope)) {
+        if (userHasScope(classUser, classroom, scope)) {
             return next();
         }
 

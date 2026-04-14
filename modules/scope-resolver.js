@@ -95,7 +95,7 @@ function getClassScopesForRole(role, classroom) {
     return scopes;
 }
 
-function resolveUserScopes(user) {
+function resolveUserGlobalScopes(user) {
     if (!user) return [];
 
     if (Array.isArray(user.globalScopes)) {
@@ -121,10 +121,10 @@ function resolveUserScopes(user) {
     return computeGlobalPermissionLevel(unblockedScopes) >= MANAGER_PERMISSIONS ? getAllScopes() : resolvedScopes;
 }
 
-function resolveClassScopes(classUser, classroom) {
+function resolveUserClassScopes(classUser, classroom) {
     if (!classUser) return [];
 
-    const globalScopes = resolveUserScopes(classUser);
+    const globalScopes = resolveUserGlobalScopes(classUser);
     const ownerBypass = isClassOwner(classUser, classroom);
     const scopes = [...DEFAULT_CLASS_MEMBER_SCOPES];
 
@@ -158,26 +158,14 @@ function resolveClassScopes(classUser, classroom) {
     return unblockedPermissionLevel >= TEACHER_PERMISSIONS ? unblockedScopes : resolvedScopes;
 }
 
-function userHasScope(user, scope) {
+function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
-    const scopes = resolveUserScopes(user);
+    const classScopes = classroom ? resolveUserClassScopes(user, classroom) : [];
+    const scopes = resolveUserGlobalScopes(user).concat(classScopes);
     if (hasGlobalAdminScope(scopes)) return true;
     return scopes.includes(scope);
 }
 
-function classUserHasScope(classUser, classroom, scope) {
-    if (!classUser) return false;
-    const scopes = resolveClassScopes(classUser, classroom);
-    if (
-        computeClassPermissionLevel(scopes, {
-            isOwner: isClassOwner(classUser, classroom),
-            globalScopes: resolveUserScopes(classUser),
-        }) >= MANAGER_PERMISSIONS
-    ) {
-        return true;
-    }
-    return scopes.includes(scope);
-}
 
 function selectHighestRoleName(roles, domain, options = {}) {
     let highestName = null;
@@ -225,7 +213,7 @@ function getUserRoleName(user) {
         return LEVEL_TO_ROLE[user.permissions] || ROLE_NAMES.GUEST;
     }
 
-    const permissionLevel = computeGlobalPermissionLevel(resolveUserScopes(user));
+    const permissionLevel = computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
     return LEVEL_TO_ROLE[permissionLevel] || ROLE_NAMES.GUEST;
 }
 
@@ -239,7 +227,7 @@ function getClassRoleName(classUser, classroom) {
         return (
             selectHighestRoleName(roles, "class", {
                 classroom,
-                globalScopes: resolveUserScopes(classUser),
+                globalScopes: resolveUserGlobalScopes(classUser),
             }) ||
             getRoleName(roles[0]) ||
             ROLE_NAMES.GUEST
@@ -308,10 +296,10 @@ function getAllClassScopes() {
 }
 
 module.exports = {
-    resolveUserScopes,
-    resolveClassScopes,
+    resolveUserGlobalScopes,
+    resolveUserClassScopes,
     userHasScope,
-    classUserHasScope,
+    userHasScope,
     getUserRoleName,
     getClassRoleName,
     getClassRoleNames,

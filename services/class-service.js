@@ -20,7 +20,7 @@ const {
     TEACHER_PERMISSIONS,
     MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
-const { getUserRoleName, getClassRoleName, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { getUserRoleName, getClassRoleName, resolveUserGlobalScopes, resolveUserClassScopes, isClassOwner } = require("@modules/scope-resolver");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
@@ -50,7 +50,7 @@ async function getClassCode(classId) {
 }
 
 function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserScopes(user));
+    return computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
 }
 
 function getClassPermissionLevelForUser(classUser, classroom) {
@@ -58,9 +58,9 @@ function getClassPermissionLevelForUser(classUser, classroom) {
         return GUEST_PERMISSIONS;
     }
 
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(resolveUserClassScopes(classUser, classroom), {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserScopes(classUser),
+        globalScopes: resolveUserGlobalScopes(classUser),
     });
 }
 
