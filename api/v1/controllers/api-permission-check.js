@@ -1,7 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { getUser } = require("@services/user-service");
 const { SCOPES } = require("@modules/permissions");
-const { classUserHasScope } = require("@modules/scope-resolver");
+const { userHasScope } = require("@modules/scope-resolver");
 const ValidationError = require("@errors/validation-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
@@ -120,7 +120,7 @@ module.exports = (router) => {
             });
         }
 
-        if (!classUserHasScope(studentObj, classroom, scopeString)) {
+        if (!userHasScope(studentObj, scopeString, classroom)) {
             throw new ForbiddenError("User does not have enough permissions.", {
                 event: "api.permission.check.failed",
                 reason: "insufficient_permissions",

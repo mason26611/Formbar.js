@@ -10,7 +10,7 @@ const {
     MANAGER_PERMISSIONS,
     BANNED_PERMISSIONS,
 } = require("@modules/permissions");
-const { classUserHasScope, resolveUserScopes, resolveClassScopes, isClassOwner } = require("@modules/scope-resolver");
+const { userHasScope, resolveUserGlobalScopes, resolveUserClassScopes, isClassOwner } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -96,13 +96,13 @@ function userUpdateSocket(email, methodName, ...args) {
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
 function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(resolveUserScopes(user));
+    return computeGlobalPermissionLevel(resolveUserGlobalScopes(user));
 }
 
 function getClassPermissionLevelForUser(classUser, classroom) {
-    return computeClassPermissionLevel(resolveClassScopes(classUser, classroom), {
+    return computeClassPermissionLevel(resolveUserClassScopes(classUser, classroom), {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: resolveUserScopes(classUser),
+        globalScopes: resolveUserGlobalScopes(classUser),
     });
 }
 
@@ -130,7 +130,7 @@ function parseStoredScopes(value) {
  * @returns {boolean}
  */
 function hasControlPanelAccess(user, classroom) {
-    return CONTROL_PANEL_SCOPES.some((scope) => classUserHasScope(user, classroom, scope));
+    return CONTROL_PANEL_SCOPES.some((scope) => userHasScope(user, scope, classroom));
 }
 
 /**
@@ -150,8 +150,8 @@ async function advancedEmitToClass(event, classId, options, ...data) {
         let hasAPI = false;
         if (!user) continue;
 
-        if (options.scope && !classUserHasScope(user, classData, options.scope)) continue;
-        if (options.scopes && !options.scopes.some((s) => classUserHasScope(user, classData, s))) continue;
+        if (options.scope && !userHasScope(user, options.scope, classData)) continue;
+        if (options.scopes && !options.scopes.some((s) => userHasScope(user, s, classData))) continue;
         if (options.email && user.email != options.email) continue;
 
         for (let room of socket.rooms) {

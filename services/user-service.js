@@ -10,7 +10,7 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName, resolveUserScopes, resolveClassScopes } = require("@modules/scope-resolver");
+const { getUserRoleName, resolveUserGlobalScopes, resolveUserClassScopes } = require("@modules/scope-resolver");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
@@ -194,7 +194,7 @@ async function getUserDataFromDb(userId) {
     );
     const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const role = getUserRoleName({ globalRoles });
-    const globalScopes = resolveUserScopes({ globalRoles });
+    const globalScopes = resolveUserGlobalScopes({ globalRoles });
 
     return {
         ...user,
@@ -460,10 +460,10 @@ async function getUser(userIdentifier) {
                   ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
                   : null;
             if (effectiveClassUser) {
-                const classScopes = resolveClassScopes(effectiveClassUser, classroom);
+                const classScopes = resolveUserClassScopes(effectiveClassUser, classroom);
                 userData.classPermissions = computeClassPermissionLevel(classScopes, {
                     isOwner: Boolean(effectiveClassUser.isClassOwner),
-                    globalScopes: resolveUserScopes(effectiveClassUser),
+                    globalScopes: resolveUserGlobalScopes(effectiveClassUser),
                 });
             }
         }

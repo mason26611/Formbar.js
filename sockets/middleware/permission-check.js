@@ -5,7 +5,7 @@ const { PASSIVE_SOCKETS } = require("@services/socket-updates-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { camelCaseToNormal } = require("@modules/util");
 const { handleSocketError } = require("@modules/socket-error-handler");
-const { userHasScope, classUserHasScope } = require("@modules/scope-resolver");
+const { userHasScope } = require("@modules/scope-resolver");
 
 async function getSocketUserData(socket, email) {
     const cachedUser = classStateStore.getUser(email);
@@ -72,7 +72,7 @@ module.exports = {
                         const classUser =
                             classroom?.students[email] ||
                             (userData && classroom && Number(classroom.owner) === Number(userData.id) ? { ...userData, isClassOwner: true } : null);
-                        if (classUser && classUserHasScope(classUser, classroom, requiredScope)) {
+                        if (classUser && userHasScope(classUser, requiredScope, classroom)) {
                             return next();
                         }
                     }
