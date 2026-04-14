@@ -11,7 +11,7 @@ function flattenObject(obj) {
         if (typeof value === "string") {
             flattenedArray.push(value);
         } else if (typeof value === "object" && value !== null) {
-            flattenObject(value);
+            flattenedArray.push(...flattenObject(value));
         }
     }
 

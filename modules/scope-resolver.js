@@ -9,10 +9,7 @@ const {
 } = require("@modules/permissions");
 const { getRoleName, getRoleNames } = require("@modules/role-reference");
 const AppError = require("@errors/app-error");
-const { classStateStore } = require("@services/classroom-service");
 const { flattenObject } = require("@modules/util");
-const { hasClassScope } = require("@middleware/permission-check");
-const { getUser } = require("@services/user-service");
 
 /**
  * Filters a resolved scope array down to unique string scope keys.

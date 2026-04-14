@@ -9,7 +9,6 @@ const { buildRoleReference, buildRoleReferences } = require("@modules/role-refer
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
-const { getUser } = require("@services/user-service");
 
 const BUILT_IN_ROLE_NAMES = new Set(Object.values(ROLE_NAMES));
 const DEFAULT_CLASS_ROLE_NAMES = Object.values(ROLE_NAMES);

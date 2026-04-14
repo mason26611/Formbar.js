@@ -14,7 +14,6 @@ const { classUserHasScope, isClassOwner, getUserScopes } = require("@modules/sco
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUser } = require("@services/user-service");
 
 const runningTimers = socketStateStore.getRunningTimers();
 const rateLimits = socketStateStore.getRateLimits();
