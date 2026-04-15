@@ -856,12 +856,14 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
             actorScopes.add(scope);
         }
     }
+
     const classRoleName = getClassRoleName(actingClassUser, classroom);
     if (classRoleName && ROLES[classRoleName]?.class) {
         for (const scope of ROLES[classRoleName].class) {
             actorScopes.add(scope);
         }
     }
+
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
