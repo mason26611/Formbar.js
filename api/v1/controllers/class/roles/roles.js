@@ -277,7 +277,13 @@ module.exports = (router) => {
         if (!classroom) throw new NotFoundError("Class not found.");
         const actingClassUser = getActingUser(classroom, req.user);
 
-        const role = await updateClassRole(roleId, classId, updates, actingClassUser, classroom);
+        const role = await updateClassRole({
+            roleId,
+            classId,
+            updates,
+            actingClassUser,
+            classroom
+        });
         await broadcastClassUpdate(classId);
         res.status(200).json({ success: true, data: role });
     });

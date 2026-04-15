@@ -254,7 +254,12 @@ async function createClassRole({ classId, name, scopes, actingClassUser, classro
     const roleColor = color !== undefined ? color : "#808080";
     const scopesJson = JSON.stringify(scopes);
     const id = await dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [name, scopesJson, roleColor]);
-    await dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [id, classId]);
+    const lastOrderIndex = await dbGet(
+        "SELECT MAX(orderIndex) as maxOrder FROM class_roles WHERE classId = ?",
+        [classId]
+    );
+    const newOrderIndex = (lastOrderIndex?.maxOrder ?? -1) + 1;
+    await dbRun("INSERT INTO class_roles (roleId, classId, orderIndex) VALUES (?, ?, ?)", [id, classId, newOrderIndex]);
 
     // Update in-memory role caches
     const classroomObj = classStateStore.getClassroom(classId);
@@ -270,14 +275,15 @@ async function createClassRole({ classId, name, scopes, actingClassUser, classro
 
 /**
  * Updates a custom role.
- * @param {number} roleId
- * @param {string|number} classId
- * @param {Object} updates - { name?: string, scopes?: string[] }
- * @param {Object} actingClassUser - The class user updating the role
- * @param {Object} classroom - The classroom object
- * @returns {Promise<{id: number, name: string, scopes: string[]}>}
+ * @param {Object} params
+ * @param {number} params.roleId
+ * @param {string|number} params.classId
+ * @param {Object} params.updates - { name?: string, scopes?: string[], color?: string, orderIndex?: number }
+ * @param {Object} params.actingClassUser - The class user updating the role
+ * @param {Object} params.classroom - The classroom object
+ * @returns {Promise<{id: number, name: string, scopes: string[], color: string}>}
  */
-async function updateClassRole(roleId, classId, updates, actingClassUser, classroom) {
+async function updateClassRole({roleId, classId, updates, actingClassUser, classroom}) {
     requireInternalParam(roleId, "roleId");
     requireInternalParam(classId, "classId");
 
@@ -333,6 +339,11 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         validateNoPrivilegeEscalation(newScopes, actingClassUser, classroom);
     }
 
+    const newOrderIndex = updates.orderIndex;
+    if (newOrderIndex !== undefined && (!Number.isInteger(newOrderIndex) || newOrderIndex < 0)) {
+        throw new ValidationError("orderIndex must be a non-negative integer.");
+    }
+
     const scopesJson = JSON.stringify(newScopes);
     let newRoleId = roleId;
     if (isDefault) {
@@ -355,6 +366,10 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
         );
     } else {
         await dbRun("UPDATE roles SET name = ?, scopes = ?, color = ? WHERE id = ?", [newName, scopesJson, newColor, roleId]);
+    }
+
+    if (newOrderIndex !== undefined) {
+        await dbRun("UPDATE class_roles SET order_index = ? WHERE roleId = ? AND classId = ?", [newOrderIndex, newRoleId, classId]);
     }
 
     // Update in-memory role caches

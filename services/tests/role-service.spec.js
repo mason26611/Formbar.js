@@ -512,13 +512,13 @@ describe("getClassRoles()", () => {
         const teacherRole = roles.find((r) => r.name === "Teacher");
         expect(teacherRole).toBeDefined();
 
-        await updateClassRole(
-            teacherRole.id,
-            classId,
-            { scopes: ["class.poll.read"] },
-            { classRoles: ["Manager"], classRole: "Manager" },
-            { customRoles: {} }
-        );
+        await updateClassRole({
+            roleId: teacherRole.id,
+            classId: classId,
+            updates: { scopes: ["class.poll.read"] },
+            actingClassUser: { classRoles: ["Manager"], classRole: "Manager" },
+            classroom: {}
+        });
 
         const updatedRoles = await getClassRoles(classId);
         const updatedTeacher = updatedRoles.find((r) => r.name === "Teacher");
@@ -539,4 +539,5 @@ describe("getClassRoles()", () => {
         const custom = roles.find((r) => r.name === "Helper");
         expect(custom.color).toBe("#123456");
     });
+
 });
