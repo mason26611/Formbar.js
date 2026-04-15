@@ -85,10 +85,11 @@ module.exports = (router) => {
                 if (studentEntry) {
                     classUser.classRoles = studentEntry.classRoleRefs || [];
                     classUser.classRole = studentEntry.classRole || null;
-                    classUser.classPermissions = computeClassPermissionLevel(getUserScopes(studentEntry, classroom), {
+                    const resolvedScopes = getUserScopes(studentEntry, classroom);
+                    classUser.classPermissions = computeClassPermissionLevel(resolvedScopes.class, {
                         isOwner: Boolean(studentEntry.isClassOwner),
-                        globalScopes: studentEntry.globalRoles || [],
-                    }.class);
+                        globalScopes: resolvedScopes.global,
+                    });
                 }
             }
 

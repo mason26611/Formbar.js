@@ -32,10 +32,16 @@ async function normalizeUserData(userData) {
     const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
     const scopes = getUserScopes({ globalRoles });
 
+    // If the user is in a class, then get their current class permissions
+    let classPermissions = null;
+    if (userData.activeClass) {
+        classPermissions = (await getActiveClassContext({ ...userData, email: userData.email, globalRoles })).classPermissions;
+    }
+
     return {
         ...userData,
         permissions: computeGlobalPermissionLevel(scopes.global),
-        classPermissions: computeClassPermissionLevel(classStateStore.getClassroom(userData.activeClass)),
+        classPermissions,
         globalRoles: globalRoles,
         scopes,
     };

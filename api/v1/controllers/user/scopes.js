@@ -81,8 +81,10 @@ module.exports = (router) => {
 
             const result = {
                 role: globalRole,
+                globalScopes: scopes.global,
                 classRoles: [],
-                scopes,
+                classScopes: [],
+                scopes: { global: scopes.global, class: [] },
             };
 
             const liveUser = classStateStore.getUser(userData.email);
@@ -91,6 +93,9 @@ module.exports = (router) => {
                 const classStudent = classroom?.students?.[userData.email];
                 if (classStudent) {
                     result.classRoles = classStudent.classRoleRefs || [];
+                    const resolved = getUserScopes(classStudent, classroom);
+                    result.classScopes = resolved.class;
+                    result.scopes = { global: scopes.global, class: resolved.class };
                 }
             }
 

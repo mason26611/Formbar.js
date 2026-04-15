@@ -52,10 +52,11 @@ function getClassPermissionLevelForUser(classUser, classroom) {
         return GUEST_PERMISSIONS;
     }
 
-    return computeClassPermissionLevel(getUserScopes(classUser, classroom), {
+    const userScopes = getUserScopes(classUser, classroom);
+    return computeClassPermissionLevel(userScopes.class, {
         isOwner: isClassOwner(classUser, classroom),
-        globalScopes: getUserScopes(classUser).global,
-    }.class);
+        globalScopes: userScopes.global,
+    });
 }
 
 function hasClassPermissionLevel(classUser, classroom, minimumLevel) {

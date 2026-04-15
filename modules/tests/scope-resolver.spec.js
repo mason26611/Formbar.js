@@ -54,16 +54,16 @@ describe("userHasScope", () => {
 
 describe("userHasScope", () => {
     it("Manager has any class scope", () => {
-        expect(userHasScope({ classRole: "Manager" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(true);
-        expect(userHasScope({ classRole: "Manager" }, null, "anything")).toBe(true);
+        expect(userHasScope({ classRole: "Manager" }, SCOPES.CLASS.POLL.CREATE, null)).toBe(true);
+        expect(userHasScope({ classRole: "Manager" }, SCOPES.CLASS.STUDENTS.KICK, null)).toBe(true);
     });
 
     it("Guest has class.poll.read", () => {
-        expect(userHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.READ)).toBe(true);
+        expect(userHasScope({ classRole: "Guest" }, SCOPES.CLASS.POLL.READ, null)).toBe(true);
     });
 
     it("Guest does not have class.poll.create", () => {
-        expect(userHasScope({ classRole: "Guest" }, null, SCOPES.CLASS.POLL.CREATE)).toBe(false);
+        expect(userHasScope({ classRole: "Guest" }, SCOPES.CLASS.POLL.CREATE, null)).toBe(false);
     });
 });
 

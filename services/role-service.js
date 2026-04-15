@@ -1,8 +1,8 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
-const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS } = require("@modules/roles");
+const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
 const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { getUserScopes, getAllClassScopes } = require("@modules/scope-resolver");
+const { getUserScopes, getAllClassScopes, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
@@ -32,11 +32,18 @@ async function ensureDefaultClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
     await dbRun(
-        `INSERT OR IGNORE INTO class_roles (roleId, classId)
-         SELECT id, ?
-         FROM roles
-         WHERE isDefault = 1`,
-        [classId]
+        `INSERT INTO class_roles (roleId, classId)
+         SELECT r.id, ?
+         FROM roles r
+         WHERE r.isDefault = 1
+           AND NOT EXISTS (
+             SELECT 1
+             FROM class_roles cr
+             JOIN roles r2 ON r2.id = cr.roleId
+             WHERE cr.classId = ?
+               AND r2.name = r.name
+           )`,
+        [classId, classId]
     );
 }
 
@@ -612,6 +619,24 @@ async function removeStudentRole(classId, userId, roleId) {
         [userId, role.id, classId, classId]
     );
 
+    const classScopedRemaining = await dbGet(`SELECT 1 FROM user_roles ur WHERE ur.userId = ? AND ur.classId = ?`, [userId, classId]);
+    let insertedStudentRole = null;
+    if (!classScopedRemaining) {
+        await ensureDefaultClassRoles(classId);
+        const studentRole = await dbGet(
+            `SELECT r.id, r.name, r.scopes, r.color
+             FROM roles r
+             JOIN class_roles cr ON cr.roleId = r.id
+             WHERE cr.classId = ?
+               AND r.name = ?`,
+            [classId, ROLE_NAMES.STUDENT]
+        );
+        if (studentRole) {
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, studentRole.id, classId]);
+            insertedStudentRole = studentRole;
+        }
+    }
+
     // Update in-memory
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj) {
@@ -624,6 +649,16 @@ async function removeStudentRole(classId, userId, roleId) {
             }
             if (Array.isArray(student.classRoleRefs)) {
                 student.classRoleRefs = student.classRoleRefs.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
+            }
+            if (insertedStudentRole) {
+                if (!Array.isArray(student.classRoles)) student.classRoles = [];
+                if (!student.classRoles.includes(insertedStudentRole.name)) {
+                    student.classRoles.push(insertedStudentRole.name);
+                }
+                if (!Array.isArray(student.classRoleRefs)) student.classRoleRefs = [];
+                if (!student.classRoleRefs.some((assignedRole) => Number(assignedRole.id) === Number(insertedStudentRole.id))) {
+                    student.classRoleRefs.push(buildRoleReference(insertedStudentRole));
+                }
             }
             student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
         }
@@ -638,7 +673,9 @@ async function getUserRoles(user) {
         class: [],
     };
 
-    roles.global = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId IS NULL AND ur.userId = ?`, [userId]);
+    roles.global = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId IS NULL AND ur.userId = ?`, [
+        userId,
+    ]);
 
     const classId = user.activeClass;
     if (classId) {
@@ -661,7 +698,10 @@ async function getStudentRoles(classId, userId) {
     requireInternalParam(classId, "classId");
     requireInternalParam(userId, "userId");
 
-    const rows = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId = ? AND ur.userId = ?`,  [classId, userId] );
+    const rows = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId = ? AND ur.userId = ?`, [
+        classId,
+        userId,
+    ]);
     return rows.map((r) => r.name);
 }
 
@@ -808,7 +848,20 @@ function validateScopes(scopes) {
  * Ensures the acting user isn't granting scopes they don't have.
  */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
-    const actorScopes = new Set(getUserScopes(actingClassUser, classroom).class);
+    const userScopes = getUserScopes(actingClassUser, classroom);
+    const actorScopes = new Set([...userScopes.global, ...userScopes.class]);
+    const globalRoleName = getUserRoleName(actingClassUser);
+    if (globalRoleName && ROLES[globalRoleName]?.global) {
+        for (const scope of ROLES[globalRoleName].global) {
+            actorScopes.add(scope);
+        }
+    }
+    const classRoleName = getClassRoleName(actingClassUser, classroom);
+    if (classRoleName && ROLES[classRoleName]?.class) {
+        for (const scope of ROLES[classRoleName].class) {
+            actorScopes.add(scope);
+        }
+    }
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
@@ -823,7 +876,7 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
     const roleScopes = buildRoleResponse(role).scopes;
 
     const actorLevel = getActorLevel(actingClassUser, classroom);
-    const roleLevel = computeClassPermissionLevel(roleScopes);
+    const roleLevel = ROLE_TO_LEVEL[role.name] !== undefined ? ROLE_TO_LEVEL[role.name] : computeClassPermissionLevel(roleScopes);
     if (roleLevel >= actorLevel) {
         throw new ForbiddenError(`Cannot assign the "${role.name}" role — it is at or above your level.`);
     }
@@ -838,10 +891,11 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
  */
 function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
-    return computeClassPermissionLevel(getUserScopes(classUser, classroom), {
+    const userScopes = getUserScopes(classUser, classroom);
+    return computeClassPermissionLevel(userScopes.class, {
         isOwner: Boolean(classUser.isClassOwner),
-        globalScopes: classUser.globalRoles || [],
-    }.class);
+        globalScopes: userScopes.global,
+    });
 }
 
 /**

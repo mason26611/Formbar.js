@@ -22,7 +22,6 @@ const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
 
-
 let passwordResetTemplate;
 let verifyEmailTemplate;
 let pinResetTemplate;

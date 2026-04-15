@@ -107,7 +107,6 @@ function getUserScopes(user, classroom) {
         throw new AppError("No user defined");
     }
 
-    const classId = classroom.id || user.activeClass;
     const scopes = {
         global: [],
         class: [],
@@ -130,7 +129,7 @@ function getUserScopes(user, classroom) {
     const rawClassScopes = Array.isArray(user.classScopes)
         ? user.classScopes
         : getClassRoleEntries(user)
-              .map((role) => getClassScopesForRole(role))
+              .map((role) => getClassScopesForRole(role, classroom))
               .flat();
 
     const classScopes = dedupeScopes(rawClassScopes);
@@ -207,9 +206,15 @@ function getUserScopes(user, classroom) {
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
 
-    const userScopes = getUserScopes(user, classroom);    
-    const scopes = classroom ? userScopes.global.concat(userScopes.class) : userScopes.global;
-    if (hasGlobalAdminScope(scopes)) return true;
+    const userScopes = getUserScopes(user, classroom);
+    if (hasGlobalAdminScope(userScopes.global)) {
+        return true;
+    }
+    if (userScopes.class.includes(SCOPES.CLASS.SYSTEM.ADMIN) && typeof scope === "string" && scope.startsWith("class.")) {
+        return true;
+    }
+
+    const scopes = userScopes.global.concat(userScopes.class);
     return scopes.includes(scope);
 }
 

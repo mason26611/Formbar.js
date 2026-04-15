@@ -5,6 +5,15 @@ const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
 
+/** Express path params are strings; in-memory classrooms are keyed by numeric id from the DB. */
+function normalizeClassId(raw) {
+    if (raw === undefined || raw === null || raw === "") {
+        return raw;
+    }
+    const n = Number(raw);
+    return Number.isNaN(n) ? raw : n;
+}
+
 /**
  * Middleware to check if a user has a specific global scope.
  * Uses the new scope-based permission system with backward-compatible role resolution.
@@ -53,8 +62,8 @@ function hasClassScope(scope) {
             throw new AuthError("User is not authenticated");
         }
 
-        const classId = req.params.id || req.user.classId || req.user.activeClass;
-        if (!classId) {
+        const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+        if (classId === undefined || classId === null || classId === "") {
             throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
         }
 
@@ -171,8 +180,8 @@ function isClassMember() {
             throw new AuthError("User is not authenticated");
         }
 
-        const classId = req.params.id || req.user.classId || req.user.activeClass;
-        if (!classId) {
+        const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
+        if (classId === undefined || classId === null || classId === "") {
             throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
         }
 
@@ -206,4 +215,5 @@ module.exports = {
     isSelfOrHasScope,
     isOwnerOrHasScope,
     isClassMember,
+    normalizeClassId,
 };

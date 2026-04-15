@@ -106,7 +106,7 @@ describe("POST /api/v1/digipogs/award", () => {
     });
 
     it("returns 403 when a student (permissions=2) tries to award (lacks class.digipogs.award)", async () => {
-        const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, { permissions: 2 });
         const { classStateStore, Classroom } = require("@services/classroom-service");
 
         const classroom = new Classroom({
