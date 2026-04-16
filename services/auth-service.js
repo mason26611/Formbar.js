@@ -1,7 +1,13 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
+const {
+    computeGlobalPermissionLevel,
+    computeClassPermissionLevel,
+    filterScopesByDomain,
+    MANAGER_PERMISSIONS,
+    STUDENT_PERMISSIONS,
+} = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
@@ -28,7 +34,13 @@ async function normalizeUserData(userData) {
          WHERE ur.userId = ? AND ur.classId IS NULL`,
         [userData.id]
     );
-    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
+
+    const globalRoles = roleRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        scopes: filterScopesByDomain(row.scopes, "global"),
+    }));
+
     const scopes = getUserScopes({ globalRoles });
 
     // If the user is in a class, then get their current class permissions

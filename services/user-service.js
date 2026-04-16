@@ -11,7 +11,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { getUserRoleName, getUserScopes } = require("@modules/scope-resolver");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
 const { endClass } = require("@services/class-service");
@@ -192,7 +192,11 @@ async function getUserDataFromDb(userId) {
          WHERE ur.userId = ? AND ur.classId IS NULL`,
         [userId]
     );
-    const globalRoles = roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes }));
+    const globalRoles = roleRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        scopes: filterScopesByDomain(row.scopes, "global"),
+    }));
     const role = getUserRoleName({ globalRoles });
     const globalScopes = getUserScopes({ globalRoles }).global;
 

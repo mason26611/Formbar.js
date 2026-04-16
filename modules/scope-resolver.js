@@ -5,7 +5,7 @@ const {
     computeClassPermissionLevel,
     getScopesFromRoleLike,
     hasGlobalAdminScope,
-    MANAGER_PERMISSIONS,
+    filterScopesByDomain,
 } = require("@modules/permissions");
 const { getRoleName, getRoleNames } = require("@modules/role-reference");
 const AppError = require("@errors/app-error");
@@ -115,7 +115,7 @@ function getUserScopes(user, classroom) {
     // If the user has explicit globalScopes or classScopes arrays, use those directly (after deduping and checking for admin/block scopes).
     // Otherwise, resolve scopes from roles as normal.
     const rawGlobalScopes = Array.isArray(user.globalScopes)
-        ? user.globalScopes
+        ? filterScopesByDomain(user.globalScopes, "global")
         : getGlobalRoleEntries(user)
               .map((role) => getGlobalScopesForRole(role))
               .flat();
@@ -127,7 +127,7 @@ function getUserScopes(user, classroom) {
 
     // If the user has explicit classScopes in their user object, use those directly after deduping, otherwise resolve from roles as normal.
     const rawClassScopes = Array.isArray(user.classScopes)
-        ? user.classScopes
+        ? filterScopesByDomain(user.classScopes, "class")
         : getClassRoleEntries(user)
               .map((role) => getClassScopesForRole(role, classroom))
               .flat();

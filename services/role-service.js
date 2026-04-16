@@ -1,7 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
-const { computeClassPermissionLevel, computeGlobalPermissionLevel, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { computeClassPermissionLevel, computeGlobalPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { getUserScopes, getAllClassScopes, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
 const { computePrimaryRole } = require("@services/student-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -86,7 +86,7 @@ function buildRoleResponse(role) {
     return {
         id: role.id,
         name: role.name,
-        scopes: parseStoredScopes(role.scopes),
+        scopes: filterScopesByDomain(role.scopes, "class"),
         color: role.color || DEFAULT_ROLE_COLORS[role.name] || "#808080",
     };
 }

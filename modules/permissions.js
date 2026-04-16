@@ -61,6 +61,11 @@ function parseScopesField(value) {
     }
 }
 
+function filterScopesByDomain(value, domain) {
+    const prefix = domain === "global" ? "global." : "class.";
+    return parseScopesField(value).filter((scope) => typeof scope === "string" && scope.startsWith(prefix));
+}
+
 function hasAnyScope(scopeSet, candidateScopes) {
     return candidateScopes.some((scope) => scopeSet.has(scope));
 }
@@ -80,11 +85,14 @@ function normalizeScopes(input, options = {}) {
     }
 
     const domain = options.domain === "global" ? "global" : "class";
+    const prefix = `${domain}.`;
     const scopes = new Set();
 
     for (const entry of input) {
         if (typeof entry === "string" && entry.includes(".")) {
-            scopes.add(entry);
+            if (entry.startsWith(prefix)) {
+                scopes.add(entry);
+            }
             continue;
         }
 
@@ -103,14 +111,14 @@ function getScopesFromRoleLike(roleLike, domain, options = {}) {
     }
 
     if (roleLike && typeof roleLike === "object" && Object.prototype.hasOwnProperty.call(roleLike, "scopes")) {
-        return parseScopesField(roleLike.scopes);
+        return filterScopesByDomain(roleLike.scopes, domain);
     }
 
     const roleId = getRoleId(roleLike);
     if (roleId != null && Array.isArray(options.availableRoles)) {
         const availableRole = options.availableRoles.find((role) => Number(role.id) === Number(roleId));
         if (availableRole) {
-            return parseScopesField(availableRole.scopes);
+            return filterScopesByDomain(availableRole.scopes, domain);
         }
     }
 
@@ -198,6 +206,8 @@ module.exports = {
     SCOPES,
     SOCKET_EVENT_SCOPE_MAP,
     normalizeScopes,
+    parseScopesField,
+    filterScopesByDomain,
     getScopesFromRoleLike,
     hasGlobalAdminScope,
     computePermissionLevel,

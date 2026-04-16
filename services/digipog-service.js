@@ -1,5 +1,5 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
@@ -123,7 +123,11 @@ async function getComputedGlobalUser(userId) {
 
     return {
         ...user,
-        globalRoles: roleRows.map((row) => ({ id: row.id, name: row.name, scopes: row.scopes })),
+        globalRoles: roleRows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            scopes: filterScopesByDomain(row.scopes, "global"),
+        })),
     };
 }
 

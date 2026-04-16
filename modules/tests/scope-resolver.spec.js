@@ -1,4 +1,4 @@
-const { userHasScope, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { userHasScope, getUserScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
@@ -49,6 +49,24 @@ describe("userHasScope", () => {
 
     it("null user returns false", () => {
         expect(userHasScope(null, SCOPES.GLOBAL.SYSTEM.ADMIN)).toBe(false);
+    });
+});
+
+describe("getUserScopes", () => {
+    it("filters mixed stored role scopes down to the requested domain", () => {
+        const scopes = getUserScopes({
+            globalRoles: [
+                {
+                    id: 1,
+                    name: "Student",
+                    scopes: ["global.pools.manage", "global.digipogs.transfer", "class.poll.read", "class.poll.vote"],
+                },
+            ],
+            classScopes: ["class.poll.vote", "global.pools.manage"],
+        });
+
+        expect(scopes.global).toEqual(["global.pools.manage", "global.digipogs.transfer"]);
+        expect(scopes.class).toEqual(["class.poll.vote"]);
     });
 });
 

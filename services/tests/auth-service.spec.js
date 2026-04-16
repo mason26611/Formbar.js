@@ -276,6 +276,17 @@ describe("verifyToken()", () => {
         expect(decoded).toHaveProperty("email", VALID_EMAIL);
     });
 
+    it("keeps global and class scopes split in the access token payload", async () => {
+        await seedUser();
+
+        const loginResult = await login(VALID_EMAIL, VALID_PASSWORD);
+        const decoded = verifyToken(loginResult.tokens.accessToken);
+
+        expect(decoded.scopes.global).toEqual(expect.arrayContaining(["global.pools.manage", "global.digipogs.transfer"]));
+        expect(decoded.scopes.global).not.toEqual(expect.arrayContaining(["class.poll.read", "class.poll.vote"]));
+        expect(decoded.scopes.class).toEqual([]);
+    });
+
     it("returns an error object for a malformed token", () => {
         const result = verifyToken("not.a.valid.token");
         expect(result).toHaveProperty("error");
