@@ -93,7 +93,7 @@ function hasScope(scope) {
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.scope_check.not_authenticated", "Scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
-        } 
+        }
 
         const user = classStateStore.getUser(req.user.email);
         if (!user) {

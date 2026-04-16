@@ -248,7 +248,7 @@ http.listen(settings.port, async () => {
     if (!settings.emailEnabled) {
         console.log("Email functionality is disabled.");
     }
-    
+
     if (!settings.emailEnabled) {
         console.log(
             'To enable the disabled function(s), follow the related instructions under "Hosting Formbar.js Locally" in the Formbar wiki page at https://github.com/csmith1188/Formbar.js/wiki'
