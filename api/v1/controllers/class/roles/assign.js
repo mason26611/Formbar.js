@@ -76,6 +76,7 @@ module.exports = (router) => {
         const { id: classId, userId } = req.params;
         requireQueryParam(classId, "id");
         requireQueryParam(userId, "userId");
+        req.infoEvent("class.roles.student.list.start", { classId, userId, actorId: req.user.id });
 
         const classroom = classStateStore.getClassroom(classId);
         if (!classroom) throw new NotFoundError("Class not found.");
@@ -86,6 +87,7 @@ module.exports = (router) => {
         }
 
         const roles = await getStudentRoleAssignments(classId, userId);
+        req.infoEvent("class.roles.student.list.success", { classId, userId, actorId: req.user.id, roleCount: roles.length });
         res.status(200).json({ success: true, data: { roles } });
     });
 
@@ -163,12 +165,14 @@ module.exports = (router) => {
         requireQueryParam(classId, "id");
         requireQueryParam(userId, "userId");
         requireQueryParam(roleId, "roleId");
+        req.infoEvent("class.roles.student.add.start", { classId, userId, roleId, actorId: req.user.id });
 
         const classroom = classStateStore.getClassroom(classId);
         const actingClassUser = getActingUser(classroom, req.user);
 
         await addStudentRole(classId, userId, roleId, actingClassUser, classroom);
         await broadcastClassUpdate(classId);
+        req.infoEvent("class.roles.student.add.success", { classId, userId, roleId, actorId: req.user.id });
         res.status(200).json({ success: true, data: { message: "Role added." } });
     });
 
@@ -250,9 +254,11 @@ module.exports = (router) => {
             requireQueryParam(classId, "id");
             requireQueryParam(userId, "userId");
             requireQueryParam(roleId, "roleId");
+            req.infoEvent("class.roles.student.remove.start", { classId, userId, roleId, actorId: req.user.id });
 
             await removeStudentRole(classId, userId, roleId);
             await broadcastClassUpdate(classId);
+            req.infoEvent("class.roles.student.remove.success", { classId, userId, roleId, actorId: req.user.id });
             res.status(200).json({ success: true, data: { message: "Role removed." } });
         }
     );
