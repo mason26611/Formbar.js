@@ -31,7 +31,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false, oidcProviders: [] },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
@@ -46,8 +46,16 @@ jest.mock("@modules/config", () => {
 
 const awardController = require("../digipogs/award");
 const transferController = require("../digipogs/transfer");
+const { hasScope } = require("@middleware/permission-check");
+const { SCOPES } = require("@modules/permissions");
 
-const app = createTestApp(awardController, transferController);
+function nonDigipogPinScopeController(router) {
+    router.post("/test-pin-scope", hasScope(SCOPES.GLOBAL.DIGIPOGS.TRANSFER), (req, res) => {
+        res.status(200).json({ success: true });
+    });
+}
+
+const app = createTestApp(awardController, transferController, nonDigipogPinScopeController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -311,5 +319,23 @@ describe("POST /api/v1/digipogs/transfer", () => {
             .send({ to: recipient.id, amount: 10, pin: "wrong" });
 
         expect(res.status).toBe(400);
+    });
+});
+
+describe("POST /api/v1/test-pin-scope", () => {
+    it("does not allow pin-based auth outside digipog HTTP APIs", async () => {
+        const { hash } = require("@modules/crypto");
+        const pinHash = await hash("1234");
+
+        const { user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pinonly@example.com",
+            displayName: "Pin Only",
+            permissions: 2,
+        });
+        await mockDatabase.dbRun("UPDATE users SET pin = ? WHERE id = ?", [pinHash, user.id]);
+
+        const res = await request(app).post("/api/v1/test-pin-scope").send({ pin: "1234" });
+
+        expect(res.status).toBe(401);
     });
 });

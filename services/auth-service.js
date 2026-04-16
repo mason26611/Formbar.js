@@ -13,7 +13,6 @@ const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
 const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
-const { getUser } = require("@services/user-service");
 
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 

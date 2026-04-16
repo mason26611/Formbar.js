@@ -1,9 +1,15 @@
 const { classStateStore } = require("@services/classroom-service");
-const { dbGet } = require("@modules/database");
+const { dbGet, dbGetAll } = require("@modules/database");
+const { compare } = require("@modules/crypto");
 const { userHasScope } = require("@modules/scope-resolver");
+const { createStudentFromUserData } = require("@services/student-service");
+const { getUserDataFromDb } = require("@services/user-service");
+const { isAuthenticated } = require("@middleware/authentication");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
+
+const DIGIPOG_HTTP_API_PATH = /^\/api(?:\/v\d+)?\/digipogs(?:\/|$|\?)/i;
 
 /** Express path params are strings; in-memory classrooms are keyed by numeric id from the DB. */
 function normalizeClassId(raw) {
@@ -14,6 +20,63 @@ function normalizeClassId(raw) {
     return Number.isNaN(n) ? raw : n;
 }
 
+function isDigipogHttpApiRequest(req) {
+    return DIGIPOG_HTTP_API_PATH.test(req.originalUrl || req.baseUrl || req.path || "");
+}
+
+async function attachDigipogPinUser(req, res) {
+    if (!isDigipogHttpApiRequest(req) || req.user?.email) {
+        return;
+    }
+
+    const hasStandardAuth = Boolean(req.headers.authorization || req.headers.api || req.query.api || req.body?.api);
+    if (hasStandardAuth) {
+        await isAuthenticated(req, res, () => {});
+    }
+
+    if (!req.body?.pin || req.user?.email) {
+        return;
+    }
+
+    const pin = String(req.body.pin);
+    const users = await dbGetAll("SELECT id, pin FROM users WHERE pin IS NOT NULL");
+    let matchedUserId = null;
+
+    for (const candidate of users) {
+        if (!candidate.pin || !(await compare(pin, candidate.pin))) {
+            continue;
+        }
+
+        if (matchedUserId && matchedUserId !== candidate.id) {
+            return;
+        }
+
+        matchedUserId = candidate.id;
+    }
+
+    if (!matchedUserId) {
+        return;
+    }
+
+    const userData = await getUserDataFromDb(matchedUserId);
+    if (!userData) {
+        return;
+    }
+
+    let user = classStateStore.getUser(userData.email);
+    if (!user) {
+        user = createStudentFromUserData(userData, { isGuest: false });
+        classStateStore.setUser(userData.email, user);
+    }
+
+    req.user = {
+        email: userData.email,
+        ...user,
+        id: user.id || userData.id,
+        userId: user.id || userData.id,
+    };
+}
+
 /**
  * Middleware to check if a user has a specific global scope.
  * Uses the new scope-based permission system with backward-compatible role resolution.
@@ -21,11 +84,13 @@ function normalizeClassId(raw) {
  * @returns {Function} Express middleware function.
  */
 function hasScope(scope) {
-    return function (req, res, next) {
+    return async function (req, res, next) {
+        await attachDigipogPinUser(req, res);
+        
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.scope_check.not_authenticated", "Scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
-        }
+        } 
 
         const user = classStateStore.getUser(req.user.email);
         if (!user) {
@@ -57,6 +122,8 @@ function hasScope(scope) {
  */
 function hasClassScope(scope) {
     return async function (req, res, next) {
+        await attachDigipogPinUser(req, res);
+
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.class_scope_check.not_authenticated", "Class scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
