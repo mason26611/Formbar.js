@@ -24,7 +24,7 @@ const { getUserRoleName, getClassRoleName, resolveUserGlobalScopes, resolveUserC
 const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
-const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, findRoleByPermissionLevel } = require("@services/role-service");
+const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, addDefaultClassRoles, findRoleByPermissionLevel } = require("@services/role-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { io } = require("@modules/web-server");
 const ValidationError = require("@errors/validation-error");
@@ -154,6 +154,8 @@ async function createClass(className, ownerId, ownerEmail) {
     if (!classId) {
         throw new AppError("Class was not created successfully", { event: "class.create.failed", reason: "db_insert_failed", className, ownerId });
     }
+
+    await addDefaultClassRoles(classId);
 
     const classroom = {
         id: classId,
