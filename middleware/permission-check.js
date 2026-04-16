@@ -8,7 +8,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const NotFoundError = require("@errors/not-found-error");
-
+const ValidationError = require("@errors/validation-error");
 const DIGIPOG_HTTP_API_PATH = /^\/api(?:\/v\d+)?\/digipogs(?:\/|$|\?)/i;
 
 /** Express path params are strings; in-memory classrooms are keyed by numeric id from the DB. */
@@ -55,7 +55,7 @@ async function attachDigipogPinUser(req, res) {
     }
 
     if (!matchedUserId) {
-        return;
+        return new AuthError("Invalid PIN.");
     }
 
     const userData = await getUserDataFromDb(matchedUserId);
@@ -85,8 +85,11 @@ async function attachDigipogPinUser(req, res) {
  */
 function hasScope(scope) {
     return async function (req, res, next) {
-        await attachDigipogPinUser(req, res);
-        
+        const result = await attachDigipogPinUser(req, res);
+        if (result instanceof AuthError) {
+            throw result;
+        }
+
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.scope_check.not_authenticated", "Scope check failed: User is not authenticated");
             throw new AuthError("User is not authenticated");
@@ -106,6 +109,7 @@ function hasScope(scope) {
             email: req.user.email,
             requiredScope: scope,
         });
+
         throw new ForbiddenError("You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "insufficient_scope",
@@ -122,16 +126,19 @@ function hasScope(scope) {
  */
 function hasClassScope(scope) {
     return async function (req, res, next) {
-        await attachDigipogPinUser(req, res);
+        const result = await attachDigipogPinUser(req, res);
+        if (result instanceof AuthError) {
+            throw result;
+        }
 
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.class_scope_check.not_authenticated", "Class scope check failed: User is not authenticated");
-            throw new AuthError("User is not authenticated");
+            throw new ForbiddenError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
         }
 
         const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);
         if (classId === undefined || classId === null || classId === "") {
-            throw new NotFoundError("Class ID is required.", { event: "permission.check.failed", reason: "class_not_found" });
+            throw new ValidationError("Class ID is required.", { event: "permission.check.failed", reason: "class_id_required" });
         }
 
         const classroom = classStateStore.getClassroom(classId);
@@ -143,7 +150,7 @@ function hasClassScope(scope) {
         const classUser = classroom.students[email];
         if (!classUser) {
             req.warnEvent("auth.class_scope_check.user_not_in_class", `User ${email} not in class ${classId}`, { email, classId });
-            throw new AuthError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
+            throw new ForbiddenError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
         }
 
         if (userHasScope(classUser, scope, classroom)) {
@@ -155,6 +162,7 @@ function hasClassScope(scope) {
             classId,
             requiredScope: scope,
         });
+
         throw new ForbiddenError("Insufficient class permissions.", {
             event: "permission.check.failed",
             reason: "insufficient_class_scope",
@@ -191,6 +199,7 @@ function isSelfOrHasScope(scope, message) {
             targetId,
             requiredScope: scope,
         });
+
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_self_and_insufficient_scope",
@@ -227,6 +236,7 @@ function isOwnerOrHasScope(ownerCheck, scope, message) {
             email: req.user.email,
             requiredScope: scope,
         });
+
         throw new ForbiddenError(message || "You do not have permission to access this resource.", {
             event: "permission.check.failed",
             reason: "not_owner_and_insufficient_scope",
