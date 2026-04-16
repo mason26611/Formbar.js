@@ -2,6 +2,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const { dbGet } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { getUserRoleName, getUserScopes } = require("@modules/scope-resolver");
+const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel } = require("@modules/permissions");
 
 module.exports = (router) => {
@@ -37,10 +38,12 @@ module.exports = (router) => {
 
         const { digipogs } = await dbGet("SELECT digipogs FROM users WHERE id = ?", [req.user.id]);
 
-        const globalRole = getUserRoleName(req.user);
-        const globalScopes = getUserScopes(req.user).global;
+        const classroom = classStateStore.getClassroom(req.user.activeClass);
+        const roles = await getUserRoles(req.user.id, classroom);
+        const scopes = getUserScopes(req.user);
 
-        let classRoles = [];
+        // @TODO
+        // let classRoles = [];
         let classScopes = [];
         let classPermissions = null;
         const liveUser = classStateStore.getUser(req.user.email);
@@ -79,13 +82,11 @@ module.exports = (router) => {
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,
                 displayName: req.user.displayName,
-                permissions: computeGlobalPermissionLevel(globalScopes),
-                classId: req.user.classId,
+                permissions: computeGlobalPermissionLevel(scopes.global),
                 classPermissions,
-                role: globalRole,
-                globalScopes,
-                classRoles,
-                classScopes,
+                classId: req.user.classId,
+                roles,
+                scopes
             },
         });
     });

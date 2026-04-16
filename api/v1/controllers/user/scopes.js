@@ -77,14 +77,12 @@ module.exports = (router) => {
             }
 
             const globalRole = getUserRoleName(userData);
+            const roles = getUserRoles(userData.id);
             const scopes = getUserScopes(userData);
 
             const result = {
-                role: globalRole,
-                globalScopes: scopes.global,
-                classRoles: [],
-                classScopes: [],
-                scopes: { global: scopes.global, class: [] },
+                roles,
+                scopes
             };
 
             const liveUser = classStateStore.getUser(userData.email);

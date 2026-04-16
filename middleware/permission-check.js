@@ -133,7 +133,7 @@ function hasClassScope(scope) {
 
         if (!req.user || !req.user.email) {
             req.warnEvent("auth.class_scope_check.not_authenticated", "Class scope check failed: User is not authenticated");
-            throw new ForbiddenError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
+            throw new AuthError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
         }
 
         const classId = normalizeClassId(req.params.id || req.user.classId || req.user.activeClass);

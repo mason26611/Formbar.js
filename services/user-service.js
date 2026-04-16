@@ -10,7 +10,8 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserRoleName, getUserScopes } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
+const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-service");
@@ -185,27 +186,13 @@ async function getUserDataFromDb(userId) {
         return user;
     }
 
-    const roleRows = await dbGetAll(
-        `SELECT r.id, r.name, r.scopes
-         FROM user_roles ur
-         JOIN roles r ON ur.roleId = r.id
-         WHERE ur.userId = ? AND ur.classId IS NULL`,
-        [userId]
-    );
-    const globalRoles = roleRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        scopes: filterScopesByDomain(row.scopes, "global"),
-    }));
-    const role = getUserRoleName({ globalRoles });
-    const globalScopes = getUserScopes({ globalRoles }).global;
-
+    const roles = await getUserRoles(userId);
+    
     return {
         ...user,
-        globalRoles,
-        role,
-        permissions: computeGlobalPermissionLevel(globalScopes),
-        classPermissions: null,
+        roles,
+        permissions: computeGlobalPermissionLevel(roles.global),
+        classPermissions: computeClassPermissionLevel(roles.class),
     };
 }
 
@@ -413,7 +400,7 @@ async function getEmailFromAPIKey(api) {
  */
 async function getUser(userIdentifier) {
     try {
-        const email = userIdentifier.email || (await getEmailFromAPIKey(userIdentifier.api));
+        const email = userIdentifier.email || await getEmailFromId(userIdentifier.id) || (await getEmailFromAPIKey(userIdentifier.api));
         if (email instanceof Error) throw email;
         if (email.error) throw email;
 
@@ -463,6 +450,7 @@ async function getUser(userIdentifier) {
                 : dbUser.id === classroomOwnerId
                   ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
                   : null;
+
             if (effectiveClassUser) {
                 const classScopes = getUserScopes(effectiveClassUser, classroom).class;
                 userData.classPermissions = computeClassPermissionLevel(classScopes, {

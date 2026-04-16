@@ -4,16 +4,15 @@ const { privateKey, publicKey } = require("@modules/config");
 const {
     computeGlobalPermissionLevel,
     computeClassPermissionLevel,
-    filterScopesByDomain,
     MANAGER_PERMISSIONS,
     STUDENT_PERMISSIONS,
 } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
-const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
+const { getUserScopes } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
-const { findRoleByPermissionLevel } = require("@services/role-service");
+const { findRoleByPermissionLevel, getUserRoles } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const AppError = require("@errors/app-error");
@@ -27,21 +26,8 @@ async function normalizeUserData(userData) {
         return userData;
     }
 
-    const roleRows = await dbGetAll(
-        `SELECT r.id, r.name, r.scopes
-         FROM user_roles ur
-         JOIN roles r ON ur.roleId = r.id
-         WHERE ur.userId = ? AND ur.classId IS NULL`,
-        [userData.id]
-    );
-
-    const globalRoles = roleRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        scopes: filterScopesByDomain(row.scopes, "global"),
-    }));
-
-    const scopes = getUserScopes({ globalRoles });
+    const roles = await getUserRoles(userData.id);
+    const scopes = getUserScopes({ roles });
 
     // If the user is in a class, then get their current class permissions
     let classPermissions = null;
@@ -53,7 +39,7 @@ async function normalizeUserData(userData) {
         ...userData,
         permissions: computeGlobalPermissionLevel(scopes.global),
         classPermissions,
-        globalRoles: globalRoles,
+        roles,
         scopes,
     };
 }

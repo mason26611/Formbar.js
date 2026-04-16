@@ -665,13 +665,21 @@ async function removeStudentRole(classId, userId, roleId) {
     }
 }
 
-async function getUserRoles(user) {
+async function getUserRoles(userId) {
     requireInternalParam(userId);
 
+    const { getUser } = require("@services/user-service");
+
+    const user = await getUser(userId);
     const roles = {
         global: [],
         class: [],
     };
+
+    // If the user is not found, return the default roles
+    if (!user) {
+        return roles;
+    }
 
     roles.global = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId IS NULL AND ur.userId = ?`, [
         userId,

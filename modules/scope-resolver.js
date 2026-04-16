@@ -140,69 +140,6 @@ function getUserScopes(user, classroom) {
     return scopes;
 }
 
-// function resolveUserGlobalScopes(user) {
-//     if (!user) return [];
-//
-//     if (Array.isArray(user.globalScopes)) {
-//         const scopes = dedupeScopes(user.globalScopes);
-//         return hasGlobalAdminScope(scopes) ? getAllGlobalScopes() : computeGlobalPermissionLevel(scopes) === 0 ? [] : scopes;
-//     }
-//
-//     const scopes = [];
-//     for (const role of getGlobalRoleEntries(user)) {
-//         scopes.push(...getGlobalScopesForRole(role));
-//     }
-//
-//     const resolvedScopes = dedupeScopes(scopes);
-//     if (hasGlobalAdminScope(resolvedScopes)) {
-//         return getAllGlobalScopes();
-//     }
-//
-//     const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.GLOBAL.SYSTEM.BLOCKED);
-//     if (computeGlobalPermissionLevel(resolvedScopes) === 0 && computeGlobalPermissionLevel(unblockedScopes) < MANAGER_PERMISSIONS) {
-//         return [];
-//     }
-//
-//     return computeGlobalPermissionLevel(unblockedScopes) >= MANAGER_PERMISSIONS ? getAllGlobalScopes() : resolvedScopes;
-// }
-//
-// function resolveClassScopes(classUser, classroom) {
-//     if (!classUser) return [];
-//
-//     const globalScopes = resolveUserGlobalScopes(classUser);
-//     const ownerBypass = isClassOwner(classUser, classroom);
-//     const scopes = [];
-//
-//     if (Array.isArray(classUser.classScopes) && classUser.classScopes.length > 0) {
-//         scopes.push(...classUser.classScopes);
-//     } else {
-//         for (const role of getClassRoleEntries(classUser)) {
-//             scopes.push(...getClassScopesForRole(role, classroom));
-//         }
-//     }
-//
-//     const resolvedScopes = dedupeScopes(scopes);
-//     const permissionLevel = computeClassPermissionLevel(resolvedScopes, {
-//         isOwner: ownerBypass,
-//         globalScopes,
-//     });
-//     const unblockedScopes = resolvedScopes.filter((scope) => scope !== SCOPES.CLASS.SYSTEM.BLOCKED);
-//     const unblockedPermissionLevel = computeClassPermissionLevel(unblockedScopes, {
-//         isOwner: ownerBypass,
-//         globalScopes,
-//     });
-//
-//     if (permissionLevel === 0 && unblockedPermissionLevel < TEACHER_PERMISSIONS && !ownerBypass) {
-//         return [];
-//     }
-//
-//     if (permissionLevel === 5 || unblockedPermissionLevel === 5) {
-//         return getAllClassScopes();
-//     }
-//
-//     return unblockedPermissionLevel >= TEACHER_PERMISSIONS ? unblockedScopes : resolvedScopes;
-// }
-
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
 
