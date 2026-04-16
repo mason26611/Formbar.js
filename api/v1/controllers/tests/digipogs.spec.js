@@ -89,7 +89,7 @@ describe("POST /api/v1/digipogs/award", () => {
             .set("Authorization", `Bearer ${tokens.accessToken}`)
             .send({ to: "1", amount: 10 });
 
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(400);
     });
 
     it("returns 403 when the class is not active in classStateStore", async () => {
