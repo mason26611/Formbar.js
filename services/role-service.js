@@ -87,8 +87,8 @@ async function addDefaultClassRoles(classId) {
 
     /**
      * Maps a database role row into the API/service response shape.
-     * @param {{id: number, name: string, scopes?: string|string[]}} role
-     * @returns {{id: number, name: string, scopes: string[]}}
+     * @param {{id: number, name: string, scopes?: string|string[], color?: string, orderIndex?: number|null}} role
+     * @returns {{id: number, name: string, scopes: string[], color: string, orderIndex: number|null}}
      */
     function buildRoleResponse(role) {
         return {
