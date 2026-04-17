@@ -373,7 +373,6 @@ describe("OAuth authorization code flow", () => {
             students: {
                 [user.email]: {
                     email: user.email,
-                    classRole: "Teacher",
                     roles: { global: [], class: ["Teacher"] },
                 },
             },

@@ -101,7 +101,6 @@ function createTestClass(code, name) {
 function createTestUser(email, code, permissions) {
     const student = new Student(email, testData.userId);
     const roleName = LEVEL_TO_ROLE[permissions] || "Guest";
-    student.classRole = roleName;
     student.roles = { global: [], class: [roleName] };
     student.role = roleName;
     student.activeClass = testData.classId;

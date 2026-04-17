@@ -188,7 +188,6 @@ describe("GET /api/v1/user/me", () => {
             students: {
                 [user.email]: {
                     email: user.email,
-                    classRole: "Teacher",
                     roles: { global: [], class: ["Teacher"] },
                 },
             },

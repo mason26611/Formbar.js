@@ -84,7 +84,6 @@ module.exports = (router) => {
                 const studentEntry = Object.values(classroom.students).find((s) => s.id === classUser.id);
                 if (studentEntry) {
                     classUser.roles = { global: classUser.roles?.global || [], class: studentEntry.roles?.class || [] };
-                    classUser.classRole = studentEntry.classRole || null;
                     const resolvedScopes = getUserScopes(studentEntry, classroom);
                     classUser.classPermissions = computeClassPermissionLevel(resolvedScopes.class, {
                         isOwner: Boolean(studentEntry.isClassOwner),
@@ -99,7 +98,6 @@ module.exports = (router) => {
                         id: studentInfo.id,
                         displayName: studentInfo.displayName || "Guest",
                         roles: { global: [], class: [] },
-                        classRole: null,
                         classPermissions: computeClassPermissionLevel(getUserScopes(studentInfo, classroom).class),
                     });
                 }

@@ -91,8 +91,8 @@ async function seedClassUser(classId, studentId, overrides = {}) {
     const cu = { ...defaults, ...overrides };
     await mockDatabase.dbRun("INSERT INTO classusers (classId, studentId, digiPogs) VALUES (?, ?, ?)", [classId, studentId, cu.digiPogs]);
     // Assign class role via user_roles if roleId provided
-    if (cu.classRoleId) {
-        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [studentId, cu.classRoleId, classId]);
+    if (cu.roleId) {
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [studentId, cu.roleId, classId]);
     }
 }
 
@@ -109,7 +109,7 @@ describe("Student class", () => {
         expect(s.isGuest).toBe(false);
         expect(s.activeClass).toBeNull();
         expect(s.role).toBeNull();
-        expect(s.classRole).toBeNull();
+        expect(s).not.toHaveProperty("classRole");
         expect(s.roles.global).toEqual([]);
         expect(s.roles.class).toEqual([]);
         expect(s.help).toBe(false);
@@ -153,24 +153,24 @@ describe("createStudentFromUserData()", () => {
         expect(s.activeClass).toBe(99);
     });
 
-    it("sets classRole from userData", () => {
+    it("sets roles.class from userData", () => {
         const s = createStudentFromUserData({
             email: "u@test.com",
             id: 1,
-            classRole: "Teacher",
+            roles: { class: [{ id: 1, name: "Teacher" }] },
         });
-        expect(s.classRole).toBe("Teacher");
+        expect(s.roles.class).toEqual([{ id: 1, name: "Teacher" }]);
     });
 
-    it("sets role and classRole from userData", () => {
+    it("sets role and roles.class from userData", () => {
         const s = createStudentFromUserData({
             email: "u@test.com",
             id: 1,
             role: "teacher",
-            classRole: "helper",
+            roles: { class: [{ id: 2, name: "helper" }] },
         });
         expect(s.role).toBe("teacher");
-        expect(s.classRole).toBe("helper");
+        expect(s.roles.class).toEqual([{ id: 2, name: "helper" }]);
     });
 
     it("normalizes tags from comma-separated string", () => {
@@ -316,7 +316,7 @@ describe("getStudentsInClass()", () => {
         expect(s.email).toBe("stu@test.com");
         expect(s.id).toBe(user.id);
         expect(s.roles.class.map((r) => r.name)).toEqual(["helper"]);
-        expect(s.classRole).toBe("helper");
+        expect(s).not.toHaveProperty("classRole");
     });
 
     it("computes the primary role from full role assignments instead of plain role names", async () => {
@@ -344,7 +344,7 @@ describe("getStudentsInClass()", () => {
         const student = result["multi@test.com"];
 
         expect(student.roles.class.map((r) => r.name)).toEqual(expect.arrayContaining(["Student", "Helper"]));
-        expect(student.classRole).toBe("Helper");
+        expect(student).not.toHaveProperty("classRole");
     });
 
     it("returns empty object when no students are in the class", async () => {

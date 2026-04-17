@@ -437,7 +437,6 @@ async function getUser(userIdentifier) {
                 userData.help = cdUser.help;
                 userData.break = cdUser.break;
                 userData.pogMeter = cdUser.pogMeter;
-                userData.classRole = cdUser.classRole || null;
                 userData.roles = {
                     global: dbUser.roles?.global || [],
                     class: cdUser.roles?.class || [],

@@ -2,8 +2,7 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
 const { computeClassPermissionLevel, computeGlobalPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { getUserScopes, getAllClassScopes, getUserRoleName, getClassRoleName } = require("@modules/scope-resolver");
-const { computePrimaryRole } = require("@services/student-service");
+const { getUserScopes, getAllClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
 const ValidationError = require("@errors/validation-error");
@@ -398,7 +397,6 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
                     roleRef.name = newName;
                 }
             }
-            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 
@@ -411,7 +409,6 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
                 if (roleRef) {
                     roleRef.name = newName;
                 }
-                student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
             }
         }
     }
@@ -479,7 +476,6 @@ async function deleteClassRole(roleId, classId) {
         for (const student of Object.values(classroom.students)) {
             ensureStudentRoleBuckets(student);
             student.roles.class = student.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(roleId));
-            student.classRole = computePrimaryRole(student.roles.class, classroom.availableRoles || []);
         }
     }
 }
@@ -547,7 +543,6 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
             if (!student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
                 student.roles.class.push(buildRoleReference(role));
             }
-            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 }
@@ -638,7 +633,6 @@ async function removeStudentRole(classId, userId, roleId) {
                     student.roles.class.push(buildRoleReference(insertedStudentRole));
                 }
             }
-            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 }
@@ -769,7 +763,6 @@ async function assignStudentRole(classId, userId, roleName) {
             const student = classroom.students[email];
             ensureStudentRoleBuckets(student);
             student.roles.class = roleName === ROLE_NAMES.GUEST ? [] : buildRoleReferences([getAvailableRoleByName(classroom, roleName)]);
-            student.classRole = roleName === ROLE_NAMES.GUEST ? null : roleName;
         }
     }
 }
@@ -843,13 +836,6 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
         }
     }
 
-    const classRoleName = getClassRoleName(actingClassUser, classroom);
-    if (classRoleName && ROLES[classRoleName]?.class) {
-        for (const scope of ROLES[classRoleName].class) {
-            actorScopes.add(scope);
-        }
-    }
-
     for (const scope of scopes) {
         if (!actorScopes.has(scope)) {
             throw new ForbiddenError(`Cannot grant scope "${scope}" — you do not have it yourself.`);
@@ -913,7 +899,6 @@ function getActingUser(classroom, reqUser) {
             id: reqUser.id,
             email: reqUser.email,
             roles: { global: reqUser.roles?.global || [], class: [] },
-            classRole: null,
             isClassOwner: true,
         };
     }

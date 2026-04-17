@@ -19,7 +19,7 @@ const {
     MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
 const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
-const { getStudentsInClass, getIdFromEmail, getEmailFromId, computePrimaryRole } = require("@services/student-service");
+const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
 const { loadCustomRoles, getClassRoles, getStudentRoleAssignments, findRoleByPermissionLevel } = require("@services/role-service");
@@ -314,7 +314,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const roleAssignments = await getStudentRoleAssignments(classId, currentUser.id);
         const roleRefs = buildRoleReferences(roleAssignments);
         currentUser.roles = { global: currentUser.roles?.global || [], class: roleRefs };
-        currentUser.classRole = computePrimaryRole(roleAssignments, classroom?.availableRoles || []);
         currentUser.isClassOwner = classroomDb.owner === user.id;
 
         // If the user is banned, don't let them join
@@ -359,7 +358,6 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         let currentUser = classStateStore.getUser(email);
         const isOwner = currentUser.id === classData.owner;
         currentUser.roles = { global: currentUser.roles?.global || [], class: [] };
-        currentUser.classRole = null;
         currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
         currentUser.tags = [];
@@ -524,7 +522,6 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
                     global: user.roles?.global || [],
                     class: blockedRole ? buildRoleReferences([blockedRole]) : [],
                 };
-                user.classRole = blockedRole ? blockedRole.name : null;
             }
             setClassOfApiSockets(existingUser.API, null);
         }
@@ -871,7 +868,6 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].help = cdUser.help;
             classUsers[userRow.email].break = cdUser.break;
             classUsers[userRow.email].pogMeter = cdUser.pogMeter;
-            classUsers[userRow.email].classRole = cdUser.classRole || null;
             classUsers[userRow.email].roles = {
                 global: classUsers[userRow.email].roles?.global || [],
                 class: cdUser.roles?.class || [],

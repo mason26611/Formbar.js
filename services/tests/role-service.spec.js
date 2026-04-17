@@ -150,7 +150,7 @@ describe("getActingUser()", () => {
     });
 
     it("returns the student when found in students map", () => {
-        const student = { email: "a@b.com", roles: { global: [], class: ["Student"] }, classRole: "Student" };
+        const student = { email: "a@b.com", roles: { global: [], class: ["Student"] } };
         const classroom = { students: { "a@b.com": student }, owner: 99 };
         expect(getActingUser(classroom, { email: "a@b.com", id: 1 })).toBe(student);
     });
@@ -162,7 +162,6 @@ describe("getActingUser()", () => {
             id: 5,
             email: "owner@test.com",
             roles: { global: [], class: [] },
-            classRole: null,
             isClassOwner: true,
         });
     });
@@ -174,7 +173,6 @@ describe("getActingUser()", () => {
             id: 5,
             email: "owner@test.com",
             roles: { global: [], class: [] },
-            classRole: null,
             isClassOwner: true,
         });
     });
@@ -241,7 +239,7 @@ describe("createClassRole()", () => {
         const classId = await seedClass(user.id);
         setupMockClassroom(classId, user.id, {});
 
-        const actingUser = { roles: { global: [], class: ["Manager"] }, classRole: "Manager" };
+        const actingUser = { roles: { global: [], class: ["Manager"] } };
         const classroom = mockClassrooms[classId];
 
         const role = await createClassRole({
@@ -266,7 +264,7 @@ describe("createClassRole()", () => {
         const classId = await seedClass(user.id);
         setupMockClassroom(classId, user.id, {});
 
-        const actingUser = { roles: { global: [], class: ["Manager"] }, classRole: "Manager" };
+        const actingUser = { roles: { global: [], class: ["Manager"] } };
         const classroom = mockClassrooms[classId];
 
         const role = await createClassRole({
@@ -289,7 +287,7 @@ describe("addStudentRole()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { roles: { global: [], class: [] }, classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
@@ -304,7 +302,7 @@ describe("addStudentRole()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { roles: { global: [], class: [] }, classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
@@ -341,7 +339,7 @@ describe("addStudentRole()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { roles: { global: [], class: [] }, classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
@@ -360,7 +358,7 @@ describe("addStudentRole()", () => {
         ]);
         await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { roles: { global: [], class: [] }, classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         mockClassrooms[classId].customRoles = { [helperRoleId]: ["class.poll.create"] };
 
@@ -376,7 +374,7 @@ describe("addStudentRole()", () => {
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id);
 
-        const actingUser = { roles: { global: [], class: ["Student"] }, classRole: "Student" };
+        const actingUser = { roles: { global: [], class: ["Student"] } };
         const classroom = mockClassrooms[classId];
         const teacherRoleId = await getRoleIdByName("Teacher");
 
@@ -404,7 +402,6 @@ describe("removeStudentRole()", () => {
 
         setupMockClassroom(classId, user.id, {
             [user.email]: {
-                classRole: "Mod",
                 roles: { global: [], class: [{ id: modRole.id, name: "Mod" }] },
             },
         });
@@ -432,7 +429,6 @@ describe("removeStudentRole()", () => {
 
         setupMockClassroom(classId, user.id, {
             [user.email]: {
-                classRole: "Mod",
                 roles: { global: [], class: [{ id: modRole.id, name: "Mod" }] },
             },
         });
@@ -520,7 +516,7 @@ describe("getClassRoles()", () => {
             teacherRole.id,
             classId,
             { scopes: ["class.poll.read"] },
-            { roles: { global: [], class: ["Manager"] }, classRole: "Manager" },
+            { roles: { global: [], class: ["Manager"] } },
             { customRoles: {} }
         );
 

@@ -1,7 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGet, dbGetAll } = require("@modules/database");
-const { computeClassPermissionLevel, getScopesFromRoleLike } = require("@modules/permissions");
-const { buildRoleReferences, getRoleName } = require("@modules/role-reference");
+const { buildRoleReferences } = require("@modules/role-reference");
 
 // This class is used to create a student to be stored in the sessions data
 class Student {
@@ -12,7 +11,6 @@ class Student {
         this.role = null;
         this.roles = { global: [], class: [] };
         this.permissions = null;
-        this.classRole = null;
         this.tags = tags || [];
         this.ownedPolls = ownedPolls || [];
         this.sharedPolls = sharedPolls || [];
@@ -114,10 +112,6 @@ function createStudentFromUserData(userData, options = {}) {
         student.permissions = userData.permissions;
     }
 
-    if (userData.classRole != null) {
-        student.classRole = userData.classRole;
-    }
-
     if (userData.pogMeter != null) {
         student.pogMeter = userData.pogMeter;
     }
@@ -204,7 +198,6 @@ async function getStudentsInClass(classId) {
 
     // Create student class and return the data
     const students = {};
-    const availableRoles = classStateStore.getClassroom(classId)?.availableRoles || [];
     for (const email in studentsData) {
         const userData = studentsData[email];
         const student = createStudentFromUserData(userData, { isGuest: false });
@@ -212,7 +205,6 @@ async function getStudentsInClass(classId) {
         // Load multi-role assignments from user_roles
         const roleRefs = rolesByUserId[userData.id] || [];
         student.roles.class = buildRoleReferences(roleRefs);
-        student.classRole = computePrimaryRole(roleRefs, availableRoles);
 
         students[email] = student;
     }
@@ -265,51 +257,10 @@ async function getEmailFromId(userId) {
     return email;
 }
 
-/**
- * Computes the "primary" role from an array of role names.
- * Returns the highest built-in role (by hierarchy), or the first custom role,
- * or null if empty (Guest-only).
- * @param {Array<string|{id: number, name: string}>} roles
- * @returns {string|null}
- */
-function computePrimaryRole(roles, availableRoles = []) {
-    if (!roles || roles.length === 0) return null;
-
-    let highest = null;
-    let highestLevel = -1;
-
-    const customRoles = [];
-    for (const role of roles) {
-        const roleName = getRoleName(role);
-        if (!roleName) {
-            continue;
-        }
-
-        const level = computeClassPermissionLevel(getScopesFromRoleLike(role, "class", { availableRoles }));
-        if (level > highestLevel) {
-            highest = roleName;
-            highestLevel = level;
-        } else if (level === 1) {
-            customRoles.push(roleName);
-        }
-    }
-
-    if (highest) return highest;
-
-    // If no built-in role found, deterministically pick the first custom role alphabetically
-    if (customRoles.length > 0) {
-        customRoles.sort((a, b) => a.localeCompare(b));
-        return customRoles[0];
-    }
-
-    return null;
-}
-
 module.exports = {
     Student,
     createStudentFromUserData,
     getStudentsInClass,
     getIdFromEmail,
     getEmailFromId,
-    computePrimaryRole,
 };

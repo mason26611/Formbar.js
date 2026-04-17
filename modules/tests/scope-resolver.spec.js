@@ -1,4 +1,4 @@
-const { userHasScope, getUserScopes, getUserRoleName, getClassRoleName, getClassRoleNames } = require("@modules/scope-resolver");
+const { userHasScope, getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { SCOPES } = require("@modules/permissions");
 
 describe("getUserRoleName", () => {
@@ -16,20 +16,6 @@ describe("getUserRoleName", () => {
 
     it("defaults to Guest for empty object", () => {
         expect(getUserRoleName({})).toBe("Guest");
-    });
-});
-
-describe("getClassRoleName", () => {
-    it("returns classRole field when present", () => {
-        expect(getClassRoleName({ classRole: "Mod" })).toBe("Mod");
-    });
-
-    it("falls back to classPermissions", () => {
-        expect(getClassRoleName({ classPermissions: 4 })).toBe("Teacher");
-    });
-
-    it("defaults to Guest for empty object", () => {
-        expect(getClassRoleName({})).toBe("Guest");
     });
 });
 
@@ -77,33 +63,15 @@ describe("getUserScopes", () => {
 
 describe("userHasScope", () => {
     it("Manager has any class scope", () => {
-        expect(userHasScope({ classRole: "Manager" }, SCOPES.CLASS.POLL.CREATE, null)).toBe(true);
-        expect(userHasScope({ classRole: "Manager" }, SCOPES.CLASS.STUDENTS.KICK, null)).toBe(true);
+        expect(userHasScope({ roles: { class: ["Manager"] } }, SCOPES.CLASS.POLL.CREATE, null)).toBe(true);
+        expect(userHasScope({ roles: { class: ["Manager"] } }, SCOPES.CLASS.STUDENTS.KICK, null)).toBe(true);
     });
 
     it("Guest has class.poll.read", () => {
-        expect(userHasScope({ classRole: "Guest" }, SCOPES.CLASS.POLL.READ, null)).toBe(true);
+        expect(userHasScope({ roles: { class: ["Guest"] } }, SCOPES.CLASS.POLL.READ, null)).toBe(true);
     });
 
     it("Guest does not have class.poll.create", () => {
-        expect(userHasScope({ classRole: "Guest" }, SCOPES.CLASS.POLL.CREATE, null)).toBe(false);
-    });
-});
-
-describe("getClassRoleNames", () => {
-    it("returns roles.class entries when present", () => {
-        expect(getClassRoleNames({ roles: { class: ["Mod", "Student"] } })).toEqual(["Mod", "Student"]);
-    });
-
-    it("falls back to single classRole", () => {
-        expect(getClassRoleNames({ classRole: "Mod" })).toEqual(["Mod"]);
-    });
-
-    it("falls back to numeric classPermissions", () => {
-        expect(getClassRoleNames({ classPermissions: 3 })).toEqual(["Mod"]);
-    });
-
-    it("returns empty array for no role data", () => {
-        expect(getClassRoleNames({})).toEqual([]);
+        expect(userHasScope({ roles: { class: ["Guest"] } }, SCOPES.CLASS.POLL.CREATE, null)).toBe(false);
     });
 });

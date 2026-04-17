@@ -396,7 +396,6 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
                           id: student.id,
                           displayName: student.displayName,
                           activeClass: student.activeClass,
-                          classRole: student.classRole || null,
                           roles: { global: [], class: student.roles?.class || [] },
                           tags: student.tags,
                           pollRes: student.pollRes,
@@ -415,7 +414,6 @@ function getClassUpdateData(classData, hasTeacherPermissions, options = { restri
         const student = classData.students[options.studentEmail];
         result.myTags = student.tags || [];
         result.myId = student.id;
-        result.myRole = student.classRole || null;
         result.myRoles = student.roles?.class || [];
     }
 

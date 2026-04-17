@@ -288,7 +288,6 @@ module.exports = {
                             global: existingStudent?.roles?.global || [],
                             class: bannedRole ? buildRoleReferences([bannedRole]) : [],
                         },
-                        classRole: bannedRole ? bannedRole.name : null,
                     });
                 }
 
@@ -329,7 +328,6 @@ module.exports = {
                     const existingStudent = classStateStore.getClassroomStudent(classId, email);
                     classStateStore.updateClassroomStudent(classId, email, {
                         roles: { global: existingStudent?.roles?.global || [], class: [] },
-                        classRole: null,
                     });
                 }
 
