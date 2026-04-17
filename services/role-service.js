@@ -22,6 +22,15 @@ function getDefaultClassRoleScopes(roleName) {
     return [...(ROLES[roleName]?.class || [])];
 }
 
+function ensureStudentRoleBuckets(student) {
+    if (!student || typeof student !== "object") return;
+    if (!student.roles || typeof student.roles !== "object" || Array.isArray(student.roles)) {
+        student.roles = { global: [], class: [] };
+    }
+    if (!Array.isArray(student.roles.global)) student.roles.global = [];
+    if (!Array.isArray(student.roles.class)) student.roles.class = [];
+}
+
 /**
  * Seeds class-scoped default roles when a class has no built-in defaults yet.
  * This enables default roles to be modified per class without touching global rows.
@@ -382,15 +391,14 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
 
     if (isDefault && classroomObj) {
         for (const student of Object.values(classroomObj.students)) {
-            if (Array.isArray(student.classRoleRefs)) {
-                for (const roleRef of student.classRoleRefs) {
-                    if (Number(roleRef.id) === Number(roleId)) {
-                        roleRef.id = newRoleId;
-                        roleRef.name = newName;
-                    }
+            ensureStudentRoleBuckets(student);
+            for (const roleRef of student.roles.class) {
+                if (Number(roleRef.id) === Number(roleId)) {
+                    roleRef.id = newRoleId;
+                    roleRef.name = newName;
                 }
             }
-            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
+            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 
@@ -398,20 +406,12 @@ async function updateClassRole(roleId, classId, updates, actingClassUser, classr
     if (oldName !== newName) {
         if (classroomObj) {
             for (const student of Object.values(classroomObj.students)) {
-                // Update multi-role array
-                if (Array.isArray(student.classRoles)) {
-                    const idx = student.classRoles.indexOf(oldName);
-                    if (idx !== -1) {
-                        student.classRoles[idx] = newName;
-                    }
+                ensureStudentRoleBuckets(student);
+                const roleRef = student.roles.class.find((assignedRole) => Number(assignedRole.id) === Number(newRoleId));
+                if (roleRef) {
+                    roleRef.name = newName;
                 }
-                if (Array.isArray(student.classRoleRefs)) {
-                    const roleRef = student.classRoleRefs.find((assignedRole) => Number(assignedRole.id) === Number(newRoleId));
-                    if (roleRef) {
-                        roleRef.name = newName;
-                    }
-                }
-                student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
+                student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
             }
         }
     }
@@ -477,17 +477,9 @@ async function deleteClassRole(roleId, classId) {
             classroom.availableRoles = classroom.availableRoles.filter((availableRole) => Number(availableRole.id) !== Number(roleId));
         }
         for (const student of Object.values(classroom.students)) {
-            // Remove from multi-role array
-            if (Array.isArray(student.classRoles)) {
-                const idx = student.classRoles.indexOf(role.name);
-                if (idx !== -1) {
-                    student.classRoles.splice(idx, 1);
-                }
-            }
-            if (Array.isArray(student.classRoleRefs)) {
-                student.classRoleRefs = student.classRoleRefs.filter((assignedRole) => Number(assignedRole.id) !== Number(roleId));
-            }
-            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroom.availableRoles || []);
+            ensureStudentRoleBuckets(student);
+            student.roles.class = student.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(roleId));
+            student.classRole = computePrimaryRole(student.roles.class, classroom.availableRoles || []);
         }
     }
 }
@@ -551,15 +543,11 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
         const email = await getEmailForUserId(userId);
         if (email && classroomObj.students[email]) {
             const student = classroomObj.students[email];
-            if (!Array.isArray(student.classRoles)) student.classRoles = [];
-            if (!student.classRoles.includes(role.name)) {
-                student.classRoles.push(role.name);
+            ensureStudentRoleBuckets(student);
+            if (!student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
+                student.roles.class.push(buildRoleReference(role));
             }
-            if (!Array.isArray(student.classRoleRefs)) student.classRoleRefs = [];
-            if (!student.classRoleRefs.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
-                student.classRoleRefs.push(buildRoleReference(role));
-            }
-            student.classRole = computePrimaryRole(student.classRoleRefs, classroomObj.availableRoles || []);
+            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 }
@@ -643,24 +631,14 @@ async function removeStudentRole(classId, userId, roleId) {
         const email = await getEmailForUserId(userId);
         if (email && classroomObj.students[email]) {
             const student = classroomObj.students[email];
-            if (Array.isArray(student.classRoles)) {
-                const idx = student.classRoles.indexOf(role.name);
-                if (idx !== -1) student.classRoles.splice(idx, 1);
-            }
-            if (Array.isArray(student.classRoleRefs)) {
-                student.classRoleRefs = student.classRoleRefs.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
-            }
+            ensureStudentRoleBuckets(student);
+            student.roles.class = student.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
             if (insertedStudentRole) {
-                if (!Array.isArray(student.classRoles)) student.classRoles = [];
-                if (!student.classRoles.includes(insertedStudentRole.name)) {
-                    student.classRoles.push(insertedStudentRole.name);
-                }
-                if (!Array.isArray(student.classRoleRefs)) student.classRoleRefs = [];
-                if (!student.classRoleRefs.some((assignedRole) => Number(assignedRole.id) === Number(insertedStudentRole.id))) {
-                    student.classRoleRefs.push(buildRoleReference(insertedStudentRole));
+                if (!student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(insertedStudentRole.id))) {
+                    student.roles.class.push(buildRoleReference(insertedStudentRole));
                 }
             }
-            student.classRole = computePrimaryRole(student.classRoleRefs || student.classRoles || [], classroomObj.availableRoles || []);
+            student.classRole = computePrimaryRole(student.roles.class, classroomObj.availableRoles || []);
         }
     }
 }
@@ -789,8 +767,8 @@ async function assignStudentRole(classId, userId, roleName) {
         const email = await getEmailForUserId(userId);
         if (email && classroom.students[email]) {
             const student = classroom.students[email];
-            student.classRoles = roleName === ROLE_NAMES.GUEST ? [] : [roleName];
-            student.classRoleRefs = roleName === ROLE_NAMES.GUEST ? [] : buildRoleReferences([getAvailableRoleByName(classroom, roleName)]);
+            ensureStudentRoleBuckets(student);
+            student.roles.class = roleName === ROLE_NAMES.GUEST ? [] : buildRoleReferences([getAvailableRoleByName(classroom, roleName)]);
             student.classRole = roleName === ROLE_NAMES.GUEST ? null : roleName;
         }
     }
@@ -934,9 +912,7 @@ function getActingUser(classroom, reqUser) {
         return {
             id: reqUser.id,
             email: reqUser.email,
-            globalRoles: reqUser.globalRoles || [],
-            classRoles: [],
-            classRoleRefs: [],
+            roles: { global: reqUser.roles?.global || [], class: [] },
             classRole: null,
             isClassOwner: true,
         };

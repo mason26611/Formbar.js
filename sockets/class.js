@@ -282,9 +282,12 @@ module.exports = {
                     const bannedRole = blockedRole
                         ? classStateStore.getClassroom(classId)?.availableRoles?.find((role) => Number(role.id) === Number(blockedRole.id)) || null
                         : null;
+                    const existingStudent = classStateStore.getClassroomStudent(classId, email);
                     classStateStore.updateClassroomStudent(classId, email, {
-                        classRoles: bannedRole ? [bannedRole.name] : [],
-                        classRoleRefs: bannedRole ? buildRoleReferences([bannedRole]) : [],
+                        roles: {
+                            global: existingStudent?.roles?.global || [],
+                            class: bannedRole ? buildRoleReferences([bannedRole]) : [],
+                        },
                         classRole: bannedRole ? bannedRole.name : null,
                     });
                 }
@@ -323,9 +326,9 @@ module.exports = {
                 }
 
                 if (classStateStore.getClassroomStudent(classId, email)) {
+                    const existingStudent = classStateStore.getClassroomStudent(classId, email);
                     classStateStore.updateClassroomStudent(classId, email, {
-                        classRoles: [],
-                        classRoleRefs: [],
+                        roles: { global: existingStudent?.roles?.global || [], class: [] },
                         classRole: null,
                     });
                 }

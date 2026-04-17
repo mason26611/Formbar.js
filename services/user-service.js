@@ -10,7 +10,7 @@ const { frontendUrl } = require("@modules/config");
 const { classStateStore } = require("@services/classroom-service");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { socketStateStore } = require("@stores/socket-state-store");
-const { getUserScopes } = require("@modules/scope-resolver");
+const { getUserScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { getUserRoles } = require("@services/role-service");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -187,12 +187,15 @@ async function getUserDataFromDb(userId) {
     }
 
     const roles = await getUserRoles(userId);
-    
+    const scopes = getUserScopes({ ...user, roles });
+
     return {
         ...user,
         roles,
-        permissions: computeGlobalPermissionLevel(roles.global),
-        classPermissions: computeClassPermissionLevel(roles.class),
+        scopes,
+        role: getUserRoleName({ ...user, roles }),
+        permissions: computeGlobalPermissionLevel(scopes.global),
+        classPermissions: computeClassPermissionLevel(scopes.class),
     };
 }
 
@@ -400,7 +403,7 @@ async function getEmailFromAPIKey(api) {
  */
 async function getUser(userIdentifier) {
     try {
-        const email = userIdentifier.email || await getEmailFromId(userIdentifier.id) || (await getEmailFromAPIKey(userIdentifier.api));
+        const email = userIdentifier.email || (await getEmailFromId(userIdentifier.id)) || (await getEmailFromAPIKey(userIdentifier.api));
         if (email instanceof Error) throw email;
         if (email.error) throw email;
 
@@ -435,7 +438,10 @@ async function getUser(userIdentifier) {
                 userData.break = cdUser.break;
                 userData.pogMeter = cdUser.pogMeter;
                 userData.classRole = cdUser.classRole || null;
-                userData.classRoles = cdUser.classRoleRefs || [];
+                userData.roles = {
+                    global: dbUser.roles?.global || [],
+                    class: cdUser.roles?.class || [],
+                };
             }
         }
 
@@ -448,14 +454,14 @@ async function getUser(userIdentifier) {
                       isClassOwner: activeClassUser.isClassOwner === true || dbUser.id === classroomOwnerId,
                   }
                 : dbUser.id === classroomOwnerId
-                  ? { id: dbUser.id, email: dbUser.email, globalRoles: dbUser.globalRoles || [], isClassOwner: true }
+                  ? { id: dbUser.id, email: dbUser.email, roles: { global: dbUser.roles?.global || [], class: [] }, isClassOwner: true }
                   : null;
 
             if (effectiveClassUser) {
                 const classScopes = getUserScopes(effectiveClassUser, classroom).class;
                 userData.classPermissions = computeClassPermissionLevel(classScopes, {
                     isOwner: Boolean(effectiveClassUser.isClassOwner),
-                    globalScopes: getUserScopes(effectiveClassUser).class,
+                    globalScopes: getUserScopes(effectiveClassUser).global,
                 });
             }
         }

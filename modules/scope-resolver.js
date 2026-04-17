@@ -27,8 +27,14 @@ function getGlobalRoleEntries(user) {
         return [];
     }
 
-    if (Array.isArray(user.globalRoles) && user.globalRoles.length > 0) {
-        return user.globalRoles;
+    if (
+        user.roles &&
+        typeof user.roles === "object" &&
+        !Array.isArray(user.roles) &&
+        Array.isArray(user.roles.global) &&
+        user.roles.global.length > 0
+    ) {
+        return user.roles.global;
     }
 
     if (Array.isArray(user.roles) && user.roles.length > 0) {
@@ -47,12 +53,14 @@ function getClassRoleEntries(classUser) {
         return [];
     }
 
-    if (Array.isArray(classUser.classRoleRefs) && classUser.classRoleRefs.length > 0) {
-        return classUser.classRoleRefs;
-    }
-
-    if (Array.isArray(classUser.classRoles) && classUser.classRoles.length > 0) {
-        return classUser.classRoles;
+    if (
+        classUser.roles &&
+        typeof classUser.roles === "object" &&
+        !Array.isArray(classUser.roles) &&
+        Array.isArray(classUser.roles.class) &&
+        classUser.roles.class.length > 0
+    ) {
+        return classUser.roles.class;
     }
 
     if (classUser.classRole) {
@@ -112,10 +120,14 @@ function getUserScopes(user, classroom) {
         class: [],
     };
 
-    // If the user has explicit globalScopes or classScopes arrays, use those directly (after deduping and checking for admin/block scopes).
+    // If the user has explicit scopes.global / scopes.class arrays, use those directly (after deduping and checking for admin/block scopes).
     // Otherwise, resolve scopes from roles as normal.
-    const rawGlobalScopes = Array.isArray(user.globalScopes)
-        ? filterScopesByDomain(user.globalScopes, "global")
+    const explicitGlobal =
+        user.scopes && typeof user.scopes === "object" && !Array.isArray(user.scopes) && Array.isArray(user.scopes.global)
+            ? user.scopes.global
+            : null;
+    const rawGlobalScopes = Array.isArray(explicitGlobal)
+        ? filterScopesByDomain(explicitGlobal, "global")
         : getGlobalRoleEntries(user)
               .map((role) => getGlobalScopesForRole(role))
               .flat();
@@ -125,9 +137,10 @@ function getUserScopes(user, classroom) {
     const isGlobalBanned = globalScopes.includes(SCOPES.GLOBAL.SYSTEM.BLOCKED);
     scopes.global = isGlobalAdmin ? getAllGlobalScopes() : isGlobalBanned ? [] : globalScopes;
 
-    // If the user has explicit classScopes in their user object, use those directly after deduping, otherwise resolve from roles as normal.
-    const rawClassScopes = Array.isArray(user.classScopes)
-        ? filterScopesByDomain(user.classScopes, "class")
+    const explicitClass =
+        user.scopes && typeof user.scopes === "object" && !Array.isArray(user.scopes) && Array.isArray(user.scopes.class) ? user.scopes.class : null;
+    const rawClassScopes = Array.isArray(explicitClass)
+        ? filterScopesByDomain(explicitClass, "class")
         : getClassRoleEntries(user)
               .map((role) => getClassScopesForRole(role, classroom))
               .flat();

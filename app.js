@@ -245,7 +245,7 @@ http.listen(settings.port, async () => {
     // Object.assign(authentication.whitelistedIps, await getIpAccess("whitelist"));
     // Object.assign(authentication.blacklistedIps, await getIpAccess("blacklist"));
     console.log(`Running on port: ${settings.port}`);
-    
+
     const availableOIDCProviders = getAvailableProviders();
     if (!settings.emailEnabled) {
         console.log("Email functionality is disabled.");

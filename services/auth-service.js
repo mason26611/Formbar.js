@@ -1,12 +1,7 @@
 const { compare, hash } = require("bcrypt");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
-const {
-    computeGlobalPermissionLevel,
-    computeClassPermissionLevel,
-    MANAGER_PERMISSIONS,
-    STUDENT_PERMISSIONS,
-} = require("@modules/permissions");
+const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
@@ -26,13 +21,18 @@ async function normalizeUserData(userData) {
         return userData;
     }
 
-    const roles = await getUserRoles(userData.id);
-    const scopes = getUserScopes({ roles });
+    const rolesFromDb = await getUserRoles(userData.id);
+    const roles = {
+        global: rolesFromDb.global,
+        class: rolesFromDb.class,
+    };
+
+    const scopes = getUserScopes({ ...userData, roles });
 
     // If the user is in a class, then get their current class permissions
     let classPermissions = null;
     if (userData.activeClass) {
-        classPermissions = (await getActiveClassContext({ ...userData, email: userData.email, globalRoles })).classPermissions;
+        classPermissions = (await getActiveClassContext({ ...userData, email: userData.email, roles })).classPermissions;
     }
 
     return {
@@ -45,13 +45,13 @@ async function normalizeUserData(userData) {
 }
 
 async function getActiveClassContext(user) {
-    let classRoles = [];
-    let classScopes = [];
+    const roles = { global: user.roles?.global || [], class: [] };
+    let scopes = { global: getUserScopes(user).global, class: [] };
     let classPermissions = null;
 
     const liveUser = classStateStore.getUser(user.email);
     if (!liveUser || !liveUser.activeClass) {
-        return { classRoles, classScopes, classPermissions };
+        return { roles, scopes, classPermissions };
     }
 
     const classroom = classStateStore.getClassroom(liveUser.activeClass);
@@ -63,22 +63,23 @@ async function getActiveClassContext(user) {
               isClassOwner: classStudent.isClassOwner === true || user.id === classroomOwnerId,
           }
         : user.id === classroomOwnerId
-          ? { id: user.id, email: user.email, globalRoles: user.globalRoles || [], isClassOwner: true }
+          ? { id: user.id, email: user.email, roles: { global: user.roles?.global || [], class: [] }, isClassOwner: true }
           : null;
 
     if (classStudent) {
-        classRoles = classStudent.classRoleRefs || [];
+        roles.class = classStudent.roles?.class || [];
     }
 
     if (effectiveClassUser) {
-        classScopes = getUserScopes(effectiveClassUser, classroom).class;
-        classPermissions = computeClassPermissionLevel(classScopes, {
+        const resolved = getUserScopes(effectiveClassUser, classroom);
+        scopes = { global: resolved.global, class: resolved.class };
+        classPermissions = computeClassPermissionLevel(scopes.class, {
             isOwner: Boolean(effectiveClassUser.isClassOwner),
-            globalScopes: getUserScopes(effectiveClassUser).global,
+            globalScopes: resolved.global,
         });
     }
 
-    return { classRoles, classScopes, classPermissions };
+    return { roles, scopes, classPermissions };
 }
 
 function normalizeEmail(email) {
@@ -510,7 +511,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         "oauth",
     ]);
 
-    const { classRoles, classScopes, classPermissions } = await getActiveClassContext(user);
+    const { roles: activeRoles, scopes: activeScopes, classPermissions } = await getActiveClassContext(user);
 
     return {
         access_token: accessToken,
@@ -520,8 +521,8 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
         permissions: user.permissions,
         classPermissions,
         role: user.role,
-        classRoles,
-        scopes: getUserScopes(user),
+        roles: activeRoles,
+        scopes: activeScopes,
     };
 }
 

@@ -123,11 +123,14 @@ async function getComputedGlobalUser(userId) {
 
     return {
         ...user,
-        globalRoles: roleRows.map((row) => ({
-            id: row.id,
-            name: row.name,
-            scopes: filterScopesByDomain(row.scopes, "global"),
-        })),
+        roles: {
+            global: roleRows.map((row) => ({
+                id: row.id,
+                name: row.name,
+                scopes: filterScopesByDomain(row.scopes, "global"),
+            })),
+            class: [],
+        },
     };
 }
 
@@ -515,7 +518,7 @@ function validateAwardRequest({ from, to, amount }) {
 }
 
 function getGlobalPermissionLevelForUser(user) {
-    const globalScopes = (user?.globalRoles || []).flatMap((role) => parseStoredScopes(role.scopes));
+    const globalScopes = (user?.roles?.global || []).flatMap((role) => parseStoredScopes(role.scopes));
     return computeGlobalPermissionLevel(globalScopes);
 }
 

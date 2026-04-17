@@ -172,7 +172,7 @@ describe("POST /api/v1/digipogs/award", () => {
         const teacherStudent = classStateStore.getUser("teacher@example.com");
         teacherStudent.activeClass = 1;
         teacherStudent.classPermissions = 4;
-        teacherStudent.classRoles = ["Teacher"];
+        teacherStudent.roles = { global: [], class: ["Teacher"] };
         classStateStore.setClassroomStudent(1, "teacher@example.com", teacherStudent);
 
         const res = await request(app)

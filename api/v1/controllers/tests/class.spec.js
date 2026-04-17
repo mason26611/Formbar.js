@@ -156,7 +156,7 @@ async function enrollUserInClass(user, classId, classPermissions = MOD_PERMISSIO
         student.activeClass = classId;
         student.classPermissions = classPermissions;
         student.classRole = classPermissions > 1 ? require("@modules/roles").LEVEL_TO_ROLE[classPermissions] : null;
-        student.classRoles = student.classRole ? [student.classRole] : [];
+        student.roles = { global: [], class: student.classRole ? [student.classRole] : [] };
         classStateStore.setClassroomStudent(classId, user.email, student);
     }
 }

@@ -55,14 +55,19 @@ describe("userHasScope", () => {
 describe("getUserScopes", () => {
     it("filters mixed stored role scopes down to the requested domain", () => {
         const scopes = getUserScopes({
-            globalRoles: [
-                {
-                    id: 1,
-                    name: "Student",
-                    scopes: ["global.pools.manage", "global.digipogs.transfer", "class.poll.read", "class.poll.vote"],
-                },
-            ],
-            classScopes: ["class.poll.vote", "global.pools.manage"],
+            roles: {
+                global: [
+                    {
+                        id: 1,
+                        name: "Student",
+                        scopes: ["global.pools.manage", "global.digipogs.transfer", "class.poll.read", "class.poll.vote"],
+                    },
+                ],
+                class: [],
+            },
+            scopes: {
+                class: ["class.poll.vote", "global.pools.manage"],
+            },
         });
 
         expect(scopes.global).toEqual(["global.pools.manage", "global.digipogs.transfer"]);
@@ -86,8 +91,8 @@ describe("userHasScope", () => {
 });
 
 describe("getClassRoleNames", () => {
-    it("returns classRoles array when present", () => {
-        expect(getClassRoleNames({ classRoles: ["Mod", "Student"] })).toEqual(["Mod", "Student"]);
+    it("returns roles.class entries when present", () => {
+        expect(getClassRoleNames({ roles: { class: ["Mod", "Student"] } })).toEqual(["Mod", "Student"]);
     });
 
     it("falls back to single classRole", () => {

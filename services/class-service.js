@@ -312,10 +312,8 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
 
         // Load multi-role assignments from user_roles
         const roleAssignments = await getStudentRoleAssignments(classId, currentUser.id);
-        const roles = roleAssignments.map((role) => role.name);
         const roleRefs = buildRoleReferences(roleAssignments);
-        currentUser.classRoles = roles;
-        currentUser.classRoleRefs = roleRefs;
+        currentUser.roles = { global: currentUser.roles?.global || [], class: roleRefs };
         currentUser.classRole = computePrimaryRole(roleAssignments, classroom?.availableRoles || []);
         currentUser.isClassOwner = classroomDb.owner === user.id;
 
@@ -360,8 +358,7 @@ async function addUserToClassroomSession(classId, email, sessionUser) {
         const classData = classStateStore.getClassroom(classId);
         let currentUser = classStateStore.getUser(email);
         const isOwner = currentUser.id === classData.owner;
-        currentUser.classRoles = [];
-        currentUser.classRoleRefs = [];
+        currentUser.roles = { global: currentUser.roles?.global || [], class: [] };
         currentUser.classRole = null;
         currentUser.isClassOwner = isOwner;
         currentUser.activeClass = classId;
@@ -523,8 +520,10 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
             if (options.ban) {
                 const blockedRole = findAvailableRoleByPermissionLevel(classroom, BANNED_PERMISSIONS);
-                user.classRoles = blockedRole ? [blockedRole.name] : [];
-                user.classRoleRefs = blockedRole ? buildRoleReferences([blockedRole]) : [];
+                user.roles = {
+                    global: user.roles?.global || [],
+                    class: blockedRole ? buildRoleReferences([blockedRole]) : [],
+                };
                 user.classRole = blockedRole ? blockedRole.name : null;
             }
             setClassOfApiSockets(existingUser.API, null);
@@ -873,7 +872,10 @@ async function getClassUsers(user, key) {
             classUsers[userRow.email].break = cdUser.break;
             classUsers[userRow.email].pogMeter = cdUser.pogMeter;
             classUsers[userRow.email].classRole = cdUser.classRole || null;
-            classUsers[userRow.email].classRoles = cdUser.classRoleRefs || [];
+            classUsers[userRow.email].roles = {
+                global: classUsers[userRow.email].roles?.global || [],
+                class: cdUser.roles?.class || [],
+            };
         }
 
         if (requesterPermissionLevel < TEACHER_PERMISSIONS) {
