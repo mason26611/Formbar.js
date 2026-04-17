@@ -2,7 +2,7 @@ const { hasClassScope } = require("@middleware/permission-check");
 const { isAuthenticated } = require("@middleware/authentication");
 const { classStateStore } = require("@services/classroom-service");
 const { SCOPES, computeClassPermissionLevel } = require("@modules/permissions");
-const { resolveClassScopes } = require("@modules/scope-resolver");
+const { resolveUserClassScopes } = require("@modules/scope-resolver");
 const { dbGetAll } = require("@modules/database");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -85,7 +85,7 @@ module.exports = (router) => {
                 if (studentEntry) {
                     classUser.classRoles = studentEntry.classRoleRefs || [];
                     classUser.classRole = studentEntry.classRole || null;
-                    classUser.classPermissions = computeClassPermissionLevel(resolveClassScopes(studentEntry, classroom), {
+                    classUser.classPermissions = computeClassPermissionLevel(resolveUserClassScopes(studentEntry, classroom), {
                         isOwner: Boolean(studentEntry.isClassOwner),
                         globalScopes: studentEntry.globalRoles || [],
                     });
@@ -99,7 +99,7 @@ module.exports = (router) => {
                         displayName: studentInfo.displayName || "Guest",
                         classRoles: [],
                         classRole: null,
-                        classPermissions: computeClassPermissionLevel(resolveClassScopes(studentInfo, classroom)),
+                        classPermissions: computeClassPermissionLevel(resolveUserClassScopes(studentInfo, classroom)),
                     });
                 }
             }

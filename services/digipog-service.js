@@ -1,5 +1,5 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { resolveUserScopes } = require("@modules/scope-resolver");
+const { resolveUserGlobalScopes } = require("@modules/scope-resolver");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { compare } = require("@modules/crypto");
@@ -516,7 +516,7 @@ async function awardDigipogs(awardData, user) {
         if (!fromUser || !fromUser.email) {
             return fail("Sender account not found.");
         }
-        const senderPermissionLevel = computeGlobalPermissionLevel(resolveUserScopes(fromUser));
+        const senderPermissionLevel = computeGlobalPermissionLevel(resolveUserGlobalScopes(fromUser));
 
         if (to.type === "class") {
             if (to.code) {

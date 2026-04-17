@@ -82,6 +82,7 @@ const CLEARABLE_TABLES = [
     "refresh_tokens",
     "classroom",
     "classusers",
+    "class_roles",
     "user_roles",
     "poll_answers",
     "poll_history",
@@ -143,9 +144,9 @@ async function createTestDb() {
             });
         }
 
-        // Delete custom roles (keep built-in roles where classId IS NULL)
+        // Delete custom roles (keep global built-in roles)
         await new Promise((resolve, reject) => {
-            db.run(`DELETE FROM "roles" WHERE "classId" IS NOT NULL`, (err) => {
+            db.run(`DELETE FROM "roles" WHERE "isDefault" = 0 AND "id" NOT IN (SELECT "roleId" FROM "class_roles")`, (err) => {
                 if (err) return reject(err);
                 resolve();
             });
