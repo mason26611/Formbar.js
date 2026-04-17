@@ -37,10 +37,12 @@ const mockUsers = {};
 jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getClassroom: jest.fn((id) => mockClassrooms[id] || null),
+        getAllClassrooms: jest.fn(() => mockClassrooms),
         setClassroom: jest.fn((id, c) => {
             mockClassrooms[id] = c;
         }),
         getUser: jest.fn((email) => mockUsers[email] || null),
+        getAllUsers: jest.fn(() => mockUsers),
         setUser: jest.fn((email, u) => {
             mockUsers[email] = u;
         }),
@@ -57,12 +59,14 @@ const {
     addStudentRole,
     removeStudentRole,
     getStudentRoles,
+    getUserRoles,
     getActingUser,
     getClassRoles,
     createClassRole,
     updateClassRole,
     deleteClassRole,
 } = require("@services/role-service");
+const { getUserScopes } = require("@modules/scope-resolver");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -232,6 +236,53 @@ describe("getStudentRoles()", () => {
 });
 
 // ── createClassRole ──
+
+describe("getUserRoles()", () => {
+    it("returns scope-bearing role objects so custom class roles resolve correctly", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
+            "Helper",
+            '["class.poll.create"]',
+            "#123456",
+        ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, helperRoleId, classId]);
+
+        setupMockClassroom(classId, user.id, {
+            [user.email]: {
+                id: user.id,
+                email: user.email,
+                roles: { global: [], class: [] },
+            },
+        });
+
+        const roles = await getUserRoles(user.id);
+
+        expect(roles.global).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: expect.any(Number),
+                    name: "Student",
+                    scopes: expect.any(String),
+                }),
+            ])
+        );
+        expect(roles.class).toEqual([
+            expect.objectContaining({
+                id: helperRoleId,
+                name: "Helper",
+                scopes: '["class.poll.create"]',
+            }),
+        ]);
+
+        const scopes = getUserScopes({ id: user.id, roles });
+        expect(scopes.global).toEqual(expect.arrayContaining(["global.pools.manage", "global.digipogs.transfer"]));
+        expect(scopes.class).toEqual(expect.arrayContaining(["class.poll.create"]));
+    });
+});
 
 describe("createClassRole()", () => {
     it("creates a custom role with the provided color", async () => {

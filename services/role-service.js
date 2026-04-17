@@ -640,29 +640,52 @@ async function removeStudentRole(classId, userId, roleId) {
 async function getUserRoles(userId) {
     requireInternalParam(userId);
 
-    const { getUser } = require("@services/user-service");
-
-    const user = await getUser(userId);
     const roles = {
         global: [],
         class: [],
     };
 
-    // If the user is not found, return the default roles
-    if (!user) {
+    const { getEmailFromId } = require("@services/student-service");
+    const email = await getEmailFromId(userId);
+    if (!email) {
         return roles;
     }
 
-    roles.global = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId IS NULL AND ur.userId = ?`, [
-        userId,
-    ]);
+    const globalRoleRows = await dbGetAll(
+        `SELECT r.id, r.name, r.scopes, r.color
+         FROM user_roles ur
+         JOIN roles r ON ur.roleId = r.id
+         WHERE ur.classId IS NULL
+           AND ur.userId = ?`,
+        [userId]
+    );
+    roles.global = globalRoleRows.filter((role) => filterScopesByDomain(role.scopes, "global").length > 0);
 
-    const classId = user.activeClass;
+    let classId = null;
+    for (const classroom of Object.values(classStateStore.getAllClassrooms())) {
+        if (classroom?.students?.[email]) {
+            classId = classroom.id ?? classroom.classId;
+            break;
+        }
+    }
+
     if (classId) {
-        roles.class = await dbGetAll(`SELECT r.name FROM user_roles ur JOIN roles r ON ur.roleId = r.id WHERE ur.classId = ? AND ur.userId = ?`, [
-            classId,
-            userId,
-        ]);
+        const classRoleRows = await dbGetAll(
+            `SELECT DISTINCT r.id, r.name, r.scopes, r.color
+             FROM user_roles ur
+             JOIN roles r ON ur.roleId = r.id
+             WHERE ur.userId = ?
+               AND (
+                    ur.classId = ?
+                    OR (
+                        ur.classId IS NULL
+                        AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
+                    )
+               )
+             ORDER BY r.id`,
+            [userId, classId, classId]
+        );
+        roles.class = classRoleRows.filter((role) => filterScopesByDomain(role.scopes, "class").length > 0);
     }
 
     return roles;
