@@ -287,7 +287,7 @@ module.exports = (router) => {
             classId,
             updates,
             actingClassUser,
-            classroom
+            classroom,
         });
         await broadcastClassUpdate(classId);
         req.infoEvent("class.roles.update.success", { classId, roleId: role.id, actorId: req.user.id });

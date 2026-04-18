@@ -396,7 +396,7 @@ async function updateClassRole({ roleId, classId, updates, actingClassUser, clas
         await dbRun("UPDATE class_roles SET orderIndex = ? WHERE roleId = ? AND classId = ?", [newOrderIndex, newRoleId, classId]);
     }
 
-    const effectiveOrderIndex = newOrderIndex !== undefined ? newOrderIndex : role.orderIndex ?? null;
+    const effectiveOrderIndex = newOrderIndex !== undefined ? newOrderIndex : (role.orderIndex ?? null);
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj) {
         if (classroomObj.customRoles) {
