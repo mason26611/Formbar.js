@@ -59,6 +59,7 @@ const {
     addStudentRole,
     removeStudentRole,
     getStudentRoles,
+    getStudentRoleAssignments,
     getUserRoles,
     getActingUser,
     getClassRoles,
@@ -228,6 +229,17 @@ describe("getStudentRoles()", () => {
     });
 });
 
+describe("getStudentRoleAssignments()", () => {
+    it("does not treat global roles as explicit class role assignments", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        const assignments = await getStudentRoleAssignments(classId, user.id);
+        expect(assignments).toEqual([]);
+    });
+});
+
 describe("getUserRoles()", () => {
     it("returns scope-bearing role objects so custom class roles resolve correctly", async () => {
         const user = await seedUser();
@@ -272,6 +284,32 @@ describe("getUserRoles()", () => {
         const scopes = getUserScopes({ id: user.id, roles });
         expect(scopes.global).toEqual(expect.arrayContaining(["global.pools.manage", "global.digipogs.transfer"]));
         expect(scopes.class).toEqual(expect.arrayContaining(["class.poll.create"]));
+    });
+
+    it("does not treat global roles as explicit class roles", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        setupMockClassroom(classId, user.id, {
+            [user.email]: {
+                id: user.id,
+                email: user.email,
+                roles: { global: [], class: [] },
+            },
+        });
+
+        await getClassRoles(classId);
+        const roles = await getUserRoles(user.id);
+
+        expect(roles.global).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    name: "Student",
+                }),
+            ])
+        );
+        expect(roles.class).toEqual([]);
     });
 });
 
@@ -447,7 +485,7 @@ describe("removeStudentRole()", () => {
         await removeStudentRole(classId, user.id, modRole.id);
 
         const roles = await getStudentRoles(classId, user.id);
-        expect(roles).toEqual(["Student"]);
+        expect(roles).toEqual([]);
     });
 
     it("updates in-memory roles.class after removal", async () => {
@@ -475,6 +513,27 @@ describe("removeStudentRole()", () => {
 
         const student = mockClassrooms[classId].students[user.email];
         expect(student.roles.class.map((role) => role.name)).not.toContain("Mod");
+    });
+
+    it("does not auto-assign Student when the last explicit class role is removed", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        await getClassRoles(classId);
+        const modRole = await mockDatabase.dbGet(
+            `SELECT r.id
+             FROM roles r
+             JOIN class_roles cr ON cr.roleId = r.id
+             WHERE r.name = 'Mod' AND cr.classId = ?`,
+            [classId]
+        );
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
+
+        await removeStudentRole(classId, user.id, modRole.id);
+
+        const remainingRoleRows = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [user.id, classId]);
+        expect(remainingRoleRows).toEqual([]);
     });
 
     it("throws ValidationError for Guest role", async () => {

@@ -577,24 +577,6 @@ async function removeStudentRole(classId, userId, roleId) {
         [userId, role.id, classId, classId]
     );
 
-    const classScopedRemaining = await dbGet("SELECT 1 FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
-    let insertedStudentRole = null;
-    if (!classScopedRemaining) {
-        await addDefaultClassRoles(classId);
-        const studentRole = await dbGet(
-            `SELECT r.id, r.name, r.scopes, r.color, cr.orderIndex
-             FROM roles r
-             JOIN class_roles cr ON cr.roleId = r.id
-             WHERE cr.classId = ?
-               AND r.name = ?`,
-            [classId, ROLE_NAMES.STUDENT]
-        );
-        if (studentRole) {
-            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, studentRole.id, classId]);
-            insertedStudentRole = studentRole;
-        }
-    }
-
     const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj) {
         const email = await getEmailForUserId(userId);
@@ -602,9 +584,6 @@ async function removeStudentRole(classId, userId, roleId) {
             const student = classroomObj.students[email];
             ensureStudentRoleBuckets(student);
             student.roles.class = student.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
-            if (insertedStudentRole && !student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(insertedStudentRole.id))) {
-                student.roles.class.push(buildRoleReference(insertedStudentRole));
-            }
         }
     }
 }
@@ -646,15 +625,9 @@ async function getUserRoles(userId) {
              FROM user_roles ur
              JOIN roles r ON ur.roleId = r.id
              WHERE ur.userId = ?
-               AND (
-                    ur.classId = ?
-                    OR (
-                        ur.classId IS NULL
-                        AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = ur.roleId AND cr.classId = ?)
-                    )
-               )
+               AND ur.classId = ?
              ORDER BY r.id`,
-            [userId, classId, classId]
+            [userId, classId]
         );
         roles.class = classRoleRows.filter((role) => filterScopesByDomain(role.scopes, "class").length > 0);
     }
@@ -699,15 +672,9 @@ async function getStudentRoleAssignments(classId, userId) {
          JOIN roles r ON ur.roleId = r.id
          LEFT JOIN class_roles cr ON cr.roleId = r.id AND cr.classId = ?
          WHERE ur.userId = ?
-           AND (
-                ur.classId = ?
-                OR (
-                    ur.classId IS NULL
-                    AND EXISTS (SELECT 1 FROM class_roles cr2 WHERE cr2.roleId = ur.roleId AND cr2.classId = ?)
-                )
-           )
+           AND ur.classId = ?
          ORDER BY r.id`,
-        [classId, userId, classId, classId]
+        [classId, userId, classId]
     );
 
     return rows.map((row) => buildRoleResponse(row));

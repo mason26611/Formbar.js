@@ -166,9 +166,8 @@ module.exports = (router) => {
         requireQueryParam(classIdRaw, "id");
         requireQueryParam(userId, "userId");
         requireQueryParam(roleId, "roleId");
-        req.infoEvent("class.roles.student.add.start", { classId, userId, roleId, actorId: req.user.id });
-
         const classId = normalizeClassId(classIdRaw);
+        req.infoEvent("class.roles.student.add.start", { classId, userId, roleId, actorId: req.user.id });
         const classroom = classStateStore.getClassroom(classId);
         const actingClassUser = getActingUser(classroom, req.user);
 
@@ -256,9 +255,8 @@ module.exports = (router) => {
             requireQueryParam(classIdRaw, "id");
             requireQueryParam(userId, "userId");
             requireQueryParam(roleId, "roleId");
-            req.infoEvent("class.roles.student.remove.start", { classId, userId, roleId, actorId: req.user.id });
-
             const classId = normalizeClassId(classIdRaw);
+            req.infoEvent("class.roles.student.remove.start", { classId, userId, roleId, actorId: req.user.id });
             await removeStudentRole(classId, Number(userId), Number(roleId));
             await broadcastClassUpdate(classId);
             req.infoEvent("class.roles.student.remove.success", { classId, userId, roleId, actorId: req.user.id });
