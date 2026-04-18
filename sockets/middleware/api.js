@@ -34,7 +34,7 @@ function ensureStudentExists(userData) {
         displayName: userData.displayName,
         verified: userData.verified,
         role: userData.role,
-        globalRoles: userData.globalRoles || [],
+        roles: userData.roles || { global: [], class: [] },
         permissions: userData.permissions,
     });
 }
