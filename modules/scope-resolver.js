@@ -144,7 +144,8 @@ function getUserScopes(user, classroom) {
     const classScopes = dedupeScopes(rawClassScopes);
     const isClassAdmin = classScopes.includes(SCOPES.CLASS.SYSTEM.ADMIN);
     const isClassBanned = classScopes.includes(SCOPES.CLASS.SYSTEM.BLOCKED);
-    scopes.class = isClassAdmin ? getAllClassScopes() : isClassBanned ? [] : classScopes;
+    const ownerBypass = isClassOwner(user, classroom);
+    scopes.class = ownerBypass || isClassAdmin ? getAllClassScopes() : isClassBanned ? [] : classScopes;
 
     return scopes;
 }

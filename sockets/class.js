@@ -267,8 +267,7 @@ module.exports = {
                 }
 
                 // Assign the Banned role via user_roles
-                const { ensureDefaultClassRoles, findRoleByPermissionLevel } = require("@services/role-service");
-                await ensureDefaultClassRoles(classId);
+                const { findRoleByPermissionLevel } = require("@services/role-service");
                 const userId = await getIdFromEmail(email);
                 const blockedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classId);
                 if (userId) {
