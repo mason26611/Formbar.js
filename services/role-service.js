@@ -10,6 +10,21 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 
 const BUILT_IN_ROLE_NAMES = new Set(Object.values(ROLE_NAMES));
+const DEFAULT_CLASS_ROLE_ORDER_CASE_SQL = [
+    "CASE __ROLE_NAME__",
+    `WHEN '${ROLE_NAMES.MANAGER}' THEN 0`,
+    `WHEN '${ROLE_NAMES.TEACHER}' THEN 1`,
+    `WHEN '${ROLE_NAMES.MOD}' THEN 2`,
+    `WHEN '${ROLE_NAMES.STUDENT}' THEN 3`,
+    `WHEN '${ROLE_NAMES.GUEST}' THEN 4`,
+    "ELSE NULL",
+    "END",
+].join("\n             ");
+const CLASS_ROLE_ORDER_BY_SQL = "cr.orderIndex IS NULL, cr.orderIndex, r.id";
+
+function getDefaultClassRoleOrderCaseSql(roleNameExpression) {
+    return DEFAULT_CLASS_ROLE_ORDER_CASE_SQL.replace("__ROLE_NAME__", roleNameExpression);
+}
 
 function ensureStudentRoleBuckets(student) {
     if (!student || typeof student !== "object") return;
@@ -33,8 +48,8 @@ function sortAvailableRoles(roles) {
 }
 
 /**
- * Seeds class-scoped default roles the first time a class needs them.
- * This enables default roles to be modified per class without touching global rows.
+ * Seeds class-scoped default roles for a newly created class.
+ * Legacy classrooms are backfilled by migration code rather than lazily at runtime.
  * @param {string|number} classId
  * @returns {Promise<void>}
  */
@@ -44,24 +59,25 @@ async function addDefaultClassRoles(classId) {
     const existingClassRoles = await dbGet("SELECT 1 FROM class_roles WHERE classId = ? LIMIT 1", [classId]);
     if (!existingClassRoles) {
         await dbRun(
-            `INSERT OR IGNORE INTO class_roles (roleId, classId)
-             SELECT id, ?
+            `INSERT INTO class_roles (roleId, classId, orderIndex)
+             SELECT id, ?, ${getDefaultClassRoleOrderCaseSql("name")}
              FROM roles
              WHERE isDefault = 1`,
             [classId]
         );
     }
+}
+
+async function backfillClassRoleOrderIndexes(classId) {
+    requireInternalParam(classId, "classId");
 
     await dbRun(
         `UPDATE class_roles
-         SET orderIndex = CASE
-             WHEN roleId = 6 THEN 0
-             WHEN roleId = 5 THEN 1
-             WHEN roleId = 4 THEN 2
-             WHEN roleId = 3 THEN 3
-             WHEN roleId = 2 THEN 4
-             ELSE NULL
-         END
+         SET orderIndex = ${getDefaultClassRoleOrderCaseSql(`(
+             SELECT name
+             FROM roles
+             WHERE roles.id = class_roles.roleId
+         )`)}
          WHERE classId = ?
            AND orderIndex IS NULL`,
         [classId]
@@ -148,7 +164,7 @@ async function getRoleByIdForClass(classId, roleId) {
     requireInternalParam(classId, "classId");
     requireInternalParam(roleId, "roleId");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const classRole = await dbGet(
         `SELECT r.id, r.name, r.scopes, r.color, cr.orderIndex
@@ -196,14 +212,14 @@ async function getRoleByIdForClass(classId, roleId) {
 async function getClassRoles(classId) {
     requireInternalParam(classId, "classId");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const rows = await dbGetAll(
         `SELECT r.id, r.name, r.scopes, r.color, cr.orderIndex
          FROM roles r
          JOIN class_roles cr ON cr.roleId = r.id
          WHERE cr.classId = ?
-         ORDER BY cr.orderIndex, r.id`,
+         ORDER BY ${CLASS_ROLE_ORDER_BY_SQL}`,
         [classId]
     );
     return rows.map((row) => buildRoleResponse(row));
@@ -211,7 +227,7 @@ async function getClassRoles(classId) {
 
 async function findRoleByPermissionLevel(permissionLevel, classId = null) {
     if (classId != null) {
-        await addDefaultClassRoles(classId);
+        await backfillClassRoleOrderIndexes(classId);
     }
 
     const rows =
@@ -227,7 +243,7 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
                    FROM roles r
                    JOIN class_roles cr ON cr.roleId = r.id
                    WHERE cr.classId = ?
-                   ORDER BY cr.orderIndex, r.id`,
+                   ORDER BY ${CLASS_ROLE_ORDER_BY_SQL}`,
                   [classId]
               );
 
@@ -249,7 +265,7 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
 async function createClassRole({ classId, name, scopes, actingClassUser, classroom, color }) {
     requireInternalParam(classId, "classId");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     validateRoleName(name);
     validateScopes(scopes);
@@ -299,7 +315,7 @@ async function updateClassRole({ roleId, classId, updates, actingClassUser, clas
     requireInternalParam(roleId, "roleId");
     requireInternalParam(classId, "classId");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const role = await dbGet(
         `SELECT r.*, cr.orderIndex
@@ -426,7 +442,7 @@ async function deleteClassRole(roleId, classId) {
     requireInternalParam(roleId, "roleId");
     requireInternalParam(classId, "classId");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const role = await dbGet(
         `SELECT r.*
@@ -673,7 +689,7 @@ async function getStudentRoleAssignments(classId, userId) {
          LEFT JOIN class_roles cr ON cr.roleId = r.id AND cr.classId = ?
          WHERE ur.userId = ?
            AND ur.classId = ?
-         ORDER BY r.id`,
+         ORDER BY ${CLASS_ROLE_ORDER_BY_SQL}`,
         [classId, userId, classId]
     );
 
@@ -692,7 +708,7 @@ async function assignStudentRole(classId, userId, roleName) {
     requireInternalParam(userId, "userId");
     requireInternalParam(roleName, "roleName");
 
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const classRole = await dbGet(
         `SELECT r.id
@@ -733,7 +749,7 @@ async function assignStudentRole(classId, userId, roleName) {
  * @returns {Promise<Object<string, string[]>>}
  */
 async function loadCustomRoles(classId) {
-    await addDefaultClassRoles(classId);
+    await backfillClassRoleOrderIndexes(classId);
 
     const rows = await dbGetAll(
         `SELECT r.id, r.scopes
@@ -845,7 +861,8 @@ module.exports = {
     loadCustomRoles,
     getActingUser,
     findRoleByPermissionLevel,
-    BUILT_IN_ROLE_NAMES,
     addDefaultClassRoles,
-    ensureDefaultClassRoles: addDefaultClassRoles,
+    backfillClassRoleOrderIndexes,
+
+    BUILT_IN_ROLE_NAMES,
 };
