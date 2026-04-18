@@ -90,6 +90,14 @@ function setupDisconnectHandler(socket, email, classId, isApiAuth = false) {
         } else {
             const { emptyAfterRemoval } = socketStateStore.removeUserSocket(email, socket.id);
             if (emptyAfterRemoval) {
+                const liveUser = classStateStore.getUser(email);
+
+                // Global guests: kick from the live class immediately (no reconnect grace period).
+                if (liveUser?.isGuest) {
+                    const activeClassId = liveUser.activeClass ?? classId;
+                    await classKickStudent(userId, activeClassId, { exitRoom: false, ban: false });
+                    return;
+                }
                 // Give the client a short grace period (5 minutes) to reconnect
                 // before treating the disconnect as a deliberate class leave.
                 // Store the handle so a later reconnect can cancel it.
@@ -217,6 +225,16 @@ module.exports = {
 
                         if (!email || !userId) {
                             throw "Invalid access token: missing required fields";
+                        }
+
+                        if (decodedToken.isGuest) {
+                            const user = classStateStore.getUser(email);
+                            if (!user || !user.isGuest) {
+                                throw "Guest session not found";
+                            }
+                            finalizeAuthentication(socket, user, socketUpdates, false);
+                            resolve();
+                            return;
                         }
 
                         database.get("SELECT id FROM users WHERE id = ?", [userId], async (err, row) => {

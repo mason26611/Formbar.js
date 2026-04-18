@@ -114,6 +114,7 @@ describe("Student class", () => {
         expect(s.roles.class).toEqual([]);
         expect(s.help).toBe(false);
         expect(s.break).toBe(false);
+        expect(s.digipogs).toBe(0);
         expect(s.pogMeter).toBe(0);
         expect(s.pollRes).toEqual({ buttonRes: "", textRes: "", time: null });
     });
@@ -291,6 +292,15 @@ describe("createStudentFromUserData()", () => {
             pogMeter: 42,
         });
         expect(s.pogMeter).toBe(42);
+    });
+
+    it("sets digipogs from userData", () => {
+        const s = createStudentFromUserData({
+            email: "u@test.com",
+            id: 1,
+            digipogs: 7,
+        });
+        expect(s.digipogs).toBe(7);
     });
 });
 
