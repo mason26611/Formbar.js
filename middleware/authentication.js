@@ -58,7 +58,7 @@ function syncUserIntoClassStateStore(userData) {
         displayName: userData.displayName,
         verified: userData.verified,
         role: userData.role,
-        globalRoles: userData.globalRoles || [],
+        roles: userData.roles || { global: [], class: [] },
         permissions: userData.permissions,
     });
 
@@ -145,7 +145,7 @@ async function isAuthenticated(req, res, next) {
     }
 
     let user = classStateStore.getUser(email);
-    if (!user || !user.role) {
+    if (!user) {
         const computedUser = await loadComputedUserByEmail(email);
         if (!computedUser) {
             req.warnEvent("auth.user_not_found", `User not found in ClassStateStore: ${email}`, { email });

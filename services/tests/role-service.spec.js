@@ -37,10 +37,12 @@ const mockUsers = {};
 jest.mock("@services/classroom-service", () => ({
     classStateStore: {
         getClassroom: jest.fn((id) => mockClassrooms[id] || null),
+        getAllClassrooms: jest.fn(() => mockClassrooms),
         setClassroom: jest.fn((id, c) => {
             mockClassrooms[id] = c;
         }),
         getUser: jest.fn((email) => mockUsers[email] || null),
+        getAllUsers: jest.fn(() => mockUsers),
         setUser: jest.fn((email, u) => {
             mockUsers[email] = u;
         }),
@@ -57,12 +59,14 @@ const {
     addStudentRole,
     removeStudentRole,
     getStudentRoles,
+    getUserRoles,
     getActingUser,
     getClassRoles,
     createClassRole,
     updateClassRole,
     deleteClassRole,
 } = require("@services/role-service");
+const { getUserScopes } = require("@modules/scope-resolver");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -100,15 +104,13 @@ async function seedUser(overrides = {}) {
         "INSERT INTO users (email, password, API, secret, displayName, digipogs, pin, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [u.email, u.password, u.API, u.secret, u.displayName, u.digipogs, u.pin, u.verified]
     );
-    // Assign global role (default: Student=3)
     const roleId = u.globalRoleId || 3;
     await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [id, roleId]);
     return { id, ...u };
 }
 
 async function seedClass(ownerId) {
-    const classId = await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["TestClass", ownerId, 123456]);
-    return classId;
+    return mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["TestClass", ownerId, 123456]);
 }
 
 async function seedClassUser(classId, studentId, overrides = {}) {
@@ -133,16 +135,14 @@ async function getRoleIdByName(roleName, classId = null) {
             ? await mockDatabase.dbGet("SELECT id FROM roles WHERE name = ? AND isDefault = 1", [roleName])
             : await mockDatabase.dbGet(
                   `SELECT r.id
-                 FROM roles r
-                 JOIN class_roles cr ON cr.roleId = r.id
-                 WHERE r.name = ? AND cr.classId = ?`,
+                   FROM roles r
+                   JOIN class_roles cr ON cr.roleId = r.id
+                   WHERE r.name = ? AND cr.classId = ?`,
                   [roleName, classId]
               );
 
     return row ? row.id : null;
 }
-
-// ── getActingUser ──
 
 describe("getActingUser()", () => {
     it("returns null when classroom is null", () => {
@@ -150,7 +150,7 @@ describe("getActingUser()", () => {
     });
 
     it("returns the student when found in students map", () => {
-        const student = { email: "a@b.com", classRoles: ["Student"], classRole: "Student" };
+        const student = { email: "a@b.com", roles: { global: [], class: ["Student"] } };
         const classroom = { students: { "a@b.com": student }, owner: 99 };
         expect(getActingUser(classroom, { email: "a@b.com", id: 1 })).toBe(student);
     });
@@ -161,10 +161,7 @@ describe("getActingUser()", () => {
         expect(result).toEqual({
             id: 5,
             email: "owner@test.com",
-            globalRoles: [],
-            classRoles: [],
-            classRoleRefs: [],
-            classRole: null,
+            roles: { global: [], class: [] },
             isClassOwner: true,
         });
     });
@@ -175,10 +172,7 @@ describe("getActingUser()", () => {
         expect(result).toEqual({
             id: 5,
             email: "owner@test.com",
-            globalRoles: [],
-            classRoles: [],
-            classRoleRefs: [],
-            classRole: null,
+            roles: { global: [], class: [] },
             isClassOwner: true,
         });
     });
@@ -189,14 +183,11 @@ describe("getActingUser()", () => {
     });
 
     it("prefers student match over owner fallback", () => {
-        const student = { email: "owner@test.com", classRoles: ["Student"] };
+        const student = { email: "owner@test.com", roles: { global: [], class: ["Student"] } };
         const classroom = { students: { "owner@test.com": student }, owner: 5 };
-        const result = getActingUser(classroom, { email: "owner@test.com", id: 5 });
-        expect(result).toBe(student);
+        expect(getActingUser(classroom, { email: "owner@test.com", id: 5 })).toBe(student);
     });
 });
-
-// ── getStudentRoles ──
 
 describe("getStudentRoles()", () => {
     it("returns empty array when no roles assigned", async () => {
@@ -237,7 +228,52 @@ describe("getStudentRoles()", () => {
     });
 });
 
-// ── createClassRole ──
+describe("getUserRoles()", () => {
+    it("returns scope-bearing role objects so custom class roles resolve correctly", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        const helperRoleId = await mockDatabase.dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [
+            "Helper",
+            '["class.poll.create"]',
+            "#123456",
+        ]);
+        await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, helperRoleId, classId]);
+
+        setupMockClassroom(classId, user.id, {
+            [user.email]: {
+                id: user.id,
+                email: user.email,
+                roles: { global: [], class: [] },
+            },
+        });
+
+        const roles = await getUserRoles(user.id);
+
+        expect(roles.global).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: expect.any(Number),
+                    name: "Student",
+                    scopes: expect.any(String),
+                }),
+            ])
+        );
+        expect(roles.class).toEqual([
+            expect.objectContaining({
+                id: helperRoleId,
+                name: "Helper",
+                scopes: '["class.poll.create"]',
+            }),
+        ]);
+
+        const scopes = getUserScopes({ id: user.id, roles });
+        expect(scopes.global).toEqual(expect.arrayContaining(["global.pools.manage", "global.digipogs.transfer"]));
+        expect(scopes.class).toEqual(expect.arrayContaining(["class.poll.create"]));
+    });
+});
 
 describe("createClassRole()", () => {
     it("creates a custom role with the provided color", async () => {
@@ -245,7 +281,7 @@ describe("createClassRole()", () => {
         const classId = await seedClass(user.id);
         setupMockClassroom(classId, user.id, {});
 
-        const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
+        const actingUser = { roles: { global: [], class: ["Manager"] } };
         const classroom = mockClassrooms[classId];
 
         const role = await createClassRole({
@@ -270,7 +306,7 @@ describe("createClassRole()", () => {
         const classId = await seedClass(user.id);
         setupMockClassroom(classId, user.id, {});
 
-        const actingUser = { classRoles: ["Manager"], classRole: "Manager" };
+        const actingUser = { roles: { global: [], class: ["Manager"] } };
         const classroom = mockClassrooms[classId];
 
         const role = await createClassRole({
@@ -285,15 +321,13 @@ describe("createClassRole()", () => {
     });
 });
 
-// ── addStudentRole ──
-
 describe("addStudentRole()", () => {
     it("adds a built-in role to a student", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: [], classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
@@ -303,19 +337,19 @@ describe("addStudentRole()", () => {
         expect(roles).toContain("Mod");
     });
 
-    it("updates in-memory classRoles", async () => {
+    it("updates in-memory roles.class", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: [], classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
         await addStudentRole(classId, user.id, modRoleId);
 
         const student = mockClassrooms[classId].students[user.email];
-        expect(student.classRoles).toContain("Mod");
+        expect(student.roles.class.map((role) => role.name)).toContain("Mod");
     });
 
     it("throws ValidationError for Guest role", async () => {
@@ -345,7 +379,7 @@ describe("addStudentRole()", () => {
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: [], classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         const modRoleId = await getRoleIdByName("Mod");
 
@@ -364,7 +398,7 @@ describe("addStudentRole()", () => {
         ]);
         await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
         setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: [], classRole: null },
+            [user.email]: { roles: { global: [], class: [] } },
         });
         mockClassrooms[classId].customRoles = { [helperRoleId]: ["class.poll.create"] };
 
@@ -380,7 +414,7 @@ describe("addStudentRole()", () => {
         await seedClassUser(classId, user.id);
         setupMockClassroom(classId, user.id);
 
-        const actingUser = { classRoles: ["Student"], classRole: "Student" };
+        const actingUser = { roles: { global: [], class: ["Student"] } };
         const classroom = mockClassrooms[classId];
         const teacherRoleId = await getRoleIdByName("Teacher");
 
@@ -388,16 +422,11 @@ describe("addStudentRole()", () => {
     });
 });
 
-// ── removeStudentRole ──
-
 describe("removeStudentRole()", () => {
     it("removes an assigned role", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
-        setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: ["Mod"], classRole: "Mod" },
-        });
 
         await getClassRoles(classId);
         const modRole = await mockDatabase.dbGet(
@@ -408,6 +437,12 @@ describe("removeStudentRole()", () => {
             [classId]
         );
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
+
+        setupMockClassroom(classId, user.id, {
+            [user.email]: {
+                roles: { global: [], class: [{ id: modRole.id, name: "Mod" }] },
+            },
+        });
 
         await removeStudentRole(classId, user.id, modRole.id);
 
@@ -415,13 +450,10 @@ describe("removeStudentRole()", () => {
         expect(roles).toEqual(["Student"]);
     });
 
-    it("updates in-memory classRoles after removal", async () => {
+    it("updates in-memory roles.class after removal", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
         await seedClassUser(classId, user.id);
-        setupMockClassroom(classId, user.id, {
-            [user.email]: { classRoles: ["Mod"], classRole: "Mod" },
-        });
 
         await getClassRoles(classId);
         const modRole = await mockDatabase.dbGet(
@@ -433,10 +465,16 @@ describe("removeStudentRole()", () => {
         );
         await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, modRole.id, classId]);
 
+        setupMockClassroom(classId, user.id, {
+            [user.email]: {
+                roles: { global: [], class: [{ id: modRole.id, name: "Mod" }] },
+            },
+        });
+
         await removeStudentRole(classId, user.id, modRole.id);
 
         const student = mockClassrooms[classId].students[user.email];
-        expect(student.classRoles).not.toContain("Mod");
+        expect(student.roles.class.map((role) => role.name)).not.toContain("Mod");
     });
 
     it("throws ValidationError for Guest role", async () => {
@@ -462,15 +500,13 @@ describe("removeStudentRole()", () => {
     });
 });
 
-// ── getClassRoles ──
-
 describe("getClassRoles()", () => {
     it("returns default roles", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
 
         const roles = await getClassRoles(classId);
-        const names = roles.map((r) => r.name);
+        const names = roles.map((role) => role.name);
         expect(names).toContain("Guest");
         expect(names).toContain("Student");
         expect(names).toContain("Mod");
@@ -490,7 +526,7 @@ describe("getClassRoles()", () => {
         await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
 
         const roles = await getClassRoles(classId);
-        const custom = roles.find((r) => r.name === "Helper");
+        const custom = roles.find((role) => role.name === "Helper");
         expect(custom).toBeDefined();
         expect(custom.scopes).toEqual(["class.poll.create"]);
     });
@@ -501,7 +537,7 @@ describe("getClassRoles()", () => {
 
         const roles = await getClassRoles(classId);
         expect(roles.length).toBeGreaterThanOrEqual(6);
-        roles.forEach((r) => expect(typeof r.id).toBe("number"));
+        roles.forEach((role) => expect(typeof role.id).toBe("number"));
     });
 
     it("allows updating default role scopes in a class", async () => {
@@ -509,19 +545,19 @@ describe("getClassRoles()", () => {
         const classId = await seedClass(user.id);
 
         const roles = await getClassRoles(classId);
-        const teacherRole = roles.find((r) => r.name === "Teacher");
+        const teacherRole = roles.find((role) => role.name === "Teacher");
         expect(teacherRole).toBeDefined();
 
         await updateClassRole({
             roleId: teacherRole.id,
-            classId: classId,
+            classId,
             updates: { scopes: ["class.poll.read"] },
-            actingClassUser: { classRoles: ["Manager"], classRole: "Manager" },
-            classroom: {}
+            actingClassUser: { roles: { global: [], class: ["Manager"] } },
+            classroom: { customRoles: {} },
         });
 
         const updatedRoles = await getClassRoles(classId);
-        const updatedTeacher = updatedRoles.find((r) => r.name === "Teacher");
+        const updatedTeacher = updatedRoles.find((role) => role.name === "Teacher");
         expect(updatedTeacher.scopes).toEqual(["class.poll.read"]);
     });
 
@@ -536,8 +572,7 @@ describe("getClassRoles()", () => {
         await mockDatabase.dbRun("INSERT INTO class_roles (roleId, classId) VALUES (?, ?)", [helperRoleId, classId]);
 
         const roles = await getClassRoles(classId);
-        const custom = roles.find((r) => r.name === "Helper");
+        const custom = roles.find((role) => role.name === "Helper");
         expect(custom.color).toBe("#123456");
     });
-
 });

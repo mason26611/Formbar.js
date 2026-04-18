@@ -33,7 +33,7 @@ jest.mock("@modules/config", () => {
         privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     return {
-        settings: { emailEnabled: false, googleOauthEnabled: false },
+        settings: { emailEnabled: false, oidcProviders: [] },
         publicKey,
         privateKey,
         frontendUrl: "http://localhost:3000",
@@ -188,8 +188,7 @@ describe("GET /api/v1/user/me", () => {
             students: {
                 [user.email]: {
                     email: user.email,
-                    classRole: "Teacher",
-                    classRoles: ["Teacher"],
+                    roles: { global: [], class: ["Teacher"] },
                 },
             },
         });
@@ -531,9 +530,12 @@ describe("GET /api/v1/user/:id/scopes", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.data).toHaveProperty("role");
-        expect(res.body.data).toHaveProperty("globalScopes");
-        expect(res.body.data).toHaveProperty("classRoles");
-        expect(res.body.data).toHaveProperty("classScopes");
+        expect(res.body.data).toHaveProperty("roles");
+        expect(res.body.data).toHaveProperty("scopes");
+        expect(res.body.data.roles).toHaveProperty("global");
+        expect(res.body.data.roles).toHaveProperty("class");
+        expect(res.body.data.scopes).toHaveProperty("global");
+        expect(res.body.data.scopes).toHaveProperty("class");
     });
 
     it("returns 200 when a manager views another user's scopes", async () => {
