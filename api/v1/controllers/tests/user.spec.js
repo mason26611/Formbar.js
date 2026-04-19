@@ -233,7 +233,7 @@ describe("GET /api/v1/user/me", () => {
 
     it("returns guest data with digipogs from in-memory state", async () => {
         const guestUser = {
-            id: "guest-1",
+            id: 1000000001,
             email: "guest_1@guest.local",
             displayName: "Guest One",
             digipogs: 0,

@@ -5,6 +5,12 @@ const { classStateStore } = require("@services/classroom-service");
 const { GUEST_PERMISSIONS } = require("@modules/permissions");
 const { requireBodyParam } = require("@modules/error-wrapper");
 
+let nextGuestId = Date.now();
+
+function createGuestId() {
+    return nextGuestId++;
+}
+
 module.exports = (router) => {
     /**
      * @swagger
@@ -32,7 +38,7 @@ module.exports = (router) => {
         requireBodyParam(displayName, "displayName");
 
         const email = `guest_${crypto.randomUUID()}@guest.local`;
-        const id = crypto.randomUUID();
+        const id = createGuestId();
         const userData = {
             id,
             email,
