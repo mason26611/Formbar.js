@@ -70,6 +70,16 @@ function compare(text, hash) {
 }
 
 /**
+ * Returns true when the provided value looks like a bcrypt hash.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isBcryptHash(value) {
+    return typeof value === "string" && /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+/**
  * Generates a SHA-256 hex digest for the provided input string.
  *
  * @param {string} input - The input to hash.
@@ -91,4 +101,5 @@ module.exports = {
     hash,
     compare,
     sha256,
+    isBcryptHash,
 };

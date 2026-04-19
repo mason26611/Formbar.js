@@ -107,7 +107,7 @@ jest.mock("@services/student-service", () => ({
 const fs = require("fs");
 const realReadFileSync = fs.readFileSync;
 const bcrypt = require("bcrypt");
-const { hash } = require("@modules/crypto");
+const { hash, sha256 } = require("@modules/crypto");
 const { sendMail } = require("@modules/mail");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { classStateStore } = require("@services/classroom-service");
@@ -377,8 +377,7 @@ describe("regenerateAPIKey()", () => {
         const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [seeded.id]);
         expect(row.API).not.toBe("oldapi");
         expect(row.API).not.toBe(newKey);
-        const matches = await bcrypt.compare(newKey, row.API);
-        expect(matches).toBe(true);
+        expect(row.API).toBe(sha256(newKey));
     });
 
     it("invalidates the API key cache", async () => {
@@ -424,10 +423,11 @@ describe("resetPin()", () => {
         const seeded = await seedUser({ secret: "pintoken1" });
         await resetPin("5678", "pintoken1");
 
-        const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
+        const row = await mockDatabase.dbGet("SELECT pin, pin_lookup_hash FROM users WHERE id = ?", [seeded.id]);
         expect(row.pin).not.toBe("5678");
         const matches = await bcrypt.compare("5678", row.pin);
         expect(matches).toBe(true);
+        expect(row.pin_lookup_hash).toBe(sha256("5678"));
     });
 });
 
@@ -449,9 +449,10 @@ describe("updatePin()", () => {
         const seeded = await seedUser({ pin: null });
         await updatePin(seeded.id, null, "1234");
 
-        const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
+        const row = await mockDatabase.dbGet("SELECT pin, pin_lookup_hash FROM users WHERE id = ?", [seeded.id]);
         const matches = await bcrypt.compare("1234", row.pin);
         expect(matches).toBe(true);
+        expect(row.pin_lookup_hash).toBe(sha256("1234"));
     });
 
     it("updates pin when old pin matches", async () => {
@@ -459,9 +460,10 @@ describe("updatePin()", () => {
         const seeded = await seedUser({ pin: hashedOld });
         await updatePin(seeded.id, "1111", "2222");
 
-        const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
+        const row = await mockDatabase.dbGet("SELECT pin, pin_lookup_hash FROM users WHERE id = ?", [seeded.id]);
         const matches = await bcrypt.compare("2222", row.pin);
         expect(matches).toBe(true);
+        expect(row.pin_lookup_hash).toBe(sha256("2222"));
     });
 
     it("throws AuthError when old pin is incorrect", async () => {

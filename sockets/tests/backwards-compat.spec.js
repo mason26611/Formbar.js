@@ -1,10 +1,14 @@
 jest.mock("@services/auth-service");
 jest.mock("@modules/crypto");
 jest.mock("@modules/database");
+jest.mock("@services/user-service", () => ({
+    getUserDataFromAPIKey: jest.fn(),
+    getUserDataFromDb: jest.fn(),
+}));
 
 const { run: backwardsCompatRun } = require("../backwards-compat");
 const { verifyToken } = require("@services/auth-service");
-const { dbGetAll, dbGet } = require("@modules/database");
+const { getUserDataFromAPIKey, getUserDataFromDb } = require("@services/user-service");
 const { classStateStore } = require("@services/classroom-service");
 const { createSocket, createSocketUpdates, testData } = require("@modules/tests/tests");
 
@@ -52,9 +56,7 @@ describe("backwards-compat", () => {
 
         it("should emit an error when no user matches the API key", async () => {
             socket.request.session.email = null;
-            const { compare } = require("@modules/crypto");
-            dbGetAll.mockResolvedValueOnce([{ id: 1, email: "other@test.com", API: "hashed" }]);
-            compare.mockResolvedValue(false);
+            getUserDataFromAPIKey.mockResolvedValueOnce(null);
 
             await getActiveClassHandler("invalidKey");
             expect(socket.emit).toHaveBeenCalledWith("error", "Invalid API key.");
@@ -91,7 +93,7 @@ describe("backwards-compat", () => {
         it("should emit an error when the user is not found in the database", async () => {
             socket.request.session.email = null;
             verifyToken.mockReturnValueOnce({ email: testData.email, id: testData.userId });
-            dbGet.mockResolvedValueOnce(null);
+            getUserDataFromDb.mockResolvedValueOnce(null);
 
             await authHandler({ token: "valid-token" });
             expect(socket.emit).toHaveBeenCalledWith("error", "User not found.");

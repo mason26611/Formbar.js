@@ -149,6 +149,12 @@ describe("register()", () => {
         expect(row.password.startsWith("$2b$")).toBe(true);
     });
 
+    it("stores API keys as sha256 digests for indexed authentication", async () => {
+        await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE email = ?", [VALID_EMAIL]);
+        expect(row.API).toMatch(/^[0-9a-f]{64}$/);
+    });
+
     it("persists a refresh token in the refresh_tokens table", async () => {
         await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
         const rows = await mockDatabase.dbGetAll("SELECT * FROM refresh_tokens");

@@ -18,7 +18,7 @@ const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-se
 const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { hash } = require("@modules/crypto");
+const { hash, sha256, isBcryptHash } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
@@ -27,6 +27,231 @@ let passwordResetTemplate;
 let verifyEmailTemplate;
 let pinResetTemplate;
 
+/**
+ * Compares a provided secret against a stored user secret.
+ *
+ * Supports both legacy plaintext values and newer bcrypt-hashed values so
+ * callers can authenticate users while transparently migrating stored data.
+ *
+ * @param {string} plainTextSecret - Secret supplied by the caller.
+ * @param {string} storedSecret - Secret currently stored for the user.
+ * @returns {Promise<boolean>} `true` when the provided secret matches.
+ */
+async function storedSecretMatches(plainTextSecret, storedSecret) {
+    if (typeof plainTextSecret !== "string" || typeof storedSecret !== "string" || !plainTextSecret || !storedSecret) {
+        return false;
+    }
+
+    if (isBcryptHash(storedSecret)) {
+        return bcrypt.compare(plainTextSecret, storedSecret);
+    }
+
+    return storedSecret === plainTextSecret;
+}
+
+/**
+ * Upgrades stored user secret fields when legacy values are encountered.
+ *
+ * Re-hashes plaintext secrets and optionally backfills a lookup hash column.
+ *
+ * @param {object} params - Upgrade inputs.
+ * @param {number} params.userId - User whose record should be updated.
+ * @param {string} params.secretColumn - Database column containing the secret.
+ * @param {string} [params.lookupColumn] - Optional lookup-hash column name.
+ * @param {string} params.plainTextSecret - Secret in plaintext form.
+ * @param {string} params.storedSecret - Existing stored secret value.
+ * @param {string} [params.lookupHash] - Desired lookup hash for the secret.
+ * @param {string} [params.currentLookupHash] - Currently stored lookup hash.
+ * @returns {Promise<void>}
+ */
+async function upgradeUserSecretIfNeeded({ userId, secretColumn, lookupColumn, plainTextSecret, storedSecret, lookupHash, currentLookupHash }) {
+    const updates = [];
+    const params = [];
+
+    if (!isBcryptHash(storedSecret)) {
+        updates.push(`${secretColumn} = ?`);
+        params.push(await hash(plainTextSecret));
+    }
+
+    if (lookupColumn && lookupHash && currentLookupHash !== lookupHash) {
+        updates.push(`${lookupColumn} = ?`);
+        params.push(lookupHash);
+    }
+
+    if (updates.length === 0) {
+        return;
+    }
+
+    params.push(userId);
+    await dbRun(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
+}
+
+/**
+ * Filters rows down to users whose stored secret matches the provided value.
+ *
+ * Matching users are upgraded in-place if their stored secret format or lookup
+ * hash is out of date.
+ *
+ * @param {object[]} rows - Candidate user rows to inspect.
+ * @param {object} params - Matching configuration.
+ * @param {string} params.plainTextSecret - Secret to compare against each row.
+ * @param {string} params.secretColumn - Row property containing the secret.
+ * @param {string} [params.lookupColumn] - Optional lookup-hash property name.
+ * @param {string} [params.lookupHash] - Desired lookup hash for upgrades.
+ * @returns {Promise<object[]>} Matching user rows.
+ */
+async function findMatchingUsersBySecret(rows, { plainTextSecret, secretColumn, lookupColumn, lookupHash }) {
+    const matches = [];
+
+    for (const row of rows) {
+        if (!(await storedSecretMatches(plainTextSecret, row[secretColumn]))) {
+            continue;
+        }
+
+        await upgradeUserSecretIfNeeded({
+            userId: row.id,
+            secretColumn,
+            lookupColumn,
+            plainTextSecret,
+            storedSecret: row[secretColumn],
+            lookupHash,
+            currentLookupHash: lookupColumn ? row[lookupColumn] : undefined,
+        });
+
+        matches.push(row);
+    }
+
+    return matches;
+}
+
+/**
+ * Normalizes a user's stored API key value to the current hash format.
+ *
+ * @param {number} userId - User whose API key should be upgraded.
+ * @param {string} apiKey - Plaintext API key presented by the caller.
+ * @param {string} storedApiValue - Value currently stored in the database.
+ * @returns {Promise<void>}
+ */
+async function upgradeUserApiKeyIfNeeded(userId, apiKey, storedApiValue) {
+    const normalizedApiHash = sha256(apiKey);
+    if (storedApiValue === normalizedApiHash) {
+        return;
+    }
+
+    await dbRun("UPDATE users SET API = ? WHERE id = ?", [normalizedApiHash, userId]);
+}
+
+/**
+ * Looks up a fully computed user record from an API key.
+ *
+ * Checks the in-memory cache first, then supports both hashed and legacy
+ * plaintext stored API keys, upgrading legacy values when found.
+ *
+ * @param {string} apiKey - API key supplied by the client.
+ * @returns {Promise<object|null>} Computed user data or `null` if no match exists.
+ */
+async function getUserDataFromAPIKey(apiKey) {
+    if (!apiKey || typeof apiKey !== "string") {
+        return null;
+    }
+
+    const cachedEmail = apiKeyCacheStore.get(apiKey);
+    if (cachedEmail) {
+        const cachedUser = await dbGet("SELECT id FROM users WHERE email = ?", [cachedEmail]);
+        if (cachedUser) {
+            return getUserDataFromDb(cachedUser.id);
+        }
+
+        apiKeyCacheStore.delete(apiKey);
+    }
+
+    const apiHash = sha256(apiKey);
+    const directMatch = await dbGet("SELECT id, email, API FROM users WHERE API = ?", [apiHash]);
+    if (directMatch) {
+        apiKeyCacheStore.set(apiKey, directMatch.email);
+        return getUserDataFromDb(directMatch.id);
+    }
+
+    const matchedUser = (
+        await findMatchingUsersBySecret(
+            await dbGetAll("SELECT id, email, API FROM users WHERE API IS NOT NULL AND API != ?", [apiHash]),
+            {
+                plainTextSecret: apiKey,
+                secretColumn: "API",
+            }
+        )
+    )[0];
+
+    if (!matchedUser) {
+        return null;
+    }
+
+    await upgradeUserApiKeyIfNeeded(matchedUser.id, apiKey, matchedUser.API);
+    apiKeyCacheStore.set(apiKey, matchedUser.email);
+    return getUserDataFromDb(matchedUser.id);
+}
+
+/**
+ * Resolves a user from a PIN, handling both migrated and unmigrated rows.
+ *
+ * The lookup returns a user only when the PIN uniquely matches exactly one
+ * account.
+ *
+ * @param {string} pin - PIN supplied by the client.
+ * @returns {Promise<object|null>} Computed user data or `null` when not unique.
+ */
+async function getUserDataFromPin(pin) {
+    if (!pin || typeof pin !== "string") {
+        return null;
+    }
+
+    const pinLookupHash = sha256(pin);
+    const matchedUsers = [];
+    const seenUserIds = new Set();
+
+    for (const user of await findMatchingUsersBySecret(
+        await dbGetAll("SELECT id, pin, pin_lookup_hash FROM users WHERE pin_lookup_hash = ?", [pinLookupHash]),
+        {
+            plainTextSecret: pin,
+            secretColumn: "pin",
+            lookupColumn: "pin_lookup_hash",
+            lookupHash: pinLookupHash,
+        }
+    )) {
+        if (!seenUserIds.has(user.id)) {
+            seenUserIds.add(user.id);
+            matchedUsers.push(user);
+        }
+    }
+
+    for (const user of await findMatchingUsersBySecret(
+        await dbGetAll("SELECT id, pin, pin_lookup_hash FROM users WHERE pin IS NOT NULL AND pin_lookup_hash IS NULL"),
+        {
+            plainTextSecret: pin,
+            secretColumn: "pin",
+            lookupColumn: "pin_lookup_hash",
+            lookupHash: pinLookupHash,
+        }
+    )) {
+        if (!seenUserIds.has(user.id)) {
+            seenUserIds.add(user.id);
+            matchedUsers.push(user);
+        }
+    }
+
+    if (matchedUsers.length !== 1) {
+        return null;
+    }
+
+    return getUserDataFromDb(matchedUsers[0].id);
+}
+
+/**
+ * Lazily loads and caches the password-reset email template.
+ *
+ * @throws {AppError} When the template file cannot be read or compiled.
+ * @returns {HandlebarsTemplateDelegate} Compiled password-reset template.
+ */
 function loadPasswordResetTemplate() {
     if (passwordResetTemplate) {
         return passwordResetTemplate;
@@ -47,6 +272,12 @@ function loadPasswordResetTemplate() {
     }
 }
 
+/**
+ * Lazily loads and caches the PIN-reset email template.
+ *
+ * @throws {AppError} When the template file cannot be read or compiled.
+ * @returns {HandlebarsTemplateDelegate} Compiled PIN-reset template.
+ */
 function loadPinResetTemplate() {
     if (pinResetTemplate) {
         return pinResetTemplate;
@@ -66,6 +297,13 @@ function loadPinResetTemplate() {
     }
 }
 
+/**
+ * Generates and emails a PIN reset token for the given user.
+ *
+ * @param {number} userId - User requesting a PIN reset.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @returns {Promise<void>}
+ */
 async function requestPinReset(userId) {
     requireInternalParam(userId, "userId");
 
@@ -84,6 +322,14 @@ async function requestPinReset(userId) {
     sendMail(user.email, "Formbar PIN Reset", template({ resetUrl: `${frontendUrl}/user/me/pin?code=${token}` }));
 }
 
+/**
+ * Resets a user's PIN using a reset token.
+ *
+ * @param {string|number} newPin - New PIN to store.
+ * @param {string} token - PIN reset token from the email link.
+ * @throws {NotFoundError} When the token is invalid or expired.
+ * @returns {Promise<void>}
+ */
 async function resetPin(newPin, token) {
     requireInternalParam(newPin, "newPin");
     requireInternalParam(token, "token");
@@ -96,10 +342,21 @@ async function resetPin(newPin, token) {
         });
     }
 
-    const hashedPin = await hash(String(newPin));
-    await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, user.id]);
+    const normalizedPin = String(newPin);
+    const hashedPin = await hash(normalizedPin);
+    const pinLookupHash = sha256(normalizedPin);
+    await dbRun("UPDATE users SET pin = ?, pin_lookup_hash = ? WHERE id = ?", [hashedPin, pinLookupHash, user.id]);
 }
 
+/**
+ * Updates a user's PIN, validating the existing PIN when one is already set.
+ *
+ * @param {number} userId - User whose PIN should be updated.
+ * @param {string|number} [oldPin] - Existing PIN, required when a PIN exists.
+ * @param {string|number} newPin - New PIN to persist.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @returns {Promise<void>}
+ */
 async function updatePin(userId, oldPin, newPin) {
     requireInternalParam(userId, "userId");
     requireInternalParam(newPin, "newPin");
@@ -115,7 +372,8 @@ async function updatePin(userId, oldPin, newPin) {
     // If user already has a PIN, verify the old one matches
     if (user.pin) {
         requireInternalParam(oldPin, "oldPin");
-        const oldPinMatches = await bcrypt.compare(String(oldPin), user.pin);
+        const normalizedOldPin = String(oldPin);
+        const oldPinMatches = await storedSecretMatches(normalizedOldPin, user.pin);
         if (!oldPinMatches) {
             const AuthError = require("@errors/auth-error");
             throw new AuthError("Current PIN is incorrect.", {
@@ -123,12 +381,33 @@ async function updatePin(userId, oldPin, newPin) {
                 reason: "incorrect_old_pin",
             });
         }
+
+        await upgradeUserSecretIfNeeded({
+            userId,
+            secretColumn: "pin",
+            lookupColumn: "pin_lookup_hash",
+            plainTextSecret: normalizedOldPin,
+            storedSecret: user.pin,
+            lookupHash: sha256(normalizedOldPin),
+            currentLookupHash: user.pin_lookup_hash,
+        });
     }
 
-    const hashedPin = await hash(String(newPin));
-    await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
+    const normalizedNewPin = String(newPin);
+    const hashedPin = await hash(normalizedNewPin);
+    const pinLookupHash = sha256(normalizedNewPin);
+    await dbRun("UPDATE users SET pin = ?, pin_lookup_hash = ? WHERE id = ?", [hashedPin, pinLookupHash, userId]);
 }
 
+/**
+ * Verifies a user's PIN and upgrades legacy stored values if needed.
+ *
+ * @param {number} userId - User whose PIN should be checked.
+ * @param {string|number} pin - PIN supplied by the caller.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @throws {AppError} When the user has not created a PIN yet.
+ * @returns {Promise<boolean>} Always `true` when verification succeeds.
+ */
 async function verifyPin(userId, pin) {
     requireInternalParam(userId, "userId");
     requireInternalParam(pin, "pin");
@@ -149,7 +428,8 @@ async function verifyPin(userId, pin) {
         });
     }
 
-    const pinMatches = await bcrypt.compare(String(pin), user.pin);
+    const normalizedPin = String(pin);
+    const pinMatches = await storedSecretMatches(normalizedPin, user.pin);
     if (!pinMatches) {
         const AuthError = require("@errors/auth-error");
         throw new AuthError("PIN is incorrect.", {
@@ -158,9 +438,25 @@ async function verifyPin(userId, pin) {
         });
     }
 
+    await upgradeUserSecretIfNeeded({
+        userId,
+        secretColumn: "pin",
+        lookupColumn: "pin_lookup_hash",
+        plainTextSecret: normalizedPin,
+        storedSecret: user.pin,
+        lookupHash: sha256(normalizedPin),
+        currentLookupHash: user.pin_lookup_hash,
+    });
+
     return true;
 }
 
+/**
+ * Lazily loads and caches the verification-email template.
+ *
+ * @throws {AppError} When the template file cannot be read or compiled.
+ * @returns {HandlebarsTemplateDelegate} Compiled verification-email template.
+ */
 function loadVerifyEmailTemplate() {
     if (verifyEmailTemplate) {
         return verifyEmailTemplate;
@@ -180,6 +476,12 @@ function loadVerifyEmailTemplate() {
     }
 }
 
+/**
+ * Fetches a user row and decorates it with roles, scopes, and permission levels.
+ *
+ * @param {number} userId - User id to load.
+ * @returns {Promise<object|null>} Computed user data or `null` if not found.
+ */
 async function getUserDataFromDb(userId) {
     const user = await dbGet("SELECT * FROM users WHERE id = ?", [userId]);
     if (!user) {
@@ -199,6 +501,15 @@ async function getUserDataFromDb(userId) {
     };
 }
 
+/**
+ * Creates a password-reset token and emails it to the user if the account exists.
+ *
+ * The method intentionally returns success even for unknown emails so callers do
+ * not leak account existence.
+ *
+ * @param {string} email - Email address requesting a reset.
+ * @returns {Promise<boolean>} Always `true` when the request is accepted.
+ */
 async function requestPasswordReset(email) {
     requireInternalParam(email, "email");
 
@@ -216,6 +527,14 @@ async function requestPasswordReset(email) {
     return true;
 }
 
+/**
+ * Sends an email-verification link to an existing user.
+ *
+ * @param {number} userId - User requesting verification.
+ * @param {string} apiBaseUrl - API base URL used when no frontend URL is configured.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @returns {Promise<{alreadyVerified: boolean}>} Verification status result.
+ */
 async function requestVerificationEmail(userId, apiBaseUrl) {
     requireInternalParam(userId, "userId");
 
@@ -241,6 +560,13 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
     return { alreadyVerified: false };
 }
 
+/**
+ * Marks a user as verified using an emailed verification token.
+ *
+ * @param {string} code - Verification token from the email link.
+ * @throws {NotFoundError} When the token is invalid or expired.
+ * @returns {Promise<{userId: number, alreadyVerified: boolean}>} Verification result.
+ */
 async function verifyEmailFromCode(code) {
     requireInternalParam(code, "code");
 
@@ -262,6 +588,14 @@ async function verifyEmailFromCode(code) {
     return { userId: user.id, alreadyVerified: Boolean(user.verified) };
 }
 
+/**
+ * Resets a user's password using a password-reset token.
+ *
+ * @param {string} password - New password to store.
+ * @param {string} token - Password reset token from the email link.
+ * @throws {NotFoundError} When the token is invalid or expired.
+ * @returns {Promise<boolean>} Always `true` when the reset succeeds.
+ */
 async function resetPassword(password, token) {
     requireInternalParam(password, "password");
     requireInternalParam(token, "token");
@@ -280,6 +614,15 @@ async function resetPassword(password, token) {
     return true;
 }
 
+/**
+ * Changes a user's password, validating the current password when one exists.
+ *
+ * @param {number} userId - User whose password should be updated.
+ * @param {string} [oldPassword] - Existing password, required when set.
+ * @param {string} newPassword - New password to persist.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @returns {Promise<boolean>} Always `true` when the update succeeds.
+ */
 async function updatePassword(userId, oldPassword, newPassword) {
     requireInternalParam(userId, "userId");
     requireInternalParam(newPassword, "newPassword");
@@ -311,6 +654,16 @@ async function updatePassword(userId, oldPassword, newPassword) {
     return true;
 }
 
+/**
+ * Generates and stores a replacement API key for a user.
+ *
+ * The returned plaintext key is only available at generation time; the
+ * persisted database value stores a SHA-256 hash.
+ *
+ * @param {number} userId - User whose API key should be regenerated.
+ * @throws {NotFoundError} When the user cannot be found.
+ * @returns {Promise<string>} Newly generated plaintext API key.
+ */
 async function regenerateAPIKey(userId) {
     requireInternalParam(userId, "userId");
 
@@ -324,8 +677,7 @@ async function regenerateAPIKey(userId) {
 
     // Generate a new API key for the user
     const apiKey = crypto.randomBytes(32).toString("hex");
-    const hashedAPIKey = await hash(apiKey);
-    await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
+    await dbRun("UPDATE users SET API = ? WHERE id = ?", [sha256(apiKey), userId]);
 
     // Invalidate the cache for the user's email
     const email = await getEmailFromId(userId);
@@ -341,7 +693,10 @@ async function regenerateAPIKey(userId) {
 // User lookup
 
 /**
- * Gets the class id for the given user by checking in-memory classrooms.
+ * Gets the active classroom id for a user by scanning in-memory classrooms.
+ *
+ * @param {string} email - Email address to look up.
+ * @returns {number|null|Error} Matching classroom id, `null`, or an error object.
  */
 function getUserClass(email) {
     try {
@@ -359,39 +714,23 @@ function getUserClass(email) {
 }
 
 /**
- * Gets the email associated with an API key, with caching.
+ * Resolves the email address associated with an API key.
+ *
+ * Returns a small error object rather than throwing for invalid keys to match
+ * the legacy callers in this module.
+ *
+ * @param {string} api - API key to resolve.
+ * @returns {Promise<string|object|Error>} Email string or an error-shaped result.
  */
 async function getEmailFromAPIKey(api) {
     try {
         if (!api) return { error: "Missing API key" };
 
-        const cachedEmail = apiKeyCacheStore.get(api);
-        if (cachedEmail) return cachedEmail;
+        const user = await getUserDataFromAPIKey(api);
+        if (!user) {
+            return { error: "Not a valid API key" };
+        }
 
-        let user = await new Promise((resolve, reject) => {
-            database.all("SELECT * FROM users", [], async (err, users) => {
-                try {
-                    if (err) throw err;
-                    let userData = null;
-                    for (const user of users) {
-                        if (user.API && (await bcrypt.compare(api, user.API))) {
-                            userData = user;
-                            break;
-                        }
-                    }
-                    if (!userData) {
-                        resolve({ error: "Not a valid API key" });
-                        return;
-                    }
-                    resolve(userData);
-                } catch (err) {
-                    reject(err);
-                }
-            });
-        });
-
-        if (user.error) return user;
-        apiKeyCacheStore.set(api, user.email);
         return user.email;
     } catch (err) {
         return err;
@@ -399,7 +738,13 @@ async function getEmailFromAPIKey(api) {
 }
 
 /**
- * Gets the current user's data including class/session info.
+ * Loads a user's combined database and in-memory classroom/session state.
+ *
+ * The identifier can contain an email, user id, or API key. The returned value
+ * merges persistent user data with current classroom presence details.
+ *
+ * @param {{email?: string, id?: number, api?: string}} userIdentifier - User lookup input.
+ * @returns {Promise<object|Error>} Composite user data or an error object.
  */
 async function getUser(userIdentifier) {
     try {
@@ -472,7 +817,10 @@ async function getUser(userIdentifier) {
 }
 
 /**
- * Gets the classes owned by a user from their email.
+ * Gets all classroom records owned by the given email address.
+ *
+ * @param {string} email - Owner email address.
+ * @returns {Promise<object[]>} Classroom rows owned by the user.
  */
 async function getUserOwnedClasses(email) {
     const userId = (await dbGet("SELECT id FROM users WHERE email = ?", [email])).id;
@@ -482,7 +830,13 @@ async function getUserOwnedClasses(email) {
 // Session Management
 
 /**
- * Logs a user out from a specific socket, cleaning up session state.
+ * Logs out the user attached to a socket and cleans up related session state.
+ *
+ * Removes the socket from in-memory tracking, clears classroom presence, and
+ * ends an owned active class when the disconnected socket was the last session.
+ *
+ * @param {import("socket.io").Socket} socket - Socket to log out.
+ * @returns {void}
  */
 function logout(socket) {
     const email = socket.request.session.email;
@@ -549,7 +903,14 @@ function logout(socket) {
 }
 
 /**
- * Deletes a user account and all associated data.
+ * Deletes a user account and associated records, or clears a pending temp user.
+ *
+ * This method also logs out connected sockets, removes classroom state, deletes
+ * custom polls, and removes owned classrooms.
+ *
+ * @param {number|string} userId - Persistent user id or temporary user secret.
+ * @param {*} userSession - Reserved for legacy callers; currently unused.
+ * @returns {Promise<boolean|string>} `true` on success or a legacy error message.
  */
 async function deleteUser(userId, userSession) {
     try {
@@ -603,6 +964,8 @@ async function deleteUser(userId, userSession) {
 
 module.exports = {
     getUserDataFromDb,
+    getUserDataFromAPIKey,
+    getUserDataFromPin,
     requestPasswordReset,
     requestVerificationEmail,
     verifyEmailFromCode,

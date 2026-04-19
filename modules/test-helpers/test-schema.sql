@@ -11,11 +11,13 @@ CREATE TABLE IF NOT EXISTS "users" (
     "tags"        TEXT,
     "digipogs"    INTEGER NOT NULL DEFAULT 0,
     "pin"         TEXT    DEFAULT NULL,
+    "pin_lookup_hash" TEXT DEFAULT NULL,
     "displayName" TEXT,
     "verified"    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY ("id" AUTOINCREMENT)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_display_name_unique ON users (displayName);
+CREATE INDEX IF NOT EXISTS idx_users_pin_lookup_hash ON users (pin_lookup_hash);
 
 -- Refresh tokens (final state: uses token_hash, has token_type)
 CREATE TABLE IF NOT EXISTS "refresh_tokens" (

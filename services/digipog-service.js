@@ -1,7 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
-const { compare } = require("@modules/crypto");
+const { compare, hash, sha256, isBcryptHash } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
 
@@ -24,6 +24,39 @@ function cleanupOldAttempts() {
 const cleanupInterval = setInterval(cleanupOldAttempts, 5 * 60 * 1000);
 if (typeof cleanupInterval.unref === "function") {
     cleanupInterval.unref();
+}
+
+async function verifyStoredPinAndUpgrade(userId, providedPin, storedPin, storedLookupHash) {
+    if (typeof providedPin !== "string" || typeof storedPin !== "string" || !providedPin || !storedPin) {
+        return false;
+    }
+
+    const matches = isBcryptHash(storedPin) ? await compare(providedPin, storedPin) : storedPin === providedPin;
+    if (!matches) {
+        return false;
+    }
+
+    const pinLookupHash = sha256(providedPin);
+    const updates = [];
+    const params = [];
+    if (!isBcryptHash(storedPin)) {
+        updates.push("pin = ?");
+        params.push(await hash(providedPin));
+    }
+
+    if (storedLookupHash !== pinLookupHash) {
+        updates.push("pin_lookup_hash = ?");
+        params.push(pinLookupHash);
+    }
+
+    if (updates.length === 0) {
+        return true;
+    }
+
+    params.push(userId);
+    await dbRun(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
+
+    return true;
 }
 
 function checkRateLimit(accountId) {
@@ -797,8 +830,10 @@ async function transferDigipogs(transferData) {
                 recordAttempt(accountId, false);
                 return { success: false, message: "Sender pool not found." };
             }
-            const poolOwner = await dbGet("SELECT pin FROM users WHERE id = ?", [poolUser.user_id]);
+            const poolOwner = await dbGet("SELECT id, pin, pin_lookup_hash FROM users WHERE id = ?", [poolUser.user_id]);
             fromAccount.pin = poolOwner.pin;
+            fromAccount.pinOwnerId = poolOwner.id;
+            fromAccount.pinLookupHash = poolOwner.pin_lookup_hash;
         }
 
         if (!fromAccount.pin) {
@@ -806,7 +841,11 @@ async function transferDigipogs(transferData) {
             return { success: false, message: "Account PIN not configured." };
         }
 
-        const isPinValid = await compare(String(pin), fromAccount.pin);
+        const normalizedPin = String(pin);
+        const isPinValid =
+            from.type === "user"
+                ? await verifyStoredPinAndUpgrade(fromAccount.id, normalizedPin, fromAccount.pin, fromAccount.pin_lookup_hash)
+                : await verifyStoredPinAndUpgrade(fromAccount.pinOwnerId, normalizedPin, fromAccount.pin, fromAccount.pinLookupHash);
         if (!isPinValid) {
             recordAttempt(accountId, false);
             return { success: false, message: "Invalid PIN." };

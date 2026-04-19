@@ -1,9 +1,8 @@
 const { classStateStore } = require("@services/classroom-service");
-const { dbGet, dbGetAll } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { dbGet } = require("@modules/database");
 const { userHasScope } = require("@modules/scope-resolver");
 const { createStudentFromUserData } = require("@services/student-service");
-const { getUserDataFromDb } = require("@services/user-service");
+const { getUserDataFromPin } = require("@services/user-service");
 const { isAuthenticated } = require("@middleware/authentication");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -38,29 +37,9 @@ async function attachDigipogPinUser(req, res) {
         return;
     }
 
-    const pin = String(req.body.pin);
-    const users = await dbGetAll("SELECT id, pin FROM users WHERE pin IS NOT NULL");
-    let matchedUserId = null;
-
-    for (const candidate of users) {
-        if (!candidate.pin || !(await compare(pin, candidate.pin))) {
-            continue;
-        }
-
-        if (matchedUserId && matchedUserId !== candidate.id) {
-            return;
-        }
-
-        matchedUserId = candidate.id;
-    }
-
-    if (!matchedUserId) {
-        return new AuthError("Invalid PIN.");
-    }
-
-    const userData = await getUserDataFromDb(matchedUserId);
+    const userData = await getUserDataFromPin(String(req.body.pin));
     if (!userData) {
-        return;
+        return new AuthError("Invalid PIN.");
     }
 
     let user = classStateStore.getUser(userData.email);

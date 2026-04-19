@@ -2,11 +2,9 @@ const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compare } = require("@modules/crypto");
 const { createStudentFromUserData } = require("@services/student-service");
-const { getUserDataFromDb } = require("@services/user-service");
+const { getUserDataFromDb, getUserDataFromAPIKey } = require("@services/user-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = {};
@@ -85,27 +83,7 @@ async function isAuthenticated(req, res, next) {
     const apiKeyHeader = req.headers.api || req.query.api || req.body.api;
     const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
     if (apiKey) {
-        let apiUser = null;
-
-        // Fast path: check the in-memory cache to avoid bcrypt comparisons on repeat requests.
-        const cachedEmail = apiKeyCacheStore.get(apiKey);
-        if (cachedEmail) {
-            apiUser = await loadComputedUserByEmail(cachedEmail);
-        }
-
-        // Slow path: cache miss — scan all users with an API key and bcrypt-compare each one.
-        if (!apiUser) {
-            const users = await dbGetAll("SELECT * FROM users WHERE API IS NOT NULL");
-            for (const user of users) {
-                if (!user.API) continue;
-                const matches = await compare(apiKey, user.API);
-                if (matches) {
-                    apiUser = await getUserDataFromDb(user.id);
-                    apiKeyCacheStore.set(apiKey, user.email);
-                    break;
-                }
-            }
-        }
+        const apiUser = await getUserDataFromAPIKey(apiKey);
 
         if (!apiUser) {
             req.warnEvent("auth.invalid_api_key", "Invalid API key provided");

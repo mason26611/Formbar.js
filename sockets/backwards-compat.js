@@ -6,10 +6,8 @@
  * emits a deprecation warning so developers know to migrate.
  */
 
-const { dbGetAll } = require("@modules/database");
-const { compare } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
-const { getUserDataFromDb } = require("@services/user-service");
+const { getUserDataFromDb, getUserDataFromAPIKey } = require("@services/user-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
 const { finalizeAuthentication } = require("./middleware/api");
 
@@ -37,16 +35,7 @@ module.exports = {
                     return socket.emit("error", "Invalid API key format.");
                 }
 
-                // Find the user whose hashed API key matches the provided plaintext key.
-                // Limit to users with an API key set and only fetch needed columns.
-                const users = await dbGetAll("SELECT id, email, API, tags, displayName FROM users WHERE API IS NOT NULL");
-                let userData = null;
-                for (const user of users) {
-                    if (user.API && (await compare(apiKey, user.API))) {
-                        userData = await getUserDataFromDb(user.id);
-                        break;
-                    }
-                }
+                const userData = await getUserDataFromAPIKey(apiKey);
 
                 if (!userData) {
                     return socket.emit("error", "Invalid API key.");
