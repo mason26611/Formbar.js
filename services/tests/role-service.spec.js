@@ -671,6 +671,34 @@ describe("getClassRoles()", () => {
         expect(updatedTeacher.scopes).toEqual(["class.poll.read"]);
     });
 
+    it("deduplicates legacy and explicit assignments when customizing a default role", async () => {
+        const user = await seedUser();
+        const classId = await seedClass(user.id);
+        await seedClassUser(classId, user.id);
+
+        const roles = await getClassRoles(classId);
+        const teacherRole = roles.find((role) => role.name === "Teacher");
+
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, NULL)", [user.id, teacherRole.id]);
+        await mockDatabase.dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [user.id, teacherRole.id, classId]);
+
+        const updatedRole = await updateClassRole({
+            roleId: teacherRole.id,
+            classId,
+            updates: { scopes: ["class.poll.read"] },
+            actingClassUser: { roles: { global: [], class: ["Manager"] } },
+            classroom: { customRoles: {} },
+        });
+
+        const assignedRoles = await mockDatabase.dbGetAll(
+            "SELECT roleId, classId FROM user_roles WHERE userId = ? AND (classId = ? OR classId IS NULL) ORDER BY classId, roleId",
+            [user.id, classId]
+        );
+
+        expect(assignedRoles.filter((row) => Number(row.roleId) === Number(updatedRole.id) && Number(row.classId) === Number(classId))).toHaveLength(1);
+        expect(assignedRoles.some((row) => Number(row.roleId) === Number(teacherRole.id))).toBe(false);
+    });
+
     it("does not recreate a deleted default role on later reads", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);

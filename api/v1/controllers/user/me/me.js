@@ -77,6 +77,7 @@ module.exports = (router) => {
             data: {
                 id: req.user.id,
                 email: req.user.email,
+                isGuest: Boolean(req.user.isGuest),
                 activeClass: req.user.activeClass,
                 digipogs: digipogs,
                 pogMeter: req.user.pogMeter,

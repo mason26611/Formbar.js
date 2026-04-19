@@ -172,6 +172,7 @@ describe("GET /api/v1/user/me", () => {
             id: user.id,
             email: user.email,
             displayName: user.displayName,
+            isGuest: false,
         });
     });
 
@@ -257,6 +258,7 @@ describe("GET /api/v1/user/me", () => {
             email: guestUser.email,
             displayName: guestUser.displayName,
             digipogs: 0,
+            isGuest: true,
         });
     });
 });

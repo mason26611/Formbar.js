@@ -49,7 +49,7 @@ jest.mock("@modules/mail", () => ({ sendMail: jest.fn() }));
 const {
     register,
     login,
-    oidcOAuth,
+    oidcOAuthLogin,
     refreshLogin,
     verifyToken,
     generateAuthorizationCode,

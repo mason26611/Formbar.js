@@ -22,10 +22,20 @@ const DEFAULT_CLASS_ROLE_ORDER_CASE_SQL = [
 ].join("\n             ");
 const CLASS_ROLE_ORDER_BY_SQL = "cr.orderIndex IS NULL, cr.orderIndex, r.id";
 
+/**
+ * Builds the CASE SQL used to assign the default display order for built-in class roles.
+ * @param {string} roleNameExpression
+ * @returns {string}
+ */
 function getDefaultClassRoleOrderCaseSql(roleNameExpression) {
     return DEFAULT_CLASS_ROLE_ORDER_CASE_SQL.replace("__ROLE_NAME__", roleNameExpression);
 }
 
+/**
+ * Ensures a student object has normalized `roles.global` and `roles.class` arrays.
+ * @param {Object} student
+ * @returns {void}
+ */
 function ensureStudentRoleBuckets(student) {
     if (!student || typeof student !== "object") return;
     if (!student.roles || typeof student.roles !== "object" || Array.isArray(student.roles)) {
@@ -35,6 +45,11 @@ function ensureStudentRoleBuckets(student) {
     if (!Array.isArray(student.roles.class)) student.roles.class = [];
 }
 
+/**
+ * Sorts role response objects into their configured class order.
+ * @param {Array<{id?: number, orderIndex?: number|null}>} roles
+ * @returns {void}
+ */
 function sortAvailableRoles(roles) {
     if (!Array.isArray(roles)) {
         return;
@@ -68,6 +83,11 @@ async function addDefaultClassRoles(classId) {
     }
 }
 
+/**
+ * Backfills missing `class_roles.orderIndex` values for one class.
+ * @param {string|number} classId
+ * @returns {Promise<void>}
+ */
 async function backfillClassRoleOrderIndexes(classId) {
     requireInternalParam(classId, "classId");
 
@@ -84,6 +104,10 @@ async function backfillClassRoleOrderIndexes(classId) {
     );
 }
 
+/**
+ * Returns the set of scopes allowed on class-scoped roles.
+ * @returns {Set<string>}
+ */
 function getValidClassScopes() {
     return new Set(getAllClassScopes());
 }
@@ -125,6 +149,12 @@ function buildRoleResponse(role) {
     };
 }
 
+/**
+ * Finds an available role already loaded on an in-memory classroom object.
+ * @param {Object} classroom
+ * @param {string} roleName
+ * @returns {Object|null}
+ */
 function getAvailableRoleByName(classroom, roleName) {
     if (!classroom || !Array.isArray(classroom.availableRoles)) {
         return null;
@@ -133,18 +163,38 @@ function getAvailableRoleByName(classroom, roleName) {
     return classroom.availableRoles.find((role) => role.name === roleName) || null;
 }
 
+/**
+ * Normalizes scopes into a stable string key for equality checks.
+ * @param {string|string[]|null|undefined} scopes
+ * @returns {string}
+ */
 function buildScopesKey(scopes) {
     return [...new Set(parseStoredScopes(scopes))].sort().join("|");
 }
 
+/**
+ * Computes the class permission level for a role-like object.
+ * @param {{scopes: string|string[]|null|undefined}} role
+ * @returns {number}
+ */
 function getClassRolePermissionLevel(role) {
     return computeClassPermissionLevel(parseStoredScopes(role.scopes));
 }
 
+/**
+ * Computes the global permission level for a role-like object.
+ * @param {{scopes: string|string[]|null|undefined}} role
+ * @returns {number}
+ */
 function getGlobalRolePermissionLevel(role) {
     return computeGlobalPermissionLevel(parseStoredScopes(role.scopes));
 }
 
+/**
+ * Identifies the implicit member/guest role that should not be assigned explicitly.
+ * @param {{scopes: string|string[]|null|undefined}} role
+ * @returns {boolean}
+ */
 function isImplicitGuestRole(role) {
     return (
         getClassRolePermissionLevel(role) === GUEST_PERMISSIONS &&
@@ -225,6 +275,12 @@ async function getClassRoles(classId) {
     return rows.map((row) => buildRoleResponse(row));
 }
 
+/**
+ * Finds the first role that matches a permission level, globally or within a class.
+ * @param {number} permissionLevel
+ * @param {string|number|null} [classId=null]
+ * @returns {Promise<{id: number, name: string, scopes: string, color: string|null, orderIndex?: number|null}|null>}
+ */
 async function findRoleByPermissionLevel(permissionLevel, classId = null) {
     if (classId != null) {
         await backfillClassRoleOrderIndexes(classId);
@@ -302,6 +358,47 @@ async function createClassRole({ classId, name, scopes, actingClassUser, classro
 }
 
 /**
+ * Moves users of a shared default role to a new class-specific role.
+ * This is because the default roles are shared globally to save storage space, but once modified, they should be treated as custom roles.
+ * @param {number|string} oldRoleId
+ * @param {number|string} newRoleId
+ * @param {string|number} classId
+ * @returns {Promise<void>}
+ */
+async function replaceDefaultRoleAssignments(oldRoleId, newRoleId, classId) {
+    await dbRun(
+        `INSERT OR IGNORE INTO user_roles (userId, roleId, classId)
+         SELECT DISTINCT affected.userId, ?, ?
+         FROM (
+             SELECT ur.userId
+             FROM user_roles ur
+             WHERE ur.roleId = ?
+               AND ur.classId = ?
+             UNION
+             SELECT ur.userId
+             FROM user_roles ur
+             WHERE ur.roleId = ?
+               AND ur.classId IS NULL
+               AND ur.userId IN (SELECT studentId FROM classusers WHERE classId = ?)
+         ) AS affected`,
+        [newRoleId, classId, oldRoleId, classId, oldRoleId, classId]
+    );
+
+    await dbRun(
+        `DELETE FROM user_roles
+         WHERE roleId = ?
+           AND (
+                classId = ?
+                OR (
+                    classId IS NULL
+                    AND userId IN (SELECT studentId FROM classusers WHERE classId = ?)
+                )
+           )`,
+        [oldRoleId, classId, classId]
+    );
+}
+
+/**
  * Updates a role for a class.
  * @param {Object} params
  * @param {number|string} params.roleId
@@ -373,21 +470,20 @@ async function updateClassRole({ roleId, classId, updates, actingClassUser, clas
     const scopesJson = JSON.stringify(newScopes);
     let newRoleId = Number(roleId);
     if (isDefault) {
-        newRoleId = await dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [newName, scopesJson, newColor]);
-        await dbRun("UPDATE class_roles SET roleId = ? WHERE roleId = ? AND classId = ?", [newRoleId, roleId, classId]);
-        await dbRun(
-            `UPDATE user_roles
-             SET roleId = ?, classId = ?
-             WHERE roleId = ?
-               AND (
-                    classId = ?
-                    OR (
-                        classId IS NULL
-                        AND userId IN (SELECT studentId FROM classusers WHERE classId = ?)
-                    )
-               )`,
-            [newRoleId, classId, roleId, classId, classId]
-        );
+        await dbRun("BEGIN TRANSACTION", []);
+        try {
+            newRoleId = await dbRun("INSERT INTO roles (name, scopes, color, isDefault) VALUES (?, ?, ?, 0)", [newName, scopesJson, newColor]);
+            await dbRun("UPDATE class_roles SET roleId = ? WHERE roleId = ? AND classId = ?", [newRoleId, roleId, classId]);
+            await replaceDefaultRoleAssignments(roleId, newRoleId, classId);
+            await dbRun("COMMIT", []);
+        } catch (error) {
+            try {
+                await dbRun("ROLLBACK", []);
+            } catch {
+                // Ignore rollback failures if the transaction is already closed.
+            }
+            throw error;
+        }
     } else {
         await dbRun("UPDATE roles SET name = ?, scopes = ?, color = ? WHERE id = ?", [newName, scopesJson, newColor, roleId]);
     }
@@ -604,6 +700,11 @@ async function removeStudentRole(classId, userId, roleId) {
     }
 }
 
+/**
+ * Loads a user's global roles plus class roles for the first in-memory class they belong to.
+ * @param {number} userId
+ * @returns {Promise<{global: Array<Object>, class: Array<Object>}>}
+ */
 async function getUserRoles(userId) {
     requireInternalParam(userId, "userId");
 
@@ -765,6 +866,11 @@ async function loadCustomRoles(classId) {
     return customRoles;
 }
 
+/**
+ * Validates that a role name is present and within length limits.
+ * @param {string} name
+ * @returns {void}
+ */
 function validateRoleName(name) {
     if (typeof name !== "string" || name.trim().length === 0) {
         throw new ValidationError("Role name must be a non-empty string.");
@@ -774,6 +880,11 @@ function validateRoleName(name) {
     }
 }
 
+/**
+ * Validates that every provided scope is a known class scope.
+ * @param {unknown} scopes
+ * @returns {void}
+ */
 function validateScopes(scopes) {
     if (!Array.isArray(scopes)) {
         throw new ValidationError("Scopes must be an array of strings.");
@@ -789,6 +900,13 @@ function validateScopes(scopes) {
     }
 }
 
+/**
+ * Prevents callers from granting scopes they do not currently hold.
+ * @param {string[]} scopes
+ * @param {Object} actingClassUser
+ * @param {Object} classroom
+ * @returns {void}
+ */
 function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
     const userScopes = getUserScopes(actingClassUser, classroom);
     const actorScopes = new Set([...userScopes.global, ...userScopes.class]);
@@ -806,6 +924,13 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
     }
 }
 
+/**
+ * Prevents callers from assigning a role at or above their own effective level.
+ * @param {{name: string, scopes: string|string[]|null|undefined}} role
+ * @param {Object} actingClassUser
+ * @param {Object} classroom
+ * @returns {void}
+ */
 function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) {
     const roleScopes = buildRoleResponse(role).scopes;
     const actorLevel = getActorLevel(actingClassUser, classroom);
@@ -817,6 +942,12 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
     validateNoPrivilegeEscalation(roleScopes, actingClassUser, classroom);
 }
 
+/**
+ * Computes the acting user's effective class permission level.
+ * @param {Object|null} classUser
+ * @param {Object} classroom
+ * @returns {number}
+ */
 function getActorLevel(classUser, classroom) {
     if (!classUser) return GUEST_PERMISSIONS;
     const userScopes = getUserScopes(classUser, classroom);
@@ -826,11 +957,22 @@ function getActorLevel(classUser, classroom) {
     });
 }
 
+/**
+ * Looks up a user's email address by numeric user id.
+ * @param {number} userId
+ * @returns {Promise<string|null>}
+ */
 async function getEmailForUserId(userId) {
     const row = await dbGet("SELECT email FROM users WHERE id = ?", [userId]);
     return row ? row.email : null;
 }
 
+/**
+ * Resolves the acting classroom user from either the student roster or owner fallback.
+ * @param {Object|null} classroom
+ * @param {{id: number, email: string, roles?: {global?: Array<Object>}}} reqUser
+ * @returns {Object|null}
+ */
 function getActingUser(classroom, reqUser) {
     if (!classroom) return null;
     const student = classroom.students?.[reqUser.email];
