@@ -196,6 +196,10 @@ function getGlobalRolePermissionLevel(role) {
  * @returns {boolean}
  */
 function isImplicitGuestRole(role) {
+    if (role?.name === ROLE_NAMES.GUEST) {
+        return true;
+    }
+
     return (
         getClassRolePermissionLevel(role) === GUEST_PERMISSIONS &&
         buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || [])
@@ -603,7 +607,12 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
     }
 
     const classUser = await dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, userId]);
-    if (!classUser) {
+    const classroomObj = classStateStore.getClassroom(classId);
+    const isActiveInClassroom = Boolean(
+        classroomObj &&
+            Object.values(classroomObj.students || {}).some((student) => student && String(student.id) === String(userId))
+    );
+    if (!classUser && !isActiveInClassroom) {
         throw new NotFoundError("User is not a member of this class.");
     }
 
@@ -624,7 +633,6 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
 
     await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, role.id, classId]);
 
-    const classroomObj = classStateStore.getClassroom(classId);
     if (classroomObj) {
         const email = await getEmailForUserId(userId);
         if (email && classroomObj.students[email]) {
@@ -963,6 +971,12 @@ function getActorLevel(classUser, classroom) {
  * @returns {Promise<string|null>}
  */
 async function getEmailForUserId(userId) {
+    for (const user of Object.values(classStateStore.getAllUsers())) {
+        if (user && String(user.id) === String(userId)) {
+            return user.email || null;
+        }
+    }
+
     const row = await dbGet("SELECT email FROM users WHERE id = ?", [userId]);
     return row ? row.email : null;
 }

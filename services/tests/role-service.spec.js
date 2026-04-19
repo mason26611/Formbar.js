@@ -468,6 +468,36 @@ describe("addStudentRole()", () => {
         expect(roles).toContain("Helper");
     });
 
+    it("adds a role to an active global guest without classusers membership", async () => {
+        const owner = await seedUser();
+        const classId = await seedClass(owner.id);
+        const guestId = "guest-123";
+        const guestEmail = "guest@test.local";
+
+        mockUsers[guestEmail] = {
+            id: guestId,
+            email: guestEmail,
+            isGuest: true,
+            roles: { global: [], class: [] },
+        };
+
+        setupMockClassroom(classId, owner.id, {
+            [guestEmail]: {
+                id: guestId,
+                email: guestEmail,
+                isGuest: true,
+                roles: { global: [], class: [] },
+            },
+        });
+
+        const modRoleId = await getRoleIdByName("Mod", classId);
+        await addStudentRole(classId, guestId, modRoleId);
+
+        const roles = await getStudentRoles(classId, guestId);
+        expect(roles).toContain("Mod");
+        expect(mockClassrooms[classId].students[guestEmail].roles.class.map((role) => role.name)).toContain("Mod");
+    });
+
     it("throws ForbiddenError for privilege escalation", async () => {
         const user = await seedUser();
         const classId = await seedClass(user.id);
