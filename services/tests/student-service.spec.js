@@ -418,6 +418,12 @@ describe("getEmailFromId()", () => {
         expect(classStateStore.getAllUsers).toHaveBeenCalled();
     });
 
+    it("matches in-memory users when a numeric id is provided as a string", async () => {
+        mockUsers["mem@test.com"] = { id: 77, email: "mem@test.com" };
+        const email = await getEmailFromId("77");
+        expect(email).toBe("mem@test.com");
+    });
+
     it("falls back to DB query when user not in memory", async () => {
         const user = await seedUser({ email: "dbfb@test.com" });
         const email = await getEmailFromId(user.id);

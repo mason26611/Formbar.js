@@ -496,6 +496,9 @@ describe("addStudentRole()", () => {
         const roles = await getStudentRoles(classId, guestId);
         expect(roles).toContain("Mod");
         expect(mockClassrooms[classId].students[guestEmail].roles.class.map((role) => role.name)).toContain("Mod");
+
+        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [guestId, classId]);
+        expect(persistedAssignments).toEqual([]);
     });
 
     it("throws ForbiddenError for privilege escalation", async () => {
@@ -608,6 +611,39 @@ describe("removeStudentRole()", () => {
         await seedClassUser(classId, user.id);
 
         await expect(removeStudentRole(classId, user.id, 999999)).rejects.toThrow(ValidationError);
+    });
+
+    it("removes an in-memory-only role from an active guest", async () => {
+        const owner = await seedUser();
+        const classId = await seedClass(owner.id);
+        const guestId = "guest-456";
+        const guestEmail = "guest-remove@test.local";
+
+        mockUsers[guestEmail] = {
+            id: guestId,
+            email: guestEmail,
+            isGuest: true,
+            roles: { global: [], class: [] },
+        };
+
+        setupMockClassroom(classId, owner.id, {
+            [guestEmail]: {
+                id: guestId,
+                email: guestEmail,
+                isGuest: true,
+                roles: { global: [], class: [] },
+            },
+        });
+
+        const modRoleId = await getRoleIdByName("Mod", classId);
+        await addStudentRole(classId, guestId, modRoleId);
+        await removeStudentRole(classId, guestId, modRoleId);
+
+        expect(await getStudentRoles(classId, guestId)).toEqual([]);
+        expect(mockClassrooms[classId].students[guestEmail].roles.class).toEqual([]);
+
+        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [guestId, classId]);
+        expect(persistedAssignments).toEqual([]);
     });
 });
 

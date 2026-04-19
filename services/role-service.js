@@ -5,6 +5,7 @@ const { computeClassPermissionLevel, computeGlobalPermissionLevel, filterScopesB
 const { getUserScopes, getAllClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
+const { getEmailFromId } = require("@services/student-service");
 const ValidationError = require("@errors/validation-error");
 const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
@@ -161,6 +162,40 @@ function getAvailableRoleByName(classroom, roleName) {
     }
 
     return classroom.availableRoles.find((role) => role.name === roleName) || null;
+}
+
+/**
+ * Finds an active in-memory classroom student by user id.
+ * @param {Object|null|undefined} classroom
+ * @param {string|number} userId
+ * @returns {Promise<Object|null>}
+ */
+async function findActiveClassStudent(classroom, userId) {
+    if (!classroom || typeof classroom !== "object" || !classroom.students || typeof classroom.students !== "object") {
+        return null;
+    }
+
+    const email = await getEmailFromId(userId);
+    if (email && classroom.students[email]) {
+        return classroom.students[email];
+    }
+
+    return Object.values(classroom.students).find((student) => student && String(student.id) === String(userId)) || null;
+}
+
+/**
+ * Checks whether a student already has a role assigned in memory.
+ * @param {Object|null|undefined} student
+ * @param {string|number} roleId
+ * @returns {boolean}
+ */
+function hasInMemoryRole(student, roleId) {
+    if (!student) {
+        return false;
+    }
+
+    ensureStudentRoleBuckets(student);
+    return student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(roleId));
 }
 
 /**
@@ -608,10 +643,8 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
 
     const classUser = await dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, userId]);
     const classroomObj = classStateStore.getClassroom(classId);
-    const isActiveInClassroom = Boolean(
-        classroomObj &&
-            Object.values(classroomObj.students || {}).some((student) => student && String(student.id) === String(userId))
-    );
+    const activeStudent = await findActiveClassStudent(classroomObj, userId);
+    const isActiveInClassroom = Boolean(activeStudent);
     if (!classUser && !isActiveInClassroom) {
         throw new NotFoundError("User is not a member of this class.");
     }
@@ -627,20 +660,19 @@ async function addStudentRole(classId, userId, roleId, actingClassUser, classroo
            AND cr.classId = ?`,
         [userId, role.id, classId]
     );
-    if (existing || legacyExisting) {
+
+    if (existing || legacyExisting || hasInMemoryRole(activeStudent, role.id)) {
         throw new ValidationError(`User already has the "${role.name}" role.`);
     }
 
-    await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, role.id, classId]);
+    if (classUser) {
+        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, role.id, classId]);
+    }
 
-    if (classroomObj) {
-        const email = await getEmailForUserId(userId);
-        if (email && classroomObj.students[email]) {
-            const student = classroomObj.students[email];
-            ensureStudentRoleBuckets(student);
-            if (!student.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
-                student.roles.class.push(buildRoleReference(role));
-            }
+    if (activeStudent) {
+        ensureStudentRoleBuckets(activeStudent);
+        if (!activeStudent.roles.class.some((assignedRole) => Number(assignedRole.id) === Number(role.id))) {
+            activeStudent.roles.class.push(buildRoleReference(role));
         }
     }
 }
@@ -679,32 +711,31 @@ async function removeStudentRole(classId, userId, roleId) {
            )`,
         [userId, role.id, classId, classId]
     );
-    if (!existing) {
+    const classroomObj = classStateStore.getClassroom(classId);
+    const activeStudent = await findActiveClassStudent(classroomObj, userId);
+    if (!existing && !hasInMemoryRole(activeStudent, role.id)) {
         throw new ValidationError(`User does not have the "${role.name}" role.`);
     }
 
-    await dbRun(
-        `DELETE FROM user_roles
-         WHERE userId = ?
-           AND roleId = ?
-           AND (
-                classId = ?
-                OR (
-                    classId IS NULL
-                    AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = user_roles.roleId AND cr.classId = ?)
-                )
-           )`,
-        [userId, role.id, classId, classId]
-    );
+    if (existing) {
+        await dbRun(
+            `DELETE FROM user_roles
+             WHERE userId = ?
+               AND roleId = ?
+               AND (
+                    classId = ?
+                    OR (
+                        classId IS NULL
+                        AND EXISTS (SELECT 1 FROM class_roles cr WHERE cr.roleId = user_roles.roleId AND cr.classId = ?)
+                    )
+               )`,
+            [userId, role.id, classId, classId]
+        );
+    }
 
-    const classroomObj = classStateStore.getClassroom(classId);
-    if (classroomObj) {
-        const email = await getEmailForUserId(userId);
-        if (email && classroomObj.students[email]) {
-            const student = classroomObj.students[email];
-            ensureStudentRoleBuckets(student);
-            student.roles.class = student.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
-        }
+    if (activeStudent) {
+        ensureStudentRoleBuckets(activeStudent);
+        activeStudent.roles.class = activeStudent.roles.class.filter((assignedRole) => Number(assignedRole.id) !== Number(role.id));
     }
 }
 
@@ -721,7 +752,7 @@ async function getUserRoles(userId) {
         class: [],
     };
 
-    const email = await getEmailForUserId(userId);
+    const email = await getEmailFromId(userId);
     if (!email) {
         return roles;
     }
@@ -770,15 +801,8 @@ async function getStudentRoles(classId, userId) {
     requireInternalParam(classId, "classId");
     requireInternalParam(userId, "userId");
 
-    const rows = await dbGetAll(
-        `SELECT r.name
-         FROM user_roles ur
-         JOIN roles r ON ur.roleId = r.id
-         WHERE ur.classId = ?
-           AND ur.userId = ?`,
-        [classId, userId]
-    );
-    return rows.map((row) => row.name);
+    const assignments = await getStudentRoleAssignments(classId, userId);
+    return assignments.map((role) => role.name);
 }
 
 /**
@@ -802,7 +826,29 @@ async function getStudentRoleAssignments(classId, userId) {
         [classId, userId, classId]
     );
 
-    return rows.map((row) => buildRoleResponse(row));
+    const assignments = rows.map((row) => buildRoleResponse(row));
+    const existingRoleIds = new Set(assignments.map((role) => Number(role.id)));
+    const classroomObj = classStateStore.getClassroom(classId);
+    const activeStudent = await findActiveClassStudent(classroomObj, userId);
+    const inMemoryRoleIds = (activeStudent?.roles?.class || [])
+        .map((role) => Number(role?.id))
+        .filter((roleId) => Number.isFinite(roleId) && !existingRoleIds.has(roleId));
+
+    if (inMemoryRoleIds.length > 0) {
+        const placeholders = inMemoryRoleIds.map(() => "?").join(", ");
+        const missingRows = await dbGetAll(
+            `SELECT r.id, r.name, r.scopes, r.color, cr.orderIndex
+             FROM roles r
+             JOIN class_roles cr ON cr.roleId = r.id
+             WHERE cr.classId = ?
+               AND r.id IN (${placeholders})`,
+            [classId, ...inMemoryRoleIds]
+        );
+        assignments.push(...missingRows.map((row) => buildRoleResponse(row)));
+        sortAvailableRoles(assignments);
+    }
+
+    return assignments;
 }
 
 /**
@@ -843,7 +889,7 @@ async function assignStudentRole(classId, userId, roleName) {
 
     const classroom = classStateStore.getClassroom(classId);
     if (classroom) {
-        const email = await getEmailForUserId(userId);
+        const email = await getEmailFromId(userId);
         if (email && classroom.students[email]) {
             const student = classroom.students[email];
             ensureStudentRoleBuckets(student);
@@ -963,22 +1009,6 @@ function getActorLevel(classUser, classroom) {
         isOwner: Boolean(classUser.isClassOwner),
         globalScopes: userScopes.global,
     });
-}
-
-/**
- * Looks up a user's email address by numeric user id.
- * @param {number} userId
- * @returns {Promise<string|null>}
- */
-async function getEmailForUserId(userId) {
-    for (const user of Object.values(classStateStore.getAllUsers())) {
-        if (user && String(user.id) === String(userId)) {
-            return user.email || null;
-        }
-    }
-
-    const row = await dbGet("SELECT email FROM users WHERE id = ?", [userId]);
-    return row ? row.email : null;
 }
 
 /**

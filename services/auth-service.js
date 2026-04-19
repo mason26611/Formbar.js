@@ -658,4 +658,5 @@ module.exports = {
     exchangeRefreshTokenForAccessToken,
     revokeOAuthToken,
     cleanupExpiredAuthorizationCodes,
+    sanitizeDisplayName,
 };

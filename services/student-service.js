@@ -245,7 +245,7 @@ function getIdFromEmail(email) {
 async function getEmailFromId(userId) {
     let email = null;
     for (const user of Object.values(classStateStore.getAllUsers())) {
-        if (user.id === userId) {
+        if (user && String(user.id) === String(userId)) {
             email = user.email;
             break;
         }
