@@ -24,7 +24,14 @@ const SCOPES = {
     CLASS: {
         SYSTEM: {
             ADMIN: "class.system.admin",
+            PANEL_ACCESS: "class.system.panel_access",
             BLOCKED: "class.system.blocked",
+        },
+
+        ROLES: {
+            ASSIGN: "class.roles.assign",
+            READ: "class.roles.read",
+            MANAGE: "class.roles.manage",
         },
 
         POLL: {
