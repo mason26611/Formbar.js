@@ -497,7 +497,10 @@ describe("addStudentRole()", () => {
         expect(roles).toContain("Mod");
         expect(mockClassrooms[classId].students[guestEmail].roles.class.map((role) => role.name)).toContain("Mod");
 
-        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [guestId, classId]);
+        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [
+            guestId,
+            classId,
+        ]);
         expect(persistedAssignments).toEqual([]);
     });
 
@@ -642,7 +645,10 @@ describe("removeStudentRole()", () => {
         expect(await getStudentRoles(classId, guestId)).toEqual([]);
         expect(mockClassrooms[classId].students[guestEmail].roles.class).toEqual([]);
 
-        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [guestId, classId]);
+        const persistedAssignments = await mockDatabase.dbGetAll("SELECT roleId FROM user_roles WHERE userId = ? AND classId = ?", [
+            guestId,
+            classId,
+        ]);
         expect(persistedAssignments).toEqual([]);
     });
 });
@@ -761,7 +767,9 @@ describe("getClassRoles()", () => {
             [user.id, classId]
         );
 
-        expect(assignedRoles.filter((row) => Number(row.roleId) === Number(updatedRole.id) && Number(row.classId) === Number(classId))).toHaveLength(1);
+        expect(assignedRoles.filter((row) => Number(row.roleId) === Number(updatedRole.id) && Number(row.classId) === Number(classId))).toHaveLength(
+            1
+        );
         expect(assignedRoles.some((row) => Number(row.roleId) === Number(teacherRole.id))).toBe(false);
     });
 

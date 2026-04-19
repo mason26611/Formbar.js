@@ -241,15 +241,10 @@ describe("GET /api/v1/user/me", () => {
             permissions: 1,
             isGuest: true,
         };
-        classStateStore.setUser(
-            guestUser.email,
-            createStudentFromUserData(guestUser, { isGuest: true }),
-        );
+        classStateStore.setUser(guestUser.email, createStudentFromUserData(guestUser, { isGuest: true }));
 
         const { accessToken } = loginAsGuest(guestUser);
-        const res = await request(app)
-            .get("/api/v1/user/me")
-            .set("Authorization", `Bearer ${accessToken}`);
+        const res = await request(app).get("/api/v1/user/me").set("Authorization", `Bearer ${accessToken}`);
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
