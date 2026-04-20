@@ -2,15 +2,15 @@ const { classStateStore } = require("@services/classroom-service");
 const { database, dbGetAll } = require("@modules/database");
 const {
     SCOPES,
-    computeGlobalPermissionLevel,
     computeClassPermissionLevel,
+    parseScopesField,
     GUEST_PERMISSIONS,
     MOD_PERMISSIONS,
     TEACHER_PERMISSIONS,
     MANAGER_PERMISSIONS,
     BANNED_PERMISSIONS,
 } = require("@modules/permissions");
-const { userHasScope, isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { userHasScope, getGlobalPermissionLevelForUser, getClassPermissionLevelForUser } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -94,35 +94,6 @@ function userUpdateSocket(email, methodName, ...args) {
 
 // Scopes that grant access to the control panel
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
-
-function getGlobalPermissionLevelForUser(user) {
-    return computeGlobalPermissionLevel(getUserScopes(user).global);
-}
-
-function getClassPermissionLevelForUser(classUser, classroom) {
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: isClassOwner(classUser, classroom),
-        globalScopes: userScopes.global,
-    });
-}
-
-function parseStoredScopes(value) {
-    if (Array.isArray(value)) {
-        return value.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof value !== "string" || !value.trim()) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
 
 /**
  * Checks if a class user has access to the control panel.
@@ -576,7 +547,7 @@ class SocketUpdates {
             )
                 .then((rows) => {
                     const bannedStudents = rows
-                        .filter((row) => computeClassPermissionLevel(parseStoredScopes(row.scopes)) === BANNED_PERMISSIONS)
+                        .filter((row) => computeClassPermissionLevel(parseScopesField(row.scopes)) === BANNED_PERMISSIONS)
                         .map((row) => row.id);
 
                     advancedEmitToClass("classBannedUsersUpdate", classId, { scope: SCOPES.CLASS.STUDENTS.BAN }, bannedStudents);

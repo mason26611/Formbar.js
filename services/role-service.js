@@ -1,8 +1,14 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
-const { computeClassPermissionLevel, computeGlobalPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
-const { getUserScopes, getAllClassScopes, getUserRoleName } = require("@modules/scope-resolver");
+const {
+    computeClassPermissionLevel,
+    computeGlobalPermissionLevel,
+    filterScopesByDomain,
+    parseScopesField,
+    GUEST_PERMISSIONS,
+} = require("@modules/permissions");
+const { getUserScopes, getAllClassScopes, getUserRoleName, getClassPermissionLevelForUser } = require("@modules/scope-resolver");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
 const { getEmailFromId } = require("@services/student-service");
@@ -114,28 +120,6 @@ function getValidClassScopes() {
 }
 
 /**
- * Safely parses a stored scopes JSON field.
- * @param {string|string[]|null|undefined} scopes
- * @returns {string[]}
- */
-function parseStoredScopes(scopes) {
-    if (Array.isArray(scopes)) {
-        return scopes.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof scopes !== "string" || scopes.trim().length === 0) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(scopes);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
-
-/**
  * Maps a database role row into the API/service response shape.
  * @param {{id: number, name: string, scopes?: string|string[], color?: string, orderIndex?: number|null}} role
  * @returns {{id: number, name: string, scopes: string[], color: string, orderIndex: number|null}}
@@ -204,7 +188,7 @@ function hasInMemoryRole(student, roleId) {
  * @returns {string}
  */
 function buildScopesKey(scopes) {
-    return [...new Set(parseStoredScopes(scopes))].sort().join("|");
+    return [...new Set(parseScopesField(scopes))].sort().join("|");
 }
 
 /**
@@ -213,7 +197,7 @@ function buildScopesKey(scopes) {
  * @returns {number}
  */
 function getClassRolePermissionLevel(role) {
-    return computeClassPermissionLevel(parseStoredScopes(role.scopes));
+    return computeClassPermissionLevel(parseScopesField(role.scopes));
 }
 
 /**
@@ -222,7 +206,7 @@ function getClassRolePermissionLevel(role) {
  * @returns {number}
  */
 function getGlobalRolePermissionLevel(role) {
-    return computeGlobalPermissionLevel(parseStoredScopes(role.scopes));
+    return computeGlobalPermissionLevel(parseScopesField(role.scopes));
 }
 
 /**
@@ -476,7 +460,7 @@ async function updateClassRole({ roleId, classId, updates, actingClassUser, clas
 
     if (isDefault) {
         const validClassScopes = getValidClassScopes();
-        newScopes = parseStoredScopes(newScopes).filter((scope) => validClassScopes.has(scope));
+        newScopes = parseScopesField(newScopes).filter((scope) => validClassScopes.has(scope));
     }
 
     if (updates.name !== undefined) {
@@ -915,7 +899,7 @@ async function loadCustomRoles(classId) {
     );
     const customRoles = {};
     for (const row of rows) {
-        customRoles[row.id] = parseStoredScopes(row.scopes);
+        customRoles[row.id] = parseScopesField(row.scopes);
     }
     return customRoles;
 }
@@ -1003,12 +987,7 @@ function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) 
  * @returns {number}
  */
 function getActorLevel(classUser, classroom) {
-    if (!classUser) return GUEST_PERMISSIONS;
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: Boolean(classUser.isClassOwner),
-        globalScopes: userScopes.global,
-    });
+    return getClassPermissionLevelForUser(classUser, classroom);
 }
 
 /**

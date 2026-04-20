@@ -18,7 +18,7 @@ const {
     TEACHER_PERMISSIONS,
     MANAGER_PERMISSIONS,
 } = require("@modules/permissions");
-const { isClassOwner, getUserScopes } = require("@modules/scope-resolver");
+const { getClassPermissionLevelForUser } = require("@modules/scope-resolver");
 const { getStudentsInClass, getIdFromEmail, getEmailFromId } = require("@services/student-service");
 const { generateKey } = require("@modules/util");
 const { clearPoll } = require("@services/poll-service");
@@ -44,25 +44,9 @@ function getUserJoinedClasses(userId) {
     );
 }
 
-function getClassLinks(classId) {
-    return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
-}
-
 async function getClassCode(classId) {
     const result = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
     return result ? result.key : null;
-}
-
-function getClassPermissionLevelForUser(classUser, classroom) {
-    if (!classUser) {
-        return GUEST_PERMISSIONS;
-    }
-
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: isClassOwner(classUser, classroom),
-        globalScopes: userScopes.global,
-    });
 }
 
 function hasClassPermissionLevel(classUser, classroom, minimumLevel) {
@@ -1122,7 +1106,6 @@ async function updateClassSetting(classId, classSettings) {
 module.exports = {
     getUserJoinedClasses,
     getClassCode,
-    getClassLinks,
     validateClassroomName,
     initializeClassroom,
     addUserToClassroomSession,

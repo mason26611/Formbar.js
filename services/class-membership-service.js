@@ -98,9 +98,7 @@ async function setClassroomBanStatus(classroomId, email, isBanned) {
     if (activeStudent) {
         const classroom = classStateStore.getClassroom(classroomId);
         const normalizedBannedRole =
-            isBanned && bannedRole
-                ? classroom?.availableRoles?.find((role) => Number(role.id) === Number(bannedRole.id)) || bannedRole
-                : null;
+            isBanned && bannedRole ? classroom?.availableRoles?.find((role) => Number(role.id) === Number(bannedRole.id)) || bannedRole : null;
 
         classStateStore.updateClassroomStudent(classroomId, email, {
             roles: {

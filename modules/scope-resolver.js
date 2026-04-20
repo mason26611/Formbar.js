@@ -150,6 +150,26 @@ function getUserScopes(user, classroom) {
     return scopes;
 }
 
+function getGlobalPermissionLevelForUser(user) {
+    if (!user) {
+        return computeGlobalPermissionLevel([]);
+    }
+
+    return computeGlobalPermissionLevel(getUserScopes(user).global);
+}
+
+function getClassPermissionLevelForUser(classUser, classroom) {
+    if (!classUser) {
+        return computeClassPermissionLevel([]);
+    }
+
+    const userScopes = getUserScopes(classUser, classroom);
+    return computeClassPermissionLevel(userScopes.class, {
+        isOwner: isClassOwner(classUser, classroom),
+        globalScopes: userScopes.global,
+    });
+}
+
 function userHasScope(user, scope, classroom = null) {
     if (!user) return false;
 
@@ -229,6 +249,8 @@ function getAllClassScopes() {
 
 module.exports = {
     getUserScopes,
+    getGlobalPermissionLevelForUser,
+    getClassPermissionLevelForUser,
     userHasScope,
     getUserRoleName,
     isClassOwner,

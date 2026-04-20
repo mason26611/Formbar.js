@@ -1,6 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { computeGlobalPermissionLevel, computeClassPermissionLevel, filterScopesByDomain, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { computeClassPermissionLevel, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
+const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { compare } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
@@ -88,23 +89,6 @@ function recordAttempt(accountId, success) {
         userAttempts.lockedUntil = null;
     }
     failedAttempts.set(accountId, userAttempts);
-}
-
-function parseStoredScopes(value) {
-    if (Array.isArray(value)) {
-        return value.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof value !== "string" || !value.trim()) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
 }
 
 async function getComputedGlobalUser(userId) {
@@ -517,11 +501,6 @@ function validateAwardRequest({ from, to, amount }) {
     return null;
 }
 
-function getGlobalPermissionLevelForUser(user) {
-    const globalScopes = (user?.roles?.global || []).flatMap((role) => parseStoredScopes(role.scopes));
-    return computeGlobalPermissionLevel(globalScopes);
-}
-
 async function getClassPermissionLevelForUser(userId, classId, ownerId) {
     if (ownerId === userId) {
         return TEACHER_PERMISSIONS;
@@ -534,7 +513,7 @@ async function getClassPermissionLevelForUser(userId, classId, ownerId) {
         [userId, classId]
     );
 
-    return computeClassPermissionLevel(roleRows.flatMap((row) => parseStoredScopes(row.scopes)));
+    return computeClassPermissionLevel(roleRows.flatMap((row) => parseScopesField(row.scopes)));
 }
 
 async function getTeacherClassIdsForUser(userId) {
@@ -548,7 +527,7 @@ async function getTeacherClassIdsForUser(userId) {
 
     const senderClassScopes = new Map();
     for (const row of senderRoleRows) {
-        const scopes = parseStoredScopes(row.scopes);
+        const scopes = parseScopesField(row.scopes);
         const existingScopes = senderClassScopes.get(row.classId) || [];
         senderClassScopes.set(row.classId, existingScopes.concat(scopes));
     }
