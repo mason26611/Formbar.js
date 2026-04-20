@@ -5,6 +5,7 @@ jest.mock("@services/socket-updates-service");
 
 const { run: classRun } = require("../class");
 const { classStateStore } = require("@services/classroom-service");
+const { SCOPES } = require("@modules/permissions");
 const {
     startClass,
     endClass,
@@ -17,6 +18,11 @@ const {
 } = require("@services/class-service");
 const { enrollInClass, unenrollFromClass, deleteClassroom, setClassroomBanStatus } = require("@services/class-membership-service");
 const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
+
+function seedTeacherSession() {
+    createTestClass(testData.code, "Test Class");
+    return createTestUser(testData.email, testData.code, 4);
+}
 
 describe("class socket", () => {
     let socket;
@@ -48,26 +54,24 @@ describe("class socket", () => {
     });
 
     describe("startClass event", () => {
-        it("should call startClass with the user's active class id", () => {
-            createTestClass(testData.code, "Test Class");
-            const userData = createTestUser(testData.email, testData.code, 4);
+        it("should call startClass with the user's active class id", async () => {
+            const userData = seedTeacherSession();
             userData.activeClass = testData.classId;
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "startClass")[1];
-            handler();
+            await handler();
 
             expect(startClass).toHaveBeenCalledWith(testData.classId);
         });
     });
 
     describe("endClass event", () => {
-        it("should call endClass with the class id and session", () => {
-            createTestClass(testData.code, "Test Class");
-            const userData = createTestUser(testData.email, testData.code, 4);
+        it("should call endClass with the class id and session", async () => {
+            const userData = seedTeacherSession();
             userData.activeClass = testData.classId;
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "endClass")[1];
-            handler();
+            await handler();
 
             expect(endClass).toHaveBeenCalledWith(testData.classId, socket.request.session);
         });
@@ -110,23 +114,23 @@ describe("class socket", () => {
     });
 
     describe("isClassActive event", () => {
-        it("should emit true when the class is active", () => {
-            const classData = createTestClass(testData.code, "Test Class");
+        it("should emit true when the class is active", async () => {
+            const classData = seedTeacherSession();
             classData.isActive = true;
             isClassActive.mockReturnValueOnce(true);
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "isClassActive")[1];
-            handler();
+            await handler();
 
             expect(socket.emit).toHaveBeenCalledWith("isClassActive", true);
         });
 
-        it("should emit false when the class is not active", () => {
-            createTestClass(testData.code, "Test Class");
+        it("should emit false when the class is not active", async () => {
+            seedTeacherSession();
             isClassActive.mockReturnValueOnce(false);
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "isClassActive")[1];
-            handler();
+            await handler();
 
             expect(socket.emit).toHaveBeenCalledWith("isClassActive", false);
         });
@@ -134,7 +138,7 @@ describe("class socket", () => {
 
     describe("setClassSetting event", () => {
         it("should delegate to updateClassSetting and emit a class update", async () => {
-            createTestClass(testData.code, "Test Class");
+            seedTeacherSession();
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "setClassSetting")[1];
             await handler("name", "abc");
@@ -146,7 +150,7 @@ describe("class socket", () => {
 
     describe("changeClassName event", () => {
         it("should delegate to updateClassSetting with the shared settings payload", async () => {
-            createTestClass(testData.code, "Test Class");
+            seedTeacherSession();
 
             const handler = socket.on.mock.calls.find((call) => call[0] === "changeClassName")[1];
             await handler("Renamed Class");
@@ -157,6 +161,9 @@ describe("class socket", () => {
 
     describe("deleteClass event", () => {
         it("should delegate to deleteClassroom", async () => {
+            const userData = seedTeacherSession();
+            userData.scopes = { global: [SCOPES.GLOBAL.CLASS.DELETE], class: [] };
+
             const handler = socket.on.mock.calls.find((call) => call[0] === "deleteClass")[1];
             await handler(testData.classId);
 
@@ -167,6 +174,8 @@ describe("class socket", () => {
 
     describe("classBanUser event", () => {
         it("should delegate to setClassroomBanStatus for bans", async () => {
+            seedTeacherSession();
+
             const handler = socket.on.mock.calls.find((call) => call[0] === "classBanUser")[1];
             await handler("student@test.com");
 
@@ -178,6 +187,8 @@ describe("class socket", () => {
 
     describe("classUnbanUser event", () => {
         it("should delegate to setClassroomBanStatus for unbans", async () => {
+            seedTeacherSession();
+
             const handler = socket.on.mock.calls.find((call) => call[0] === "classUnbanUser")[1];
             await handler("student@test.com");
 

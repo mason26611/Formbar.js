@@ -25,9 +25,14 @@ describe("updatePoll", () => {
     });
 
     it("should emit a message when the user is not in a class", async () => {
-        // No user in classStateStore means getUser returns undefined
+        socket.request.session.classId = null;
+        createTestUser(testData.email, testData.code, 4).activeClass = null;
+
         await updatePollHandler({ status: false });
-        expect(socket.emit).toHaveBeenCalledWith("message", "You are not in a class");
+        expect(socket.emit).toHaveBeenCalledWith("error", {
+            message: "Class ID is required.",
+            event: "updatePoll",
+        });
     });
 
     it("should emit a message when options is null", async () => {
