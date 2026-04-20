@@ -1,7 +1,7 @@
 const { dbGetAll } = require("@modules/database");
 const { hasClassScope } = require("@middleware/permission-check");
 const { classStateStore } = require("@services/classroom-service");
-const { SCOPES, computeClassPermissionLevel, BANNED_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES } = require("@modules/permissions");
 const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
@@ -102,7 +102,7 @@ module.exports = (router) => {
         res.status(200).json({
             success: true,
             data: (rows || [])
-                .filter((row) => computeClassPermissionLevel(parseStoredScopes(row.scopes)) === BANNED_PERMISSIONS)
+                .filter((row) => parseStoredScopes(row.scopes).includes(SCOPES.CLASS.SYSTEM.BLOCKED))
                 .map(({ id, email, displayName }) => ({ id, email, displayName })),
         });
     });

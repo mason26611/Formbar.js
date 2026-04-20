@@ -114,7 +114,7 @@ module.exports = (router) => {
                 }
                 classRolesByClassId.get(row.classId).push(row);
 
-                if (computeClassPermissionLevel(parseStoredScopes(row.scopes)) === 0) {
+                if (parseStoredScopes(row.scopes).includes(SCOPES.CLASS.SYSTEM.BLOCKED)) {
                     bannedClassIds.add(row.classId);
                 }
             }

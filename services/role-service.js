@@ -1,14 +1,8 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
-const {
-    computeClassPermissionLevel,
-    computeGlobalPermissionLevel,
-    filterScopesByDomain,
-    parseScopesField,
-    GUEST_PERMISSIONS,
-} = require("@modules/permissions");
-const { getUserScopes, getAllClassScopes, getUserRoleName, getClassPermissionLevelForUser } = require("@modules/scope-resolver");
+const { computeGlobalPermissionLevel, filterScopesByDomain, parseScopesField, SCOPES } = require("@modules/permissions");
+const { getUserScopes, getAllClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
 const { getEmailFromId } = require("@services/student-service");
@@ -192,15 +186,6 @@ function buildScopesKey(scopes) {
 }
 
 /**
- * Computes the class permission level for a role-like object.
- * @param {{scopes: string|string[]|null|undefined}} role
- * @returns {number}
- */
-function getClassRolePermissionLevel(role) {
-    return computeClassPermissionLevel(parseScopesField(role.scopes));
-}
-
-/**
  * Computes the global permission level for a role-like object.
  * @param {{scopes: string|string[]|null|undefined}} role
  * @returns {number}
@@ -219,10 +204,7 @@ function isImplicitGuestRole(role) {
         return true;
     }
 
-    return (
-        getClassRolePermissionLevel(role) === GUEST_PERMISSIONS &&
-        buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || [])
-    );
+    return buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || []);
 }
 
 /**
@@ -274,7 +256,7 @@ async function getRoleByIdForClass(classId, roleId) {
         return exactMatch;
     }
 
-    return classRoles.find((candidate) => getClassRolePermissionLevel(candidate) === getGlobalRolePermissionLevel(globalRole)) || null;
+    return classRoles.find((candidate) => candidate.name === globalRole.name) || null;
 }
 
 /**
@@ -326,8 +308,16 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
                   [classId]
               );
 
-    const matcher = classId == null ? getGlobalRolePermissionLevel : getClassRolePermissionLevel;
-    return rows.find((row) => matcher(row) === permissionLevel) || null;
+    if (classId == null) {
+        return rows.find((row) => getGlobalRolePermissionLevel(row) === permissionLevel) || null;
+    }
+
+    if (permissionLevel === ROLE_TO_LEVEL[ROLE_NAMES.BANNED]) {
+        return rows.find((row) => filterScopesByDomain(row.scopes, "class").includes(SCOPES.CLASS.SYSTEM.BLOCKED)) || null;
+    }
+
+    const targetRoleName = Object.keys(ROLE_TO_LEVEL).find((name) => ROLE_TO_LEVEL[name] === permissionLevel);
+    return rows.find((row) => row.name === targetRoleName) || null;
 }
 
 /**
@@ -963,7 +953,7 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
 }
 
 /**
- * Prevents callers from assigning a role at or above their own effective level.
+ * Prevents callers from assigning roles that grant scopes they do not already hold.
  * @param {{name: string, scopes: string|string[]|null|undefined}} role
  * @param {Object} actingClassUser
  * @param {Object} classroom
@@ -971,23 +961,7 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
  */
 function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) {
     const roleScopes = buildRoleResponse(role).scopes;
-    const actorLevel = getActorLevel(actingClassUser, classroom);
-    const roleLevel = ROLE_TO_LEVEL[role.name] !== undefined ? ROLE_TO_LEVEL[role.name] : computeClassPermissionLevel(roleScopes);
-    if (roleLevel >= actorLevel) {
-        throw new ForbiddenError(`Cannot assign the "${role.name}" role — it is at or above your level.`);
-    }
-
     validateNoPrivilegeEscalation(roleScopes, actingClassUser, classroom);
-}
-
-/**
- * Computes the acting user's effective class permission level.
- * @param {Object|null} classUser
- * @param {Object} classroom
- * @returns {number}
- */
-function getActorLevel(classUser, classroom) {
-    return getClassPermissionLevelForUser(classUser, classroom);
 }
 
 /**

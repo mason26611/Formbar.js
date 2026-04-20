@@ -1,16 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { database, dbGetAll } = require("@modules/database");
-const {
-    SCOPES,
-    computeClassPermissionLevel,
-    parseScopesField,
-    GUEST_PERMISSIONS,
-    MOD_PERMISSIONS,
-    TEACHER_PERMISSIONS,
-    MANAGER_PERMISSIONS,
-    BANNED_PERMISSIONS,
-} = require("@modules/permissions");
-const { userHasScope, getGlobalPermissionLevelForUser, getClassPermissionLevelForUser } = require("@modules/scope-resolver");
+const { SCOPES, parseScopesField, MANAGER_PERMISSIONS } = require("@modules/permissions");
+const { userHasScope, getClassAccessProfile, getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { getManagerData } = require("@services/manager-service");
 const { io } = require("@modules/web-server");
 const { socketStateStore } = require("@stores/socket-state-store");
@@ -233,7 +224,7 @@ function sortStudentsInPoll(classData) {
     const totalStudentsIncluded = [];
     const totalStudentsExcluded = [];
     for (const student of Object.values(classData.students)) {
-        const permissionLevel = getClassPermissionLevelForUser(student, classData);
+        const accessProfile = getClassAccessProfile(student, classData);
         // Store whether the student is included or excluded
         let included = false;
         let excluded = false;
@@ -253,15 +244,15 @@ function sortStudentsInPoll(classData) {
 
         // Check exclusion based on class settings for permission levels
         if (classData.settings && classData.settings.isExcluded) {
-            if (classData.settings.isExcluded.guests && permissionLevel === GUEST_PERMISSIONS) {
+            if (classData.settings.isExcluded.guests && accessProfile.category === "guest") {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.mods && permissionLevel === MOD_PERMISSIONS) {
+            if (classData.settings.isExcluded.mods && accessProfile.category === "mod") {
                 excluded = true;
                 included = false;
             }
-            if (classData.settings.isExcluded.teachers && permissionLevel === TEACHER_PERMISSIONS) {
+            if (classData.settings.isExcluded.teachers && accessProfile.category === "teacher") {
                 excluded = true;
                 included = false;
             }
@@ -274,7 +265,7 @@ function sortStudentsInPoll(classData) {
         }
 
         // Prevent students from being included if they are offline or teacher or higher
-        if ((student.tags && student.tags.includes("Offline")) || permissionLevel >= TEACHER_PERMISSIONS) {
+        if ((student.tags && student.tags.includes("Offline")) || accessProfile.isTeacher || accessProfile.isManager) {
             excluded = true;
             included = false;
         }
@@ -547,7 +538,7 @@ class SocketUpdates {
             )
                 .then((rows) => {
                     const bannedStudents = rows
-                        .filter((row) => computeClassPermissionLevel(parseScopesField(row.scopes)) === BANNED_PERMISSIONS)
+                        .filter((row) => parseScopesField(row.scopes).includes(SCOPES.CLASS.SYSTEM.BLOCKED))
                         .map((row) => row.id);
 
                     advancedEmitToClass("classBannedUsersUpdate", classId, { scope: SCOPES.CLASS.STUDENTS.BAN }, bannedStudents);

@@ -14,7 +14,7 @@ const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
-const { BANNED_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, BANNED_PERMISSIONS } = require("@modules/permissions");
 const { buildRoleReferences } = require("@modules/role-reference");
 const { userSocketUpdates } = require("../sockets/init");
 const { requireInternalParam } = require("@modules/error-wrapper");
@@ -98,7 +98,13 @@ async function setClassroomBanStatus(classroomId, email, isBanned) {
     if (activeStudent) {
         const classroom = classStateStore.getClassroom(classroomId);
         const normalizedBannedRole =
-            isBanned && bannedRole ? classroom?.availableRoles?.find((role) => Number(role.id) === Number(bannedRole.id)) || bannedRole : null;
+            isBanned && bannedRole
+                ? classroom?.availableRoles?.find(
+                      (role) =>
+                          Number(role.id) === Number(bannedRole.id) ||
+                          (Array.isArray(role.scopes) && role.scopes.includes(SCOPES.CLASS.SYSTEM.BLOCKED))
+                  ) || bannedRole
+                : null;
 
         classStateStore.updateClassroomStudent(classroomId, email, {
             roles: {

@@ -1,5 +1,5 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
-const { computeClassPermissionLevel, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
+const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
 const { compare } = require("@modules/crypto");
@@ -501,9 +501,13 @@ function validateAwardRequest({ from, to, amount }) {
     return null;
 }
 
-async function getClassPermissionLevelForUser(userId, classId, ownerId) {
+function hasClassDigipogAwardAuthority(scopes) {
+    return scopes.includes(SCOPES.CLASS.SYSTEM.ADMIN) || scopes.includes(SCOPES.CLASS.DIGIPOGS.AWARD);
+}
+
+async function userCanAwardDigipogsInClass(userId, classId, ownerId) {
     if (ownerId === userId) {
-        return TEACHER_PERMISSIONS;
+        return true;
     }
 
     const roleRows = await dbGetAll(
@@ -513,10 +517,10 @@ async function getClassPermissionLevelForUser(userId, classId, ownerId) {
         [userId, classId]
     );
 
-    return computeClassPermissionLevel(roleRows.flatMap((row) => parseScopesField(row.scopes)));
+    return hasClassDigipogAwardAuthority(roleRows.flatMap((row) => parseScopesField(row.scopes)));
 }
 
-async function getTeacherClassIdsForUser(userId) {
+async function getAwardableClassIdsForUser(userId) {
     const senderRoleRows = await dbGetAll(
         `SELECT ur.classId, r.scopes
          FROM user_roles ur
@@ -532,9 +536,7 @@ async function getTeacherClassIdsForUser(userId) {
         senderClassScopes.set(row.classId, existingScopes.concat(scopes));
     }
 
-    return [...senderClassScopes.entries()]
-        .filter(([, scopes]) => computeClassPermissionLevel(scopes) >= TEACHER_PERMISSIONS)
-        .map(([classId]) => classId);
+    return [...senderClassScopes.entries()].filter(([, scopes]) => hasClassDigipogAwardAuthority(scopes)).map(([classId]) => classId);
 }
 
 async function userIsInAnyClass(userId, classIds) {
@@ -561,8 +563,8 @@ async function userIsInClassOwnedByUser(userId, ownerId) {
 }
 
 async function canAwardUserByClassAuthority(senderId, recipientId) {
-    const teacherClassIds = await getTeacherClassIdsForUser(senderId);
-    if (await userIsInAnyClass(recipientId, teacherClassIds)) {
+    const awardableClassIds = await getAwardableClassIdsForUser(senderId);
+    if (await userIsInAnyClass(recipientId, awardableClassIds)) {
         return true;
     }
 
@@ -584,8 +586,8 @@ async function awardDigipogsToClass({ from, to, amount, senderPermissionLevel, f
         return fail("Recipient class not found.");
     }
 
-    const classPermissionLevel = await getClassPermissionLevelForUser(from, to.id, classInfo.owner);
-    if (classPermissionLevel < TEACHER_PERMISSIONS && senderPermissionLevel < TEACHER_PERMISSIONS) {
+    const canAwardTargetClass = await userCanAwardDigipogsInClass(from, to.id, classInfo.owner);
+    if (!canAwardTargetClass && senderPermissionLevel < TEACHER_PERMISSIONS) {
         return fail("Sender does not have permission to award to this class.");
     }
 
