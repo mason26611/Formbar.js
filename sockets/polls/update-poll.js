@@ -1,5 +1,7 @@
 const { classStateStore } = require("@services/classroom-service");
 const { updatePoll } = require("@services/poll-service");
+const { SCOPES } = require("@modules/permissions");
+const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -13,10 +15,9 @@ module.exports = {
          * socket.emit("updatePoll", {blind: true}); // Makes poll blind
          * socket.emit("updatePoll", {}); // Clears the entire poll
          */
-        socket.on("updatePoll", async (options) => {
+        onSocketEvent(socket, "updatePoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (ctx, options) => {
             try {
-                const email = socket.request.session.email;
-                const classId = classStateStore.getUser(email)?.activeClass;
+                const classId = await ctx.resolveClassId();
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
                     return;
@@ -27,7 +28,7 @@ module.exports = {
                     return;
                 }
 
-                const result = await updatePoll(classId, options, socket.request.session);
+                const result = await updatePoll(classId, options, ctx.session);
                 if (result) {
                 } else {
                     socket.emit("message", "Failed to update poll");

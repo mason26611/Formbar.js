@@ -1,5 +1,5 @@
 const { ROLE_TO_LEVEL, ROLE_NAMES, ROLES } = require("@modules/roles");
-const { SCOPES, SOCKET_EVENT_SCOPE_MAP } = require("@modules/scopes");
+const { SCOPES } = require("@modules/scopes");
 const { getRoleId, getRoleName } = require("@modules/role-reference");
 
 const BANNED_PERMISSIONS = ROLE_TO_LEVEL[ROLE_NAMES.BANNED];
@@ -204,7 +204,6 @@ function computePermissionLevel(input, options = {}) {
 
 module.exports = {
     SCOPES,
-    SOCKET_EVENT_SCOPE_MAP,
     normalizeScopes,
     parseScopesField,
     filterScopesByDomain,

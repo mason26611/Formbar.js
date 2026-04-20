@@ -46,7 +46,12 @@ async function deleteClassroom(classroomId) {
             dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
             dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]),
             dbRun("DELETE FROM class_roles WHERE classId=?", [classroomId]),
+            dbRun("DELETE FROM poll_history WHERE class=?", [classroomId]),
+            dbRun("DELETE FROM poll_answers WHERE pollId IN (SELECT id FROM poll_history WHERE class=?)", [classroomId]),
+            dbRun("DELETE FROM shared_polls WHERE pollId IN (SELECT id FROM poll_history WHERE class=?)", [classroomId]),
+            dbRun("DELETE FROM custom_polls WHERE owner IN (SELECT id FROM classusers WHERE classId=?)", [classroomId]),
         ]);
+
         await dbRun(
             `DELETE FROM roles
              WHERE isDefault = 0
