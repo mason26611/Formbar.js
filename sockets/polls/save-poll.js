@@ -34,16 +34,12 @@ module.exports = {
                                 try {
                                     if (err) throw err;
 
-                                    classStateStore.updateClassroomStudent(
-                                        ctx.session.classId,
-                                        ctx.session.email,
-                                        (student) => {
-                                            if (!Array.isArray(student.ownedPolls)) {
-                                                student.ownedPolls = [];
-                                            }
-                                            student.ownedPolls.push(nextPollId);
+                                    classStateStore.updateClassroomStudent(ctx.session.classId, ctx.session.email, (student) => {
+                                        if (!Array.isArray(student.ownedPolls)) {
+                                            student.ownedPolls = [];
                                         }
-                                    );
+                                        student.ownedPolls.push(nextPollId);
+                                    });
                                     socket.emit("message", "Poll saved successfully!");
                                     socketUpdates.customPollUpdate(socket.request.session.email);
                                     socket.emit("classPollSave", nextPollId);
@@ -128,16 +124,12 @@ module.exports = {
                                     try {
                                         if (err) throw err;
 
-                                        classStateStore.updateClassroomStudent(
-                                            ctx.session.classId,
-                                            ctx.session.email,
-                                            (student) => {
-                                                if (!Array.isArray(student.ownedPolls)) {
-                                                    student.ownedPolls = [];
-                                                }
-                                                student.ownedPolls.push(nextPollId);
+                                        classStateStore.updateClassroomStudent(ctx.session.classId, ctx.session.email, (student) => {
+                                            if (!Array.isArray(student.ownedPolls)) {
+                                                student.ownedPolls = [];
                                             }
-                                        );
+                                            student.ownedPolls.push(nextPollId);
+                                        });
                                         socket.emit("message", "Poll saved successfully!");
                                         socketUpdates.customPollUpdate(ctx.session.email);
                                     } catch (err) {
