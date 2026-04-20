@@ -2,16 +2,6 @@ jest.mock("@services/class-service");
 jest.mock("@services/class-membership-service");
 jest.mock("@services/student-service");
 jest.mock("@services/socket-updates-service");
-jest.mock("@modules/util");
-jest.mock("@stores/class-code-cache-store", () => ({
-    classCodeCacheStore: {
-        get: jest.fn(),
-        set: jest.fn(),
-        delete: jest.fn(),
-        clear: jest.fn(),
-        invalidateByClassId: jest.fn(),
-    },
-}));
 
 const { run: classRun } = require("../class");
 const { classStateStore } = require("@services/classroom-service");
@@ -25,8 +15,7 @@ const {
     classKickStudents,
     updateClassSetting,
 } = require("@services/class-service");
-const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
-const { generateKey } = require("@modules/util");
+const { enrollInClass, unenrollFromClass, deleteClassroom, setClassroomBanStatus } = require("@services/class-membership-service");
 const { createSocket, createSocketUpdates, createTestClass, createTestUser, testData } = require("@modules/tests/tests");
 
 describe("class socket", () => {
@@ -150,7 +139,50 @@ describe("class socket", () => {
             const handler = socket.on.mock.calls.find((call) => call[0] === "setClassSetting")[1];
             await handler("name", "abc");
 
-            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, "name", "abc");
+            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, { name: "abc" });
+            expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
+        });
+    });
+
+    describe("changeClassName event", () => {
+        it("should delegate to updateClassSetting with the shared settings payload", async () => {
+            createTestClass(testData.code, "Test Class");
+
+            const handler = socket.on.mock.calls.find((call) => call[0] === "changeClassName")[1];
+            await handler("Renamed Class");
+
+            expect(updateClassSetting).toHaveBeenCalledWith(testData.classId, { name: "Renamed Class" });
+        });
+    });
+
+    describe("deleteClass event", () => {
+        it("should delegate to deleteClassroom", async () => {
+            const handler = socket.on.mock.calls.find((call) => call[0] === "deleteClass")[1];
+            await handler(testData.classId);
+
+            expect(deleteClassroom).toHaveBeenCalledWith(testData.classId);
+            expect(socketUpdates.getOwnedClasses).toHaveBeenCalledWith(testData.email);
+        });
+    });
+
+    describe("classBanUser event", () => {
+        it("should delegate to setClassroomBanStatus for bans", async () => {
+            const handler = socket.on.mock.calls.find((call) => call[0] === "classBanUser")[1];
+            await handler("student@test.com");
+
+            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, "student@test.com", true);
+            expect(socketUpdates.classBannedUsersUpdate).toHaveBeenCalled();
+            expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
+        });
+    });
+
+    describe("classUnbanUser event", () => {
+        it("should delegate to setClassroomBanStatus for unbans", async () => {
+            const handler = socket.on.mock.calls.find((call) => call[0] === "classUnbanUser")[1];
+            await handler("student@test.com");
+
+            expect(setClassroomBanStatus).toHaveBeenCalledWith(testData.classId, "student@test.com", false);
+            expect(socketUpdates.classBannedUsersUpdate).toHaveBeenCalled();
             expect(socketUpdates.classUpdate).toHaveBeenCalledWith(testData.classId);
         });
     });

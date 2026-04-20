@@ -14,6 +14,8 @@ const { classCodeCacheStore } = require("@stores/class-code-cache-store");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { advancedEmitToClass, emitToUser, invalidateClassPollCache } = require("@services/socket-updates-service");
 const { getIdFromEmail } = require("@services/student-service");
+const { BANNED_PERMISSIONS } = require("@modules/permissions");
+const { buildRoleReferences } = require("@modules/role-reference");
 const { userSocketUpdates } = require("../sockets/init");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const NotFoundError = require("@errors/not-found-error");
@@ -69,6 +71,47 @@ function getClassroomById(classroomId) {
     requireInternalParam(classroomId, "classroomId");
 
     return dbGet("SELECT * FROM classroom WHERE id=?", [classroomId]);
+}
+
+async function setClassroomBanStatus(classroomId, email, isBanned) {
+    requireInternalParam(classroomId, "classroomId");
+    requireInternalParam(email, "email");
+
+    const userId = await getIdFromEmail(email);
+    if (!userId) {
+        return false;
+    }
+
+    let bannedRole = null;
+    if (isBanned) {
+        const { findRoleByPermissionLevel } = require("@services/role-service");
+        bannedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classroomId);
+        if (bannedRole) {
+            await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classroomId]);
+            await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, bannedRole.id, classroomId]);
+        }
+    } else {
+        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classroomId]);
+    }
+
+    const activeStudent = classStateStore.getClassroomStudent(classroomId, email);
+    if (activeStudent) {
+        const classroom = classStateStore.getClassroom(classroomId);
+        const normalizedBannedRole =
+            isBanned && bannedRole
+                ? classroom?.availableRoles?.find((role) => Number(role.id) === Number(bannedRole.id)) || bannedRole
+                : null;
+
+        classStateStore.updateClassroomStudent(classroomId, email, {
+            roles: {
+                global: activeStudent?.roles?.global || [],
+                class: normalizedBannedRole ? buildRoleReferences([normalizedBannedRole]) : [],
+            },
+        });
+    }
+
+    await getClassService().classKickStudent(userId, classroomId, { exitRoom: true, ban: isBanned });
+    return true;
 }
 
 /**
@@ -202,6 +245,7 @@ async function classroomOwnerCheck(req) {
 module.exports = {
     deleteClassroom,
     getClassroomById,
+    setClassroomBanStatus,
     classroomOwnerCheck,
     enrollByCode,
     enrollInClass,

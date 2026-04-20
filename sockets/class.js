@@ -1,7 +1,5 @@
 const { classStateStore } = require("@services/classroom-service");
-const { database, dbRun } = require("@modules/database");
 const { advancedEmitToClass, setClassOfApiSockets } = require("@services/socket-updates-service");
-const { io } = require("@modules/web-server");
 const {
     startClass,
     endClass,
@@ -12,13 +10,11 @@ const {
     classKickStudents,
     updateClassSetting,
     regenerateClassCode,
+    clearVotesFromExcludedStudents,
 } = require("@services/class-service");
-const { enrollInClass, unenrollFromClass } = require("@services/class-membership-service");
-const { getEmailFromId, getIdFromEmail } = require("@services/student-service");
-const { BANNED_PERMISSIONS } = require("@modules/permissions");
+const { enrollInClass, unenrollFromClass, deleteClassroom, setClassroomBanStatus } = require("@services/class-membership-service");
+const { getIdFromEmail } = require("@services/student-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
-const { classCodeCacheStore } = require("@stores/class-code-cache-store");
-const { buildRoleReferences } = require("@modules/role-reference");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -109,7 +105,14 @@ module.exports = {
         socket.on("setClassSetting", async (setting, value) => {
             try {
                 const classId = socket.request.session.classId;
-                await updateClassSetting(classId, setting, value);
+                const classSettings =
+                    setting && typeof setting === "object" && !Array.isArray(setting)
+                        ? setting
+                        : {
+                              [setting]: value,
+                          };
+
+                await updateClassSetting(classId, classSettings);
 
                 // Trigger a class update to sync all clients
                 socketUpdates.classUpdate(classId);
@@ -147,26 +150,12 @@ module.exports = {
          * Changes the class name
          * @param {string} name - The new name of the class.
          */
-        socket.on("changeClassName", (name) => {
+        socket.on("changeClassName", async (name) => {
             try {
-                if (!name) {
-                    socket.emit("message", "Class name cannot be empty.");
-                    return;
-                }
-
-                // Update the class name in the database
-                database.run("UPDATE classroom SET name=? WHERE id= ?", [name, socket.request.session.classId], (err) => {
-                    try {
-                        if (err) throw err;
-
-                        // Update the class name in the class information
-                        classStateStore.updateClassroom(socket.request.session.classId, { className: name });
-                        socket.emit("changeClassName", name);
-                        socket.emit("message", "Class name updated.");
-                    } catch (err) {
-                        handleSocketError(err, socket, "changeClassName:callback", "There was a server error try again.");
-                    }
-                });
+                const classId = socket.request.session.classId;
+                await updateClassSetting(classId, { name });
+                socket.emit("changeClassName", classStateStore.getClassroom(classId)?.className || name);
+                socket.emit("message", "Class name updated.");
             } catch (err) {
                 handleSocketError(err, socket, "changeClassName");
             }
@@ -176,28 +165,10 @@ module.exports = {
          * Deletes a classroom
          * @param {string} classId - The ID of the classroom to delete.
          */
-        socket.on("deleteClass", (classId) => {
+        socket.on("deleteClass", async (classId) => {
             try {
-                database.get("SELECT * FROM classroom WHERE id=?", classId, (err, classroom) => {
-                    try {
-                        if (err) throw err;
-
-                        if (classroom) {
-                            if (classStateStore.getClassroom(classId)) {
-                                socketUpdates.endClass(classroom.key, classroom.id);
-                            }
-                            classCodeCacheStore.invalidateByClassId(classroom.id);
-
-                            database.run("DELETE FROM classroom WHERE id=?", classroom.id);
-                            database.run("DELETE FROM classusers WHERE classId=?", classroom.id);
-                            database.run("DELETE FROM poll_history WHERE class=?", classroom.id);
-                        }
-
-                        socketUpdates.getOwnedClasses(socket.request.session.email);
-                    } catch (err) {
-                        handleSocketError(err, socket, "deleteClass:callback");
-                    }
-                });
+                await deleteClassroom(classId);
+                socketUpdates.getOwnedClasses(socket.request.session.email);
             } catch (err) {
                 handleSocketError(err, socket, "deleteClass");
             }
@@ -254,7 +225,7 @@ module.exports = {
          */
         socket.on("classBanUser", async (email) => {
             try {
-                let classId = socket.request.session.classId;
+                const classId = socket.request.session.classId;
 
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
@@ -266,33 +237,9 @@ module.exports = {
                     return;
                 }
 
-                // Assign the Banned role via user_roles
-                const { findRoleByPermissionLevel } = require("@services/role-service");
-                const userId = await getIdFromEmail(email);
-                const blockedRole = await findRoleByPermissionLevel(BANNED_PERMISSIONS, classId);
-                if (userId) {
-                    if (blockedRole) {
-                        await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
-                        await dbRun("INSERT INTO user_roles (userId, roleId, classId) VALUES (?, ?, ?)", [userId, blockedRole.id, classId]);
-                    }
-                }
-
-                if (classStateStore.getClassroomStudent(classId, email)) {
-                    const bannedRole = blockedRole
-                        ? classStateStore.getClassroom(classId)?.availableRoles?.find((role) => Number(role.id) === Number(blockedRole.id)) || null
-                        : null;
-                    const existingStudent = classStateStore.getClassroomStudent(classId, email);
-                    classStateStore.updateClassroomStudent(classId, email, {
-                        roles: {
-                            global: existingStudent?.roles?.global || [],
-                            class: bannedRole ? buildRoleReferences([bannedRole]) : [],
-                        },
-                    });
-                }
-
-                classKickStudent(userId, classId, { exitRoom: true, ban: true });
+                await setClassroomBanStatus(classId, email, true);
                 socketUpdates.classBannedUsersUpdate();
-                socketUpdates.classUpdate();
+                socketUpdates.classUpdate(classId);
                 socket.emit("message", `Banned ${email}`);
             } catch (err) {
                 handleSocketError(err, socket, "classBanUser", "There was a server error try again.");
@@ -305,7 +252,7 @@ module.exports = {
          */
         socket.on("classUnbanUser", async (email) => {
             try {
-                let classId = socket.request.session.classId;
+                const classId = socket.request.session.classId;
 
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
@@ -318,27 +265,9 @@ module.exports = {
                 }
 
                 // Remove the Banned role — user reverts to Guest (implicit)
-                const userId = await getIdFromEmail(email);
-                if (userId) {
-                    await dbRun("DELETE FROM user_roles WHERE userId = ? AND classId = ?", [userId, classId]);
-                }
-
-                if (classStateStore.getClassroomStudent(classId, email)) {
-                    const existingStudent = classStateStore.getClassroomStudent(classId, email);
-                    classStateStore.updateClassroomStudent(classId, email, {
-                        roles: { global: existingStudent?.roles?.global || [], class: [] },
-                    });
-                }
-
-                // Kick user so they rejoin fresh
-                getIdFromEmail(email)
-                    .then((uid) => {
-                        classKickStudent(uid, classId, { exitRoom: true, ban: false });
-                        socketUpdates.classUpdate();
-                    })
-                    .catch(() => {});
-
+                await setClassroomBanStatus(classId, email, false);
                 socketUpdates.classBannedUsersUpdate();
+                socketUpdates.classUpdate(classId);
                 socket.emit("message", `Unbanned ${email}`);
             } catch (err) {
                 handleSocketError(err, socket, "classUnbanUser", "There was a server error try again.");
