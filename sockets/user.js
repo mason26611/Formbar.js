@@ -5,7 +5,7 @@ const { onSocketEvent, hasScope } = require("@modules/socket-event-middleware");
 
 module.exports = {
     run(socket, socketUpdates) {
-        onSocketEvent(socket, "getOwnedClasses", hasScope(SCOPES.GLOBAL.CLASS.CREATE), async (ctx, email) => {
+        onSocketEvent(socket, "getOwnedClasses", hasScope(SCOPES.GLOBAL.CLASS.CREATE), async (socketContext, email) => {
             socketUpdates.getOwnedClasses(email);
         });
 

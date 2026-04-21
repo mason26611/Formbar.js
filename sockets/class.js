@@ -21,13 +21,13 @@ const { onSocketEvent, hasScope, hasClassScope } = require("@modules/socket-even
 module.exports = {
     run(socket, socketUpdates) {
         // Starts a classroom session
-        onSocketEvent(socket, "startClass", hasClassScope(SCOPES.CLASS.SESSION.START), async (ctx) => {
-            startClass(await ctx.resolveClassId());
+        onSocketEvent(socket, "startClass", hasClassScope(SCOPES.CLASS.SESSION.START), async (socketContext) => {
+            startClass(await socketContext.resolveClassId());
         });
 
         // Ends a classroom session
-        onSocketEvent(socket, "endClass", hasClassScope(SCOPES.CLASS.SESSION.END), async (ctx) => {
-            endClass(await ctx.resolveClassId(), ctx.session);
+        onSocketEvent(socket, "endClass", hasClassScope(SCOPES.CLASS.SESSION.END), async (socketContext) => {
+            endClass(await socketContext.resolveClassId(), socketContext.session);
         });
 
         // Join a classroom session
@@ -92,9 +92,9 @@ module.exports = {
          * @param {string} setting - A string representing the setting to change.
          * @param {string} value - The value to set the setting to.
          */
-        onSocketEvent(socket, "setClassSetting", hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (ctx, setting, value) => {
+        onSocketEvent(socket, "setClassSetting", hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (socketContext, setting, value) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 const classSettings =
                     setting && typeof setting === "object" && !Array.isArray(setting)
                         ? setting
@@ -115,9 +115,9 @@ module.exports = {
          * Checks if the class the user is currently in is active
          * Returns true or false on the same event
          */
-        onSocketEvent(socket, "isClassActive", hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (ctx) => {
+        onSocketEvent(socket, "isClassActive", hasClassScope(SCOPES.CLASS.SESSION.SETTINGS), async (socketContext) => {
             try {
-                const isActive = isClassActive(await ctx.resolveClassId());
+                const isActive = isClassActive(await socketContext.resolveClassId());
                 socket.emit("isClassActive", isActive);
             } catch (err) {
                 handleSocketError(err, socket, "isClassActive");
@@ -125,9 +125,9 @@ module.exports = {
         });
 
         // Regenerates the class code for the classroom in the teacher's session
-        onSocketEvent(socket, "regenerateClassCode", hasClassScope(SCOPES.CLASS.SESSION.REGENERATE_CODE), async (ctx) => {
+        onSocketEvent(socket, "regenerateClassCode", hasClassScope(SCOPES.CLASS.SESSION.REGENERATE_CODE), async (socketContext) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
 
                 await regenerateClassCode(classId);
                 socket.emit("reload");
@@ -140,9 +140,9 @@ module.exports = {
          * Changes the class name
          * @param {string} name - The new name of the class.
          */
-        onSocketEvent(socket, "changeClassName", hasClassScope(SCOPES.CLASS.SESSION.RENAME), async (ctx, name) => {
+        onSocketEvent(socket, "changeClassName", hasClassScope(SCOPES.CLASS.SESSION.RENAME), async (socketContext, name) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 await updateClassSetting(classId, { name });
                 socket.emit("changeClassName", classStateStore.getClassroom(classId)?.className || name);
                 socket.emit("message", "Class name updated.");
@@ -155,10 +155,10 @@ module.exports = {
          * Deletes a classroom
          * @param {string} classId - The ID of the classroom to delete.
          */
-        onSocketEvent(socket, "deleteClass", hasScope(SCOPES.GLOBAL.CLASS.DELETE), async (ctx, classId) => {
+        onSocketEvent(socket, "deleteClass", hasScope(SCOPES.GLOBAL.CLASS.DELETE), async (socketContext, classId) => {
             try {
                 await deleteClassroom(classId);
-                socketUpdates.getOwnedClasses(ctx.session.email);
+                socketUpdates.getOwnedClasses(socketContext.session.email);
             } catch (err) {
                 handleSocketError(err, socket, "deleteClass");
             }
@@ -168,9 +168,9 @@ module.exports = {
          * Kicks a user from the classroom
          * @param {string} email - The email of the user to kick.
          */
-        onSocketEvent(socket, "classKickStudent", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (ctx, email) => {
+        onSocketEvent(socket, "classKickStudent", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, email) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 const userId = await getIdFromEmail(email);
                 classKickStudent(userId, classId);
                 advancedEmitToClass("leaveSound", classId, {});
@@ -184,12 +184,12 @@ module.exports = {
          * The student will appear as offline on the teacher's page but can rejoin the session.
          * @param {number} userId - The ID of the user to remove from the session.
          */
-        onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (ctx, userId) => {
+        onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, userId) => {
             try {
                 logger.log("info", `[classRemoveFromSession] ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`);
                 logger.log("info", `[classRemoveFromSession] userId=(${userId})`);
 
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 classKickStudent(userId, classId, { exitRoom: false, ban: false });
             } catch (err) {
                 logger.log("error", err.stack);
@@ -197,9 +197,9 @@ module.exports = {
         });
 
         // Removes all students from the class
-        onSocketEvent(socket, "classKickStudents", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (ctx) => {
+        onSocketEvent(socket, "classKickStudents", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 await classKickStudents(classId);
 
                 socketUpdates.classUpdate(classId);
@@ -213,9 +213,9 @@ module.exports = {
          * Bans a user from the classroom
          * @param {string} email - The email of the user to ban.
          */
-        onSocketEvent(socket, "classBanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (ctx, email) => {
+        onSocketEvent(socket, "classBanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, email) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
 
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
@@ -240,9 +240,9 @@ module.exports = {
          * Unbans a user from the classroom
          * @param {string} email - The email of the user to unban.
          */
-        onSocketEvent(socket, "classUnbanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (ctx, email) => {
+        onSocketEvent(socket, "classUnbanUser", hasClassScope(SCOPES.CLASS.STUDENTS.BAN), async (socketContext, email) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
 
                 if (!classId) {
                     socket.emit("message", "You are not in a class");
@@ -264,9 +264,9 @@ module.exports = {
             }
         });
 
-        onSocketEvent(socket, "updateExcludedRespondents", hasClassScope(SCOPES.CLASS.STUDENTS.READ), async (ctx, respondants) => {
+        onSocketEvent(socket, "updateExcludedRespondents", hasClassScope(SCOPES.CLASS.STUDENTS.READ), async (socketContext, respondants) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
                 const classroom = classStateStore.getClassroom(classId);
                 if (!Array.isArray(respondants)) return;
 

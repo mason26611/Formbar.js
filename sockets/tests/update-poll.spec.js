@@ -41,7 +41,10 @@ describe("updatePoll", () => {
         classData.poll.status = true;
 
         await updatePollHandler(null);
-        expect(socket.emit).toHaveBeenCalledWith("message", "Invalid poll update options");
+        expect(socket.emit).toHaveBeenCalledWith("error", {
+            message: "Invalid poll update options",
+            event: "updatePoll",
+        });
     });
 
     it("should emit a message when options is not an object", async () => {
@@ -50,7 +53,10 @@ describe("updatePoll", () => {
         classData.poll.status = true;
 
         await updatePollHandler("bad-input");
-        expect(socket.emit).toHaveBeenCalledWith("message", "Invalid poll update options");
+        expect(socket.emit).toHaveBeenCalledWith("error", {
+            message: "Invalid poll update options",
+            event: "updatePoll",
+        });
     });
 
     it("should update an existing poll property", async () => {

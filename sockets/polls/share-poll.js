@@ -7,7 +7,7 @@ const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middlewa
 
 module.exports = {
     run(socket, socketUpdates) {
-        onSocketEvent(socket, "sharePollToUser", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (ctx, pollId, email) => {
+        onSocketEvent(socket, "sharePollToUser", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId, email) => {
             try {
                 database.get("SELECT * FROM users WHERE email=?", email, (err, user) => {
                     try {
@@ -79,7 +79,7 @@ module.exports = {
             }
         });
 
-        onSocketEvent(socket, "removeUserPollShare", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (ctx, pollId, userId) => {
+        onSocketEvent(socket, "removeUserPollShare", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId, userId) => {
             try {
                 database.get("SELECT * FROM shared_polls WHERE pollId=? AND userId=?", [pollId, userId], (err, pollShare) => {
                     try {
@@ -135,7 +135,7 @@ module.exports = {
             }
         });
 
-        onSocketEvent(socket, "removeClassPollShare", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (ctx, pollId, classId) => {
+        onSocketEvent(socket, "removeClassPollShare", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId, classId) => {
             try {
                 database.get("SELECT * FROM class_polls WHERE pollId=? AND classId=?", [pollId, classId], (err, pollShare) => {
                     try {
@@ -182,11 +182,11 @@ module.exports = {
             }
         });
 
-        onSocketEvent(socket, "getPollShareIds", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (ctx, pollId) => {
+        onSocketEvent(socket, "getPollShareIds", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId) => {
             socketUpdates.getPollShareIds(pollId);
         });
 
-        onSocketEvent(socket, "sharePollToClass", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (ctx, pollId, classId) => {
+        onSocketEvent(socket, "sharePollToClass", hasClassScope(SCOPES.CLASS.POLL.SHARE), async (socketContext, pollId, classId) => {
             try {
                 database.get("SELECT * FROM classroom WHERE id=?", classId, (err, classroom) => {
                     try {

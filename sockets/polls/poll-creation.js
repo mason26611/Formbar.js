@@ -7,9 +7,9 @@ const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middlewa
 module.exports = {
     run(socket, socketUpdates) {
         // Starts a poll with the data provided
-        onSocketEvent(socket, "startPoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (ctx, ...args) => {
+        onSocketEvent(socket, "startPoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext, ...args) => {
             try {
-                const classId = await ctx.resolveClassId();
+                const classId = await socketContext.resolveClassId();
 
                 // Support both passing a single object or multiple arguments for backward compatibility
                 let pollData;
@@ -58,7 +58,7 @@ module.exports = {
                         allowTextResponses: !!pollData.allowTextResponses,
                         allowMultipleResponses: !!pollData.allowMultipleResponses,
                     },
-                    ctx.session
+                    socketContext.session
                 );
                 socket.emit("startPoll");
             } catch (err) {

@@ -6,10 +6,10 @@ const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middlewa
 
 module.exports = {
     run(socket, socketUpdates) {
-        onSocketEvent(socket, "pollResp", hasClassScope(SCOPES.CLASS.POLL.VOTE), async (ctx, res, textRes) => {
+        onSocketEvent(socket, "pollResp", hasClassScope(SCOPES.CLASS.POLL.VOTE), async (socketContext, res, textRes) => {
             try {
-                const classId = await ctx.resolveClassId();
-                sendPollResponse(classId, res, textRes, ctx.session);
+                const classId = await socketContext.resolveClassId();
+                sendPollResponse(classId, res, textRes, socketContext.session);
             } catch (err) {
                 handleSocketError(err, socket, "pollResp");
             }

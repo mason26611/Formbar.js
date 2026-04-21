@@ -39,18 +39,31 @@ async function deleteClassroom(classroomId) {
 
     await dbRun("BEGIN TRANSACTION");
     try {
+        const pollRows = await dbGetAll("SELECT id FROM poll_history WHERE class=?", [classroomId]);
+        const pollIds = pollRows.map((row) => row.id);
+        const studentRows = await dbGetAll("SELECT studentId FROM classusers WHERE classId=?", [classroomId]);
+        const studentIds = studentRows.map((row) => row.studentId);
+
         await dbRun("DELETE FROM classroom WHERE id=?", [classroomId]);
-        await Promise.all([
-            dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM links WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM class_roles WHERE classId=?", [classroomId]),
-            dbRun("DELETE FROM poll_history WHERE class=?", [classroomId]),
-            dbRun("DELETE FROM poll_answers WHERE pollId IN (SELECT id FROM poll_history WHERE class=?)", [classroomId]),
-            dbRun("DELETE FROM shared_polls WHERE pollId IN (SELECT id FROM poll_history WHERE class=?)", [classroomId]),
-            dbRun("DELETE FROM custom_polls WHERE owner IN (SELECT id FROM classusers WHERE classId=?)", [classroomId]),
-        ]);
+        await dbRun("DELETE FROM class_polls WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM links WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM user_roles WHERE classId=?", [classroomId]);
+        await dbRun("DELETE FROM class_roles WHERE classId=?", [classroomId]);
+
+        if (pollIds.length) {
+            const pollPlaceholders = pollIds.map(() => "?").join(", ");
+            await dbRun(`DELETE FROM poll_answers WHERE pollId IN (${pollPlaceholders})`, pollIds);
+            await dbRun(`DELETE FROM shared_polls WHERE pollId IN (${pollPlaceholders})`, pollIds);
+        }
+
+        await dbRun("DELETE FROM poll_history WHERE class=?", [classroomId]);
+
+        if (studentIds.length) {
+            const studentPlaceholders = studentIds.map(() => "?").join(", ");
+            await dbRun(`DELETE FROM custom_polls WHERE owner IN (${studentPlaceholders})`, studentIds);
+        }
+
+        await dbRun("DELETE FROM classusers WHERE classId=?", [classroomId]);
 
         await dbRun(
             `DELETE FROM roles

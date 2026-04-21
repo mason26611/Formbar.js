@@ -139,6 +139,33 @@ describe("deleteClassroom", () => {
         expect(users).toEqual([]);
     });
 
+    it("deletes dependent poll and custom poll rows before removing source rows", async () => {
+        const room = await seedClassroom();
+        await seedClassUser(room.id, 1);
+        await seedClassUser(room.id, 2);
+        const pollId = await mockDatabase.dbRun("INSERT INTO poll_history (class, data, date) VALUES (?, ?, ?)", [room.id, "{}", "2026-04-21"]);
+        await mockDatabase.dbRun("INSERT INTO poll_answers (pollId, userId, buttonResponse, textResponse) VALUES (?, ?, ?, ?)", [
+            pollId,
+            2,
+            "A",
+            null,
+        ]);
+        await mockDatabase.dbRun("INSERT INTO shared_polls (pollId, userId) VALUES (?, ?)", [pollId, 2]);
+        const customPollId = await mockDatabase.dbRun("INSERT INTO custom_polls (owner, name, prompt, answers) VALUES (?, ?, ?, ?)", [
+            2,
+            "Exit Ticket",
+            "Done?",
+            "[]",
+        ]);
+
+        await deleteClassroom(room.id);
+
+        expect(await mockDatabase.dbGet("SELECT * FROM poll_history WHERE id=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM poll_answers WHERE pollId=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM shared_polls WHERE pollId=?", [pollId])).toBeUndefined();
+        expect(await mockDatabase.dbGet("SELECT * FROM custom_polls WHERE id=?", [customPollId])).toBeUndefined();
+    });
+
     it("throws AppError when classroomId is null", async () => {
         await expect(deleteClassroom(null)).rejects.toThrow(AppError);
     });

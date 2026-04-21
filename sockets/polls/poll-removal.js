@@ -6,12 +6,12 @@ const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middlewa
 
 module.exports = {
     run(socket, socketUpdates) {
-        onSocketEvent(socket, "deletePoll", hasClassScope(SCOPES.CLASS.POLL.DELETE), async (ctx, pollId) => {
-            const { userId } = ctx.session;
+        onSocketEvent(socket, "deletePoll", hasClassScope(SCOPES.CLASS.POLL.DELETE), async (socketContext, pollId) => {
+            const { userId } = socketContext.session;
             const ip = socket.handshake.address;
 
             const logger = await getLogger();
-            logEvent(logger, "info", "deletePoll", `ip=(${ip}) pollId=(${pollId}) session=${JSON.stringify(ctx.session)}`);
+            logEvent(logger, "info", "deletePoll", `ip=(${ip}) pollId=(${pollId}) session=${JSON.stringify(socketContext.session)}`);
             if (!pollId) return socket.emit("message", "No poll is selected.");
 
             try {

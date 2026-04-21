@@ -1,7 +1,7 @@
-const { classStateStore } = require("@services/classroom-service");
 const { updatePoll } = require("@services/poll-service");
 const { SCOPES } = require("@modules/permissions");
 const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middleware");
+const ValidationError = require("@errors/validation-error");
 
 module.exports = {
     run(socket, socketUpdates) {
@@ -15,27 +15,13 @@ module.exports = {
          * socket.emit("updatePoll", {blind: true}); // Makes poll blind
          * socket.emit("updatePoll", {}); // Clears the entire poll
          */
-        onSocketEvent(socket, "updatePoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (ctx, options) => {
-            try {
-                const classId = await ctx.resolveClassId();
-                if (!classId) {
-                    socket.emit("message", "You are not in a class");
-                    return;
-                }
-
-                if (!options || typeof options !== "object") {
-                    socket.emit("message", "Invalid poll update options");
-                    return;
-                }
-
-                const result = await updatePoll(classId, options, ctx.session);
-                if (result) {
-                } else {
-                    socket.emit("message", "Failed to update poll");
-                }
-            } catch (err) {
-                socket.emit("message", "An error occurred while updating the poll");
+        onSocketEvent(socket, "updatePoll", hasClassScope(SCOPES.CLASS.POLL.CREATE), async (socketContext, options) => {
+            const classId = await socketContext.resolveClassId();
+            if (!options || typeof options !== "object" || Array.isArray(options)) {
+                throw new ValidationError("Invalid poll update options");
             }
+
+            await updatePoll(classId, options, socketContext.session);
         });
     },
 };

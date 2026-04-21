@@ -5,9 +5,9 @@ const { onSocketEvent, hasClassScope } = require("@modules/socket-event-middlewa
 module.exports = {
     run(socket, socketUpdates) {
         // Update class tag list
-        onSocketEvent(socket, "setTags", hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (ctx, tags) => {
+        onSocketEvent(socket, "setTags", hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (socketContext, tags) => {
             try {
-                await setTags(tags, ctx.session);
+                await setTags(tags, socketContext.session);
                 socketUpdates.classUpdate();
             } catch (err) {
                 socket.emit("message", "There was a server error try again.");
@@ -15,9 +15,9 @@ module.exports = {
         });
 
         // Save tags for a specific student
-        onSocketEvent(socket, "saveTags", hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (ctx, studentId, tags) => {
+        onSocketEvent(socket, "saveTags", hasClassScope(SCOPES.CLASS.TAGS.MANAGE), async (socketContext, studentId, tags) => {
             try {
-                await saveTags(studentId, tags, ctx.session);
+                await saveTags(studentId, tags, socketContext.session);
                 socketUpdates.classUpdate();
             } catch (err) {
                 socket.emit("message", "There was a server error try again.");

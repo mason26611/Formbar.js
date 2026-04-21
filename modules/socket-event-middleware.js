@@ -56,6 +56,7 @@ function createSocketContext(socket, event, args) {
         classId: undefined,
         classroom: undefined,
         classUser: undefined,
+
         async resolveUser() {
             if (this.user !== undefined) {
                 return this.user;
@@ -65,6 +66,7 @@ function createSocketContext(socket, event, args) {
             this.user = await getSocketUserData(this.socket, email);
             return this.user;
         },
+
         async resolveClassId() {
             if (this.classId !== undefined) {
                 return this.classId;
@@ -81,6 +83,7 @@ function createSocketContext(socket, event, args) {
             this.classId = resolvedClassId;
             return this.classId;
         },
+
         async resolveClassroom() {
             if (this.classroom !== undefined) {
                 return this.classroom;
@@ -90,6 +93,7 @@ function createSocketContext(socket, event, args) {
             this.classroom = classId === undefined || classId === null || classId === "" ? null : classStateStore.getClassroom(classId) || null;
             return this.classroom;
         },
+
         async resolveClassUser() {
             if (this.classUser !== undefined) {
                 return this.classUser;
@@ -121,10 +125,10 @@ function getDeniedMessage(message, fallback) {
 }
 
 function hasScope(scope, message) {
-    return async function (ctx) {
-        const user = await ctx.resolveUser();
+    return async function (socketContext) {
+        const user = await socketContext.resolveUser();
 
-        if (!user || !ctx.session?.email) {
+        if (!user || !socketContext.session?.email) {
             throw new AuthError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
         }
 
@@ -141,24 +145,24 @@ function hasScope(scope, message) {
 }
 
 function hasClassScope(scope, message) {
-    return async function (ctx) {
-        const user = await ctx.resolveUser();
+    return async function (socketContext) {
+        const user = await socketContext.resolveUser();
 
-        if (!user || !ctx.session?.email) {
+        if (!user || !socketContext.session?.email) {
             throw new AuthError("User is not authenticated", { event: "permission.check.failed", reason: "not_authenticated" });
         }
 
-        const classId = await ctx.resolveClassId();
+        const classId = await socketContext.resolveClassId();
         if (classId === undefined || classId === null || classId === "") {
             throw new ValidationError("Class ID is required.", { event: "permission.check.failed", reason: "class_id_required" });
         }
 
-        const classroom = await ctx.resolveClassroom();
+        const classroom = await socketContext.resolveClassroom();
         if (!classroom) {
             throw new ForbiddenError("This class is not currently active.", { event: "permission.check.failed", reason: "class_not_active" });
         }
 
-        const classUser = await ctx.resolveClassUser();
+        const classUser = await socketContext.resolveClassUser();
         if (!classUser) {
             throw new ForbiddenError("User not found in this class.", { event: "permission.check.failed", reason: "user_not_in_class" });
         }
@@ -180,14 +184,14 @@ function onSocketEvent(socket, event, ...middlewaresAndHandler) {
     const middlewares = middlewaresAndHandler;
 
     socket.on(event, async (...args) => {
-        const ctx = createSocketContext(socket, event, args);
+        const socketContext = createSocketContext(socket, event, args);
 
         try {
             for (const middleware of middlewares) {
-                await middleware(ctx, ...args);
+                await middleware(socketContext, ...args);
             }
 
-            await handler(ctx, ...args);
+            await handler(socketContext, ...args);
         } catch (err) {
             const customMessage = err?.isOperational ? err.message : undefined;
             await handleSocketError(err, socket, event, customMessage);
