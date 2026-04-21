@@ -1,7 +1,7 @@
 const { dbGetAll } = require("@modules/database");
 
 /**
- * Get configured IP access records.
+ * * Get configured IP access records.
  * @param {string} type - type.
  * @returns {Promise<Object>}
  */

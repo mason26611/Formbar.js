@@ -11,7 +11,7 @@ const DEFAULT_TRANSACTION_LIMIT = 25;
 const MAX_TRANSACTION_LIMIT = 100;
 
 /**
- * Parse an integer query parameter.
+ * * Parse an integer query parameter.
  * @param {string|number|undefined} value - Query value.
  * @param {number} defaultValue - Default value.
  * @returns {number}
@@ -30,7 +30,7 @@ function parseIntegerQueryParam(value, defaultValue) {
 }
 
 /**
- * Register transactions controller routes.
+ * * Register transactions controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

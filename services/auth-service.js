@@ -17,7 +17,7 @@ const ConflictError = require("@errors/conflict-error");
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 
 /**
- * Build the public user data object used by auth responses.
+ * * Build the public user data object used by auth responses.
  * @param {Object} userData - userData.
  * @returns {Promise<Object|null>}
  */
@@ -50,7 +50,7 @@ async function normalizeUserData(userData) {
 }
 
 /**
- * Get the active class context for a user.
+ * * Get the active class context for a user.
  * @param {Object} user - user.
  * @returns {Promise<Object|null>}
  */
@@ -93,7 +93,7 @@ async function getActiveClassContext(user) {
 }
 
 /**
- * Normalize an email address for storage and lookup.
+ * * Normalize an email address for storage and lookup.
  * @param {string} email - email.
  * @returns {string}
  */
@@ -102,7 +102,7 @@ function normalizeEmail(email) {
 }
 
 /**
- * Create a safe display name from user input.
+ * * Create a safe display name from user input.
  * @param {string} displayName - displayName.
  * @param {string} email - email.
  * @returns {string}
@@ -133,7 +133,7 @@ function sanitizeDisplayName(displayName, email) {
 }
 
 /**
- * Find an unused display name based on the requested value.
+ * * Find an unused display name based on the requested value.
  * @param {string} displayName - displayName.
  * @param {string} email - email.
  * @returns {Promise<string>}
@@ -159,7 +159,7 @@ async function getUniqueDisplayName(displayName, email) {
 }
 
 /**
- * Create a user and return its auth-ready data.
+ * * Create a user and return its auth-ready data.
  * @param {Object} userData - User registration data.
  * @param {string} userData.email - User email.
  * @param {string} [userData.password] - Plain password before hashing.
@@ -193,7 +193,7 @@ async function createUser({ email, password, displayName, verified }) {
 }
 
 /**
- * Create and persist access and refresh tokens for a user.
+ * * Create and persist access and refresh tokens for a user.
  * @param {Object} userData - userData.
  * @returns {Promise<Object>}
  */
@@ -215,7 +215,7 @@ async function issueAuthTokens(userData) {
 }
 
 /**
- * Registers a new user with email and password
+ * * Registers a new user with email and password
  * @async
  * @param {string} email - The user's email address
  * @param {string} password - The user's plain text password
@@ -265,7 +265,7 @@ async function register(email, password, displayName) {
 }
 
 /**
- * Authenticates a user with email and password credentials
+ * * Authenticates a user with email and password credentials
  * @async
  * @param {string} email - The user's email address
  * @param {string} password - The user's plain text password
@@ -302,7 +302,7 @@ async function login(email, password) {
 }
 
 /**
- * Refreshes user authentication using a refresh token
+ * * Refreshes user authentication using a refresh token
  * @async
  * @param {string} refreshToken - The refresh token to validate and use for generating new tokens
  * @returns {Promise<{accessToken: string, refreshToken: string}|Error>} Returns an object with accessToken and refreshToken on success, or an Error object with code 'INVALID_CREDENTIALS' if the refresh token is invalid
@@ -346,7 +346,7 @@ async function refreshLogin(refreshToken) {
 }
 
 /**
- * Generates both access and refresh tokens for a user
+ * * Generates both access and refresh tokens for a user
  * @param {Object} userData - The user data object
  * @param {number} userData.id - The user's unique identifier
  * @param {string} [userData.email] - The user's email address (used in access token)
@@ -371,7 +371,7 @@ function generateAuthTokens(userData) {
 }
 
 /**
- * Issues a short-lived access token for a global guest (no DB user, no refresh token).
+ * * Issues a short-lived access token for a global guest (no DB user, no refresh token).
  * @param {{ id: string|number, email: string, displayName: string, digipogs?: number, permissions: number }} userData - Guest user data.
  * @returns {{ accessToken: string }}
  */
@@ -403,7 +403,7 @@ function loginAsGuest(userData) {
 }
 
 /**
- * Generates a refresh token for a user
+ * * Generates a refresh token for a user
  * @param {Object} userData - The user data object
  * @param {number} userData.id - The user's unique identifier
  * @returns {string} A JWT refresh token valid for 30 days
@@ -413,7 +413,7 @@ function generateRefreshToken(userData) {
 }
 
 /**
- * Verifies the validity of an access token and returns the decoded payload
+ * * Verifies the validity of an access token and returns the decoded payload
  * @param {string} token - The JWT access token to verify
  * @returns {Object|{error: string}} Decoded token payload if verification succeeds, or an object with an error property if verification fails
  */
@@ -426,7 +426,7 @@ function verifyToken(token) {
 }
 
 /**
- * Creates a standardized error object for invalid credentials
+ * * Creates a standardized error object for invalid credentials
  * @returns {Error} An Error object with message "Invalid credentials" and code "INVALID_CREDENTIALS"
  */
 function invalidCredentials() {
@@ -436,7 +436,7 @@ function invalidCredentials() {
 }
 
 /**
- * Authenticates or registers a user via OpenID with services like Google and Microsoft
+ * * Authenticates or registers a user via OpenID with services like Google and Microsoft
  * @async
  * @param {string} provider - OIDC provider name.
  * @param {string} email - The user's email address from Google
@@ -489,7 +489,7 @@ async function oidcOAuthLogin(provider, email, displayName, options = {}) {
 }
 
 /**
- * Creates an authorization code for OAuth 2.0 authorization flow
+ * * Creates an authorization code for OAuth 2.0 authorization flow
  * @param {Object} params - The authorization parameters
  * @param {string} params.client_id - The client application's ID
  * @param {string} params.redirect_uri - The redirect URI
@@ -521,7 +521,7 @@ function generateAuthorizationCode({ client_id, redirect_uri, scope, authorizati
 }
 
 /**
- * Exchanges an authorization code for access and refresh tokens
+ * * Exchanges an authorization code for access and refresh tokens
  * @async
  * @param {Object} params - The token exchange parameters
  * @param {string} params.code - The authorization code
@@ -602,7 +602,7 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
 }
 
 /**
- * Exchanges a refresh token for a new access token and refresh token
+ * * Exchanges a refresh token for a new access token and refresh token
  * @async
  * @param {Object} params - The token refresh parameters
  * @param {string} params.refresh_token - The refresh token to exchange
@@ -664,7 +664,7 @@ async function exchangeRefreshTokenForAccessToken({ refresh_token }) {
 }
 
 /**
- * Revokes an OAuth refresh token
+ * * Revokes an OAuth refresh token
  * @async
  * @param {string} token - The refresh token to revoke
  * @returns {Promise<boolean>} Returns true if revocation was successful
@@ -679,8 +679,8 @@ async function revokeOAuthToken(token) {
 }
 
 /**
- * Cleans up expired authorization codes from the database.
- * Should be called periodically to prevent table bloat.
+ * * Cleans up expired authorization codes from the database.
+ * * Should be called periodically to prevent table bloat.
  * @async
  * @returns {Promise<void>}
  */

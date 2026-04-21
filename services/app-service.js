@@ -7,7 +7,7 @@ const { createItem, addItemToInventory } = require("@services/inventory-service"
 const SHARES_PER_APP = 100;
 
 /**
- * Create an app record owned by a user.
+ * * Create an app record owned by a user.
  * @param {Object} appData - App data.
  * @param {string} appData.name - App name.
  * @param {string} appData.description - App description.

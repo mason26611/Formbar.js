@@ -13,7 +13,7 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * Register verify controller routes.
+ * * Register verify controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -186,7 +186,7 @@ module.exports = (router) => {
     });
 
     /**
-     * Handle the verify user request.
+     * * Handle the verify user request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}

@@ -24,7 +24,7 @@ const PASSIVE_SOCKETS = [
 ];
 
 /**
- * Get poll IDs associated with a class.
+ * * Get poll IDs associated with a class.
  * @param {number} classId - classId.
  * @returns {Promise<number[]>}
  */
@@ -46,7 +46,7 @@ async function getClassPollIds(classId) {
 }
 
 /**
- * Clear cached poll IDs for a class.
+ * * Clear cached poll IDs for a class.
  * @param {number} classId - classId.
  * @returns {void}
  */
@@ -59,7 +59,7 @@ function invalidateClassPollCache(classId) {
 }
 
 /**
- * Emit a socket event to all sockets for a user.
+ * * Emit a socket event to all sockets for a user.
  * @param {string} email - email.
  * @param {string} event - event.
  * @param {*} data - data.
@@ -75,7 +75,7 @@ async function emitToUser(email, event, ...data) {
 }
 
 /**
- * Calls a SocketUpdates method on all sockets for a user
+ * * Calls a SocketUpdates method on all sockets for a user
  * @param {string} email - The user's email
  * @param {string} methodName - The name of the SocketUpdates method to call (e.g., 'classUpdate', 'customPollUpdate')
  * @param {...any} args - Arguments to pass to the method
@@ -105,7 +105,7 @@ function userUpdateSocket(email, methodName, ...args) {
 const CONTROL_PANEL_SCOPES = [SCOPES.CLASS.POLL.CREATE, SCOPES.CLASS.STUDENTS.KICK, SCOPES.CLASS.SESSION.SETTINGS];
 
 /**
- * Checks if a class user has access to the control panel.
+ * * Checks if a class user has access to the control panel.
  * @param {Object} user - The class user object
  * @param {Object} classroom - The classroom object
  * @returns {boolean}
@@ -115,7 +115,7 @@ function hasControlPanelAccess(user, classroom) {
 }
 
 /**
- * Emits an event to sockets based on user scopes
+ * * Emits an event to sockets based on user scopes
  * @param {string} event - The event to emit
  * @param {string} classId - The id of the class
  * @param {{scope?: string, scopes?: string[], api?: boolean, email?: string}} options - The options object
@@ -151,8 +151,8 @@ async function advancedEmitToClass(event, classId, options, ...data) {
 }
 
 /**
- * Sets the class id for all sockets in a specific API.
- * If no class id is provided, then the class id will be set to null.
+ * * Sets the class id for all sockets in a specific API.
+ * * If no class id is provided, then the class id will be set to null.
  *
  * @param {string} api - The API identifier.
  * @param {string} [classId=null] - The class code to set.
@@ -180,9 +180,9 @@ async function setClassOfApiSockets(api, classId) {
 }
 
 /**
- * Sets the class id for all sockets belonging to a specific user.
- * This is used when a user joins a class via HTTP to ensure their sockets receive class updates.
- * If no class id is provided, then the class id will be set to null.
+ * * Sets the class id for all sockets belonging to a specific user.
+ * * This is used when a user joins a class via HTTP to ensure their sockets receive class updates.
+ * * If no class id is provided, then the class id will be set to null.
  *
  * @param {string} email - The user's email identifier.
  * @param {string} [classId=null] - The class id to set.
@@ -223,7 +223,7 @@ async function setClassOfUserSockets(email, classId) {
 }
 
 /**
- * Broadcast manager dashboard updates.
+ * * Broadcast manager dashboard updates.
  * @returns {Promise<void>}
  */
 async function managerUpdate() {
@@ -244,7 +244,7 @@ async function managerUpdate() {
 }
 
 /**
- * Sorts students into either included or excluded from the poll.
+ * * Sorts students into either included or excluded from the poll.
  * @returns {Object} An object containing two arrays: included and excluded students.
  */
 function sortStudentsInPoll(classData) {
@@ -314,7 +314,7 @@ function sortStudentsInPoll(classData) {
 }
 
 /**
- * Build poll response summary data.
+ * * Build poll response summary data.
  * @param {Object} classData - classData.
  * @returns {Object}
  */
@@ -368,7 +368,7 @@ function getPollResponseInformation(classData) {
 }
 
 /**
- * Build the class update payload.
+ * * Build the class update payload.
  * @param {Object} classData - classData.
  * @param {Object} hasTeacherPermissions - hasTeacherPermissions.
  * @param {Object} options - options.

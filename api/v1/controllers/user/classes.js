@@ -7,7 +7,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * Register classes controller routes.
+ * * Register classes controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -8,7 +8,7 @@ const { requireBodyParam } = require("@modules/error-wrapper");
 let nextGuestId = Date.now();
 
 /**
- * Create a guest user ID.
+ * * Create a guest user ID.
  * @returns {string}
  */
 function createGuestId() {
@@ -16,7 +16,7 @@ function createGuestId() {
 }
 
 /**
- * Register guest controller routes.
+ * * Register guest controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

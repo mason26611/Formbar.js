@@ -5,7 +5,7 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * Register get-notifications controller routes.
+ * * Register get-notifications controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -8,13 +8,13 @@ const { findRoleByPermissionLevel } = require("@services/role-service");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * Register ban controller routes.
+ * * Register ban controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
     /**
-     * Handle the ban user request.
+     * * Handle the ban user request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}
@@ -47,7 +47,7 @@ module.exports = (router) => {
     };
 
     /**
-     * Handle the unban user request.
+     * * Handle the unban user request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}

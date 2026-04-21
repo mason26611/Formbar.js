@@ -11,7 +11,7 @@ const ValidationError = require("@errors/validation-error");
 const ConflictError = require("@errors/conflict-error");
 
 /**
- * Validate an IP address or CIDR range.
+ * * Validate an IP address or CIDR range.
  * @param {string} ip - IP address or CIDR range.
  * @returns {boolean}
  */
@@ -29,7 +29,7 @@ function validateIp(ip) {
 }
 
 /**
- * Register ip controller routes.
+ * * Register ip controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

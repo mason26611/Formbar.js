@@ -7,7 +7,7 @@ const { classStateStore } = require("@services/classroom-service");
 const { createStudentFromUserData } = require("@services/student-service");
 
 /**
- * Get a configured OIDC client or throw when unsupported.
+ * * Get a configured OIDC client or throw when unsupported.
  * @param {string} provider - Provider name.
  * @returns {Object}
  */
@@ -23,7 +23,7 @@ function assertProviderSupported(provider) {
 }
 
 /**
- * Build the OIDC callback URL for a provider.
+ * * Build the OIDC callback URL for a provider.
  * @param {import("express").Request} req - Request object.
  * @param {string} provider - Provider name.
  * @returns {string}
@@ -33,7 +33,7 @@ function buildCallbackUrl(req, provider) {
 }
 
 /**
- * Build the frontend redirect URL after OIDC login.
+ * * Build the frontend redirect URL after OIDC login.
  * @param {import("express").Request} req - Request object.
  * @param {Object} tokens - Issued auth tokens.
  * @param {Object} userData - User data.
@@ -61,7 +61,7 @@ function getRedirectTarget(req, tokens, userData) {
 }
 
 /**
- * Get an email address from OIDC claims.
+ * * Get an email address from OIDC claims.
  * @param {string} provider - Provider name.
  * @param {Object} claims - Provider claims.
  * @returns {string|null}
@@ -83,7 +83,7 @@ function getEmailFromClaims(provider, claims) {
 }
 
 /**
- * Get a display name from OIDC claims.
+ * * Get a display name from OIDC claims.
  * @param {Object} claims - Provider claims.
  * @param {string} email - User email.
  * @returns {string}
@@ -101,7 +101,7 @@ function getDisplayNameFromClaims(claims, email) {
 }
 
 /**
- * Register providers controller routes.
+ * * Register providers controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -6,7 +6,7 @@ const { SCOPES } = require("@modules/permissions");
 const { requireQueryParam } = require("@modules/error-wrapper");
 
 /**
- * Register kick controller routes.
+ * * Register kick controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -78,7 +78,7 @@ module.exports = (router) => {
     });
 
     /**
-     * Handle the kick all students request.
+     * * Handle the kick all students request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}

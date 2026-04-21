@@ -8,7 +8,7 @@ const DEFAULT_MANAGER_LIMIT = 24;
 const MAX_MANAGER_LIMIT = 200;
 
 /**
- * Parse an integer query parameter.
+ * * Parse an integer query parameter.
  * @param {string|number|undefined} value - Query value.
  * @param {number} defaultValue - Default value.
  * @returns {number}
@@ -27,7 +27,7 @@ function parseIntegerQueryParam(value, defaultValue) {
 }
 
 /**
- * Register manager controller routes.
+ * * Register manager controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
