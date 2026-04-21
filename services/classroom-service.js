@@ -65,11 +65,21 @@ class Classroom {
     }
 }
 
+/**
+ * Fetch a classroom from the database.
+ * @param {number} id - id.
+ * @returns {Promise<Object|null>}
+ */
 function getClassroomFromDb(id) {
     requireInternalParam(id, "id");
     return dbGet("SELECT * FROM classroom WHERE id = ?", [id]);
 }
 
+/**
+ * Resolve a class code to a classroom ID.
+ * @param {string} code - code.
+ * @returns {Promise<number|null>}
+ */
 function getClassIDFromCode(code) {
     const cachedClassId = classCodeCacheStore.get(code);
     if (cachedClassId) {

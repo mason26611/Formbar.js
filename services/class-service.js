@@ -24,6 +24,11 @@ const NotFoundError = require("@errors/not-found-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
+/**
+ * Get classes joined by a user.
+ * @param {number} userId - userId.
+ * @returns {Promise<Object[]>}
+ */
 function getUserJoinedClasses(userId) {
     return dbGetAll(
         "SELECT classroom.name, classroom.id FROM classroom JOIN classusers ON classroom.id = classusers.classId WHERE classusers.studentId = ?",
@@ -31,11 +36,22 @@ function getUserJoinedClasses(userId) {
     );
 }
 
+/**
+ * Get the join code for a class.
+ * @param {number} classId - classId.
+ * @returns {Promise<string|null>}
+ */
 async function getClassCode(classId) {
     const result = await dbGet("SELECT key FROM classroom WHERE id = ?", [classId]);
     return result ? result.key : null;
 }
 
+/**
+ * Find the first available class role containing a scope.
+ * @param {Object} classroom - classroom.
+ * @param {string} scope - scope.
+ * @returns {Object|null}
+ */
 function findAvailableRoleByScope(classroom, scope) {
     if (!classroom || !Array.isArray(classroom.availableRoles)) {
         return null;
@@ -217,6 +233,7 @@ async function initializeClassroom(id) {
  * Starts a class session by activating the class, emitting the start class event,
  * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to start.
+ * @returns {Promise<void>}
  */
 async function startClass(classId) {
     await advancedEmitToClass("startClassSound", classId, { api: true });
@@ -231,6 +248,7 @@ async function startClass(classId) {
  * and updating the class state in memory and to connected clients.
  * @param {string|number} classId - The ID of the class to end.
  * @param {Object} [userSession] - The session object of the user ending the class.
+ * @returns {Promise<void>}
  */
 async function endClass(classId, userSession) {
     await advancedEmitToClass("endClassSound", classId, { api: true });
@@ -453,6 +471,7 @@ function isClassActive(classId) {
  * Deletes all classrooms owned by the specified user, along with related data
  * (class users, polls, links) and in-memory session state.
  * @param {number|string} userId - The ID of the user whose classrooms should be deleted.
+ * @returns {Promise<void>}
  */
 async function deleteClassrooms(userId) {
     const classrooms = await dbGetAll("SELECT * FROM classroom WHERE owner=?", userId);
@@ -479,6 +498,10 @@ async function deleteClassrooms(userId) {
 /**
  * Kicks a student from a class.
  * If exitRoom is true, fully removes them; otherwise just removes from session.
+ * @param {number} userId - User ID.
+ * @param {number} classId - Class ID.
+ * @param {Object} options - Kick options.
+ * @returns {Promise<void>}
  */
 async function classKickStudent(userId, classId, options = { exitRoom: true, ban: false }) {
     try {
@@ -546,6 +569,8 @@ async function classKickStudent(userId, classId, options = { exitRoom: true, ban
 
 /**
  * Kicks all non-teacher students from a class.
+ * @param {number} classId - Class ID.
+ * @returns {Promise<void>}
  */
 async function classKickStudents(classId) {
     try {
@@ -599,6 +624,9 @@ async function regenerateClassCode(classId) {
 /**
  * Broadcasts a class update using any connected socket in the class.
  * Prefers a specific user's sockets first when provided.
+ * @param {number} classId - Class ID.
+ * @param {string} preferredEmail - Email to update first.
+ * @returns {void}
  */
 function broadcastClassUpdate(classId, preferredEmail) {
     if (!classId) return false;
@@ -626,6 +654,9 @@ function broadcastClassUpdate(classId, preferredEmail) {
 
 /**
  * Requests a break for a student.
+ * @param {string} reason - Break reason.
+ * @param {Object} userData - Session user data.
+ * @returns {void}
  */
 function requestBreak(reason, userData) {
     const classId = userData.classId;
@@ -645,6 +676,10 @@ function requestBreak(reason, userData) {
 
 /**
  * Approves or denies a break for a student.
+ * @param {boolean} breakApproval - Whether the break is approved.
+ * @param {number} userId - Student user ID.
+ * @param {Object} userData - Session user data.
+ * @returns {Promise<boolean|string>}
  */
 async function approveBreak(breakApproval, userId, userData) {
     const email = await getEmailFromId(userId);
@@ -663,6 +698,8 @@ async function approveBreak(breakApproval, userId, userData) {
 
 /**
  * Ends a student's active break.
+ * @param {Object} userData - Session user data.
+ * @returns {void}
  */
 function endBreak(userData) {
     const email = userData.email;
@@ -681,6 +718,9 @@ function endBreak(userData) {
 
 /**
  * Sends a help ticket for a student.
+ * @param {string} reason - Help reason.
+ * @param {Object} userSession - Session user data.
+ * @returns {void}
  */
 function sendHelpTicket(reason, userSession) {
     const classId = userSession.classId;
@@ -706,6 +746,9 @@ function sendHelpTicket(reason, userSession) {
 
 /**
  * Deletes a help ticket for a student.
+ * @param {number} studentId - Student user ID.
+ * @param {Object} userData - Session user data.
+ * @returns {Promise<void>}
  */
 async function deleteHelpTicket(studentId, userData) {
     const classId = userData.classId;
@@ -722,6 +765,8 @@ async function deleteHelpTicket(studentId, userData) {
 
 /**
  * Sets the allowed tags for a class and normalizes existing student tags.
+ * @param {Object} userSession - Session user data.
+ * @returns {Promise<void>}
  */
 async function setTags(tags, userSession) {
     if (!Array.isArray(tags)) return;
@@ -759,6 +804,9 @@ async function setTags(tags, userSession) {
 
 /**
  * Saves the tags for a specific student in the class.
+ * @param {number} studentId - Student user ID.
+ * @param {Object} userSession - Session user data.
+ * @returns {Promise<void>}
  */
 async function saveTags(studentId, tags, userSession) {
     const email = await getEmailFromId(studentId);
@@ -803,6 +851,7 @@ async function saveTags(studentId, tags, userSession) {
  * Gets the users of a class, merging in-memory session data with DB data.
  * @param {Object} user - The requesting user (used for permission-based filtering).
  * @param {string} key - The class key/code.
+ * @returns {Promise<Object[]>}
  */
 async function getClassUsers(user, key) {
     const dbClassUsers = await new Promise((resolve, reject) => {
@@ -876,6 +925,11 @@ async function getClassUsers(user, key) {
 
 // Timer
 
+/**
+ * Get the active timer for a class.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function getTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -883,6 +937,14 @@ function getTimer(classId) {
     return classroom.timer;
 }
 
+/**
+ * Start a class timer.
+ * @param {Object} timerData - Timer data.
+ * @param {number} timerData.classId - Class ID.
+ * @param {number} timerData.duration - Timer duration in seconds.
+ * @param {string} [timerData.sound] - Completion sound.
+ * @returns {Object}
+ */
 function startTimer({ classId, duration, sound }) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -902,6 +964,11 @@ function startTimer({ classId, duration, sound }) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * Resume a paused class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function resumeTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -939,6 +1006,11 @@ function resumeTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * Pause a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function pauseTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -965,6 +1037,11 @@ function pauseTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * End a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function endTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -979,6 +1056,11 @@ function endTimer(classId) {
     broadcastClassUpdate(classId);
 }
 
+/**
+ * Clear a class timer.
+ * @param {number} classId - classId.
+ * @returns {Object|null}
+ */
 function clearTimer(classId) {
     const classroom = classStateStore.getClassroom(classId);
     if (!classroom) return;
@@ -999,6 +1081,7 @@ function clearTimer(classId) {
  * Clears poll votes from students who should be excluded based on class settings,
  * tags, permission levels, break status, and offline status.
  * @param {string|number} classId
+ * @returns {void}
  */
 function clearVotesFromExcludedStudents(classId) {
     const classData = classStateStore.getClassroom(classId);

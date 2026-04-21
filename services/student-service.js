@@ -219,8 +219,8 @@ async function getStudentsInClass(classId) {
 
 /**
  * Retrieves a student's id from their email
- * @param email
- * @returns {Promise|Number}
+ * @param {string} email - Student email.
+ * @returns {Promise<number>|number|undefined}
  */
 function getIdFromEmail(email) {
     try {
@@ -242,6 +242,11 @@ function getIdFromEmail(email) {
     }
 }
 
+/**
+ * Get a user email from an ID.
+ * @param {number} userId - userId.
+ * @returns {Promise<string|null>}
+ */
 async function getEmailFromId(userId) {
     let email = null;
     for (const user of Object.values(classStateStore.getAllUsers())) {

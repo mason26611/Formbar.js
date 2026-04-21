@@ -16,6 +16,11 @@ const ConflictError = require("@errors/conflict-error");
 
 const displayRegex = /^[a-zA-Z0-9_ ]{5,20}$/;
 
+/**
+ * Build the public user data object used by auth responses.
+ * @param {Object} userData - userData.
+ * @returns {Promise<Object|null>}
+ */
 async function normalizeUserData(userData) {
     if (!userData || !userData.id) {
         return userData;
@@ -44,6 +49,11 @@ async function normalizeUserData(userData) {
     };
 }
 
+/**
+ * Get the active class context for a user.
+ * @param {Object} user - user.
+ * @returns {Promise<Object|null>}
+ */
 async function getActiveClassContext(user) {
     const roles = { global: user.roles?.global || [], class: [] };
     let scopes = { global: getUserScopes(user).global, class: [] };
@@ -82,10 +92,21 @@ async function getActiveClassContext(user) {
     return { roles, scopes, classPermissions };
 }
 
+/**
+ * Normalize an email address for storage and lookup.
+ * @param {string} email - email.
+ * @returns {string}
+ */
 function normalizeEmail(email) {
     return String(email).trim().toLowerCase();
 }
 
+/**
+ * Create a safe display name from user input.
+ * @param {string} displayName - displayName.
+ * @param {string} email - email.
+ * @returns {string}
+ */
 function sanitizeDisplayName(displayName, email) {
     const fallback = String(email).split("@")[0] || "FormbarUser";
     const collapsed = String(displayName || fallback)
@@ -111,6 +132,12 @@ function sanitizeDisplayName(displayName, email) {
     return normalized;
 }
 
+/**
+ * Find an unused display name based on the requested value.
+ * @param {string} displayName - displayName.
+ * @param {string} email - email.
+ * @returns {Promise<string>}
+ */
 async function getUniqueDisplayName(displayName, email) {
     const baseName = sanitizeDisplayName(displayName, email);
 
@@ -131,6 +158,15 @@ async function getUniqueDisplayName(displayName, email) {
     return `User_${crypto.randomBytes(4).toString("hex")}`.slice(0, 20);
 }
 
+/**
+ * Create a user and return its auth-ready data.
+ * @param {Object} userData - User registration data.
+ * @param {string} userData.email - User email.
+ * @param {string} [userData.password] - Plain password before hashing.
+ * @param {string} [userData.displayName] - Requested display name.
+ * @param {boolean} userData.verified - Whether the email is already verified.
+ * @returns {Promise<Object>}
+ */
 async function createUser({ email, password, displayName, verified }) {
     const apiKey = crypto.randomBytes(64).toString("hex");
     const secret = crypto.randomBytes(256).toString("hex");
@@ -156,6 +192,11 @@ async function createUser({ email, password, displayName, verified }) {
     return dbGet("SELECT * FROM users WHERE id = ?", [userId]);
 }
 
+/**
+ * Create and persist access and refresh tokens for a user.
+ * @param {Object} userData - userData.
+ * @returns {Promise<Object>}
+ */
 async function issueAuthTokens(userData) {
     const tokens = generateAuthTokens(userData);
     const decodedRefreshToken = jwt.decode(tokens.refreshToken);
@@ -331,7 +372,7 @@ function generateAuthTokens(userData) {
 
 /**
  * Issues a short-lived access token for a global guest (no DB user, no refresh token).
- * @param {{ id: string|number, email: string, displayName: string, digipogs?: number, permissions: number }} userData
+ * @param {{ id: string|number, email: string, displayName: string, digipogs?: number, permissions: number }} userData - Guest user data.
  * @returns {{ accessToken: string }}
  */
 function loginAsGuest(userData) {
@@ -397,8 +438,10 @@ function invalidCredentials() {
 /**
  * Authenticates or registers a user via OpenID with services like Google and Microsoft
  * @async
+ * @param {string} provider - OIDC provider name.
  * @param {string} email - The user's email address from Google
  * @param {string} displayName - The user's display name from Google
+ * @param {{emailVerified?: boolean}} [options] - OIDC login options.
  * @returns {Promise<{tokens: {accessToken: string, refreshToken: string}, user: Object}|{error: string}>} Returns an object with tokens and user data on success, or an error object on failure
  */
 async function oidcOAuthLogin(provider, email, displayName, options = {}) {

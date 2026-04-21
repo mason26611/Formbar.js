@@ -22,6 +22,10 @@ const NotFoundError = require("@errors/not-found-error");
 
 // Lazy-load class-service to avoid circular dependency
 let classService;
+/**
+ * Load class-service after startup to avoid a circular dependency.
+ * @returns {Object}
+ */
 function getClassService() {
     if (!classService) {
         classService = require("@services/class-service");
@@ -29,6 +33,11 @@ function getClassService() {
     return classService;
 }
 
+/**
+ * Delete a classroom and its related persistent data.
+ * @param {number} classroomId - classroomId.
+ * @returns {Promise<void>}
+ */
 async function deleteClassroom(classroomId) {
     requireInternalParam(classroomId, "classroomId");
 
@@ -85,12 +94,24 @@ async function deleteClassroom(classroomId) {
     classCodeCacheStore.invalidateByClassId(classroomId);
 }
 
+/**
+ * Fetch a classroom row by ID.
+ * @param {number} classroomId - classroomId.
+ * @returns {Promise<Object|null>}
+ */
 function getClassroomById(classroomId) {
     requireInternalParam(classroomId, "classroomId");
 
     return dbGet("SELECT * FROM classroom WHERE id=?", [classroomId]);
 }
 
+/**
+ * Apply or remove a classroom ban for a user.
+ * @param {number} classroomId - classroomId.
+ * @param {string} email - email.
+ * @param {boolean} isBanned - isBanned.
+ * @returns {Promise<boolean>}
+ */
 async function setClassroomBanStatus(classroomId, email, isBanned) {
     requireInternalParam(classroomId, "classroomId");
     requireInternalParam(email, "email");
@@ -240,11 +261,22 @@ async function unenrollFromClass(userData) {
     await emitToUser(email, "reload");
 }
 
+/**
+ * Check whether a user is enrolled in a class.
+ * @param {number} userId - userId.
+ * @param {number} classId - classId.
+ * @returns {Promise<boolean>}
+ */
 async function isUserEnrolled(userId, classId) {
     const result = await dbGet("SELECT 1 FROM classusers WHERE studentId = ? AND classId = ?", [userId, classId]);
     return !!result;
 }
 
+/**
+ * Get saved links for a class.
+ * @param {number} classId - classId.
+ * @returns {Promise<Object[]>}
+ */
 function getClassLinks(classId) {
     requireInternalParam(classId, "classId");
     return dbGetAll("SELECT name, url FROM links WHERE classId = ?", [classId]);
@@ -254,6 +286,8 @@ function getClassLinks(classId) {
  * Middleware-compatible ownership check for classrooms.
  * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
  * Also caches the classroom on req._room for use by the handler.
+ * @param {import("express").Request} req - Request object.
+ * @returns {Promise<boolean>}
  */
 async function classroomOwnerCheck(req) {
     const classroom = await getClassroomById(Number(req.params.id));

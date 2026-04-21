@@ -29,6 +29,7 @@ function getClassroom(classId) {
 /**
  * Resets all students' poll responses in a classroom.
  * @param {Object} classroom - The classroom object.
+ * @returns {void}
  */
 function resetStudentPollResponses(classroom) {
     for (const key in classroom.students) {
@@ -119,6 +120,7 @@ function calculateResponseWeight(poll, res) {
  * @param {string} textRes - The text response.
  * @param {boolean} isRemoving - Whether the user is removing their response.
  * @param {boolean} allowMultipleResponses - Whether multiple responses are allowed.
+ * @returns {void}
  */
 function updateStudentPollResponse(student, res, textRes, isRemoving, allowMultipleResponses) {
     if (isRemoving) {
@@ -330,6 +332,7 @@ async function getPreviousPolls(classId, offset = 0, limit = 20) {
 /**
  * Saves the current poll data to the poll history table in the database.
  * @param {number} classId - The ID of the class whose poll should be saved.
+ * @returns {Promise<void>}
  */
 async function savePollToHistory(classId) {
     const classroom = classStateStore.getClassroom(classId);
@@ -355,6 +358,7 @@ async function savePollToHistory(classId) {
  * @param {number} classId - The ID of the class.
  * @param {Object} userSession - The user session object.
  * @param {boolean} [updateClass=true] - Whether to update the class state after clearing the poll.
+ * @returns {Promise<void>}
  */
 async function clearPoll(classId, userSession, updateClass = true) {
     const classroom = classStateStore.getClassroom(classId);
@@ -427,6 +431,7 @@ async function clearPoll(classId, userSession, updateClass = true) {
  * @param {(string|string[])} res - The button response(s) from the student, or 'remove' to clear.
  * @param {string} textRes - The text response from the student.
  * @param {Object} userSession - The user session object.
+ * @returns {void}
  */
 function sendPollResponse(classId, res, textRes, userSession) {
     const resLength = textRes != null ? textRes.length : 0;
@@ -581,6 +586,7 @@ async function getCurrentPoll(classId, userData) {
 /**
  * Deletes all custom polls owned by a user
  * @param {number} userId - The ID of the user whose custom polls should be deleted
+ * @returns {Promise<void>}
  */
 async function deleteCustomPolls(userId) {
     const customPolls = await dbGetAll("SELECT * FROM custom_polls WHERE owner=?", userId);
