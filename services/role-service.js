@@ -1,7 +1,7 @@
 const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { classStateStore } = require("@services/classroom-service");
 const { ROLES, ROLE_NAMES, DEFAULT_ROLE_COLORS, ROLE_TO_LEVEL } = require("@modules/roles");
-const { computeClassPermissionLevel, computeGlobalPermissionLevel, filterScopesByDomain, GUEST_PERMISSIONS } = require("@modules/permissions");
+const { computeGlobalPermissionLevel, filterScopesByDomain, parseScopesField, SCOPES } = require("@modules/permissions");
 const { getUserScopes, getAllClassScopes, getUserRoleName } = require("@modules/scope-resolver");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { buildRoleReference, buildRoleReferences } = require("@modules/role-reference");
@@ -114,28 +114,6 @@ function getValidClassScopes() {
 }
 
 /**
- * Safely parses a stored scopes JSON field.
- * @param {string|string[]|null|undefined} scopes
- * @returns {string[]}
- */
-function parseStoredScopes(scopes) {
-    if (Array.isArray(scopes)) {
-        return scopes.filter((scope) => typeof scope === "string");
-    }
-
-    if (typeof scopes !== "string" || scopes.trim().length === 0) {
-        return [];
-    }
-
-    try {
-        const parsed = JSON.parse(scopes);
-        return Array.isArray(parsed) ? parsed.filter((scope) => typeof scope === "string") : [];
-    } catch {
-        return [];
-    }
-}
-
-/**
  * Maps a database role row into the API/service response shape.
  * @param {{id: number, name: string, scopes?: string|string[], color?: string, orderIndex?: number|null}} role
  * @returns {{id: number, name: string, scopes: string[], color: string, orderIndex: number|null}}
@@ -204,16 +182,7 @@ function hasInMemoryRole(student, roleId) {
  * @returns {string}
  */
 function buildScopesKey(scopes) {
-    return [...new Set(parseStoredScopes(scopes))].sort().join("|");
-}
-
-/**
- * Computes the class permission level for a role-like object.
- * @param {{scopes: string|string[]|null|undefined}} role
- * @returns {number}
- */
-function getClassRolePermissionLevel(role) {
-    return computeClassPermissionLevel(parseStoredScopes(role.scopes));
+    return [...new Set(parseScopesField(scopes))].sort().join("|");
 }
 
 /**
@@ -222,7 +191,7 @@ function getClassRolePermissionLevel(role) {
  * @returns {number}
  */
 function getGlobalRolePermissionLevel(role) {
-    return computeGlobalPermissionLevel(parseStoredScopes(role.scopes));
+    return computeGlobalPermissionLevel(parseScopesField(role.scopes));
 }
 
 /**
@@ -235,10 +204,7 @@ function isImplicitGuestRole(role) {
         return true;
     }
 
-    return (
-        getClassRolePermissionLevel(role) === GUEST_PERMISSIONS &&
-        buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || [])
-    );
+    return buildScopesKey(role.scopes) === buildScopesKey(ROLES[ROLE_NAMES.GUEST]?.class || []);
 }
 
 /**
@@ -290,7 +256,7 @@ async function getRoleByIdForClass(classId, roleId) {
         return exactMatch;
     }
 
-    return classRoles.find((candidate) => getClassRolePermissionLevel(candidate) === getGlobalRolePermissionLevel(globalRole)) || null;
+    return classRoles.find((candidate) => candidate.name === globalRole.name) || null;
 }
 
 /**
@@ -342,8 +308,16 @@ async function findRoleByPermissionLevel(permissionLevel, classId = null) {
                   [classId]
               );
 
-    const matcher = classId == null ? getGlobalRolePermissionLevel : getClassRolePermissionLevel;
-    return rows.find((row) => matcher(row) === permissionLevel) || null;
+    if (classId == null) {
+        return rows.find((row) => getGlobalRolePermissionLevel(row) === permissionLevel) || null;
+    }
+
+    if (permissionLevel === ROLE_TO_LEVEL[ROLE_NAMES.BANNED]) {
+        return rows.find((row) => filterScopesByDomain(row.scopes, "class").includes(SCOPES.CLASS.SYSTEM.BLOCKED)) || null;
+    }
+
+    const targetRoleName = Object.keys(ROLE_TO_LEVEL).find((name) => ROLE_TO_LEVEL[name] === permissionLevel);
+    return rows.find((row) => row.name === targetRoleName) || null;
 }
 
 /**
@@ -476,7 +450,7 @@ async function updateClassRole({ roleId, classId, updates, actingClassUser, clas
 
     if (isDefault) {
         const validClassScopes = getValidClassScopes();
-        newScopes = parseStoredScopes(newScopes).filter((scope) => validClassScopes.has(scope));
+        newScopes = parseScopesField(newScopes).filter((scope) => validClassScopes.has(scope));
     }
 
     if (updates.name !== undefined) {
@@ -915,7 +889,7 @@ async function loadCustomRoles(classId) {
     );
     const customRoles = {};
     for (const row of rows) {
-        customRoles[row.id] = parseStoredScopes(row.scopes);
+        customRoles[row.id] = parseScopesField(row.scopes);
     }
     return customRoles;
 }
@@ -979,7 +953,7 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
 }
 
 /**
- * Prevents callers from assigning a role at or above their own effective level.
+ * Prevents callers from assigning roles that grant scopes they do not already hold.
  * @param {{name: string, scopes: string|string[]|null|undefined}} role
  * @param {Object} actingClassUser
  * @param {Object} classroom
@@ -987,28 +961,7 @@ function validateNoPrivilegeEscalation(scopes, actingClassUser, classroom) {
  */
 function validateNoPrivilegeEscalationForRole(role, actingClassUser, classroom) {
     const roleScopes = buildRoleResponse(role).scopes;
-    const actorLevel = getActorLevel(actingClassUser, classroom);
-    const roleLevel = ROLE_TO_LEVEL[role.name] !== undefined ? ROLE_TO_LEVEL[role.name] : computeClassPermissionLevel(roleScopes);
-    if (roleLevel >= actorLevel) {
-        throw new ForbiddenError(`Cannot assign the "${role.name}" role — it is at or above your level.`);
-    }
-
     validateNoPrivilegeEscalation(roleScopes, actingClassUser, classroom);
-}
-
-/**
- * Computes the acting user's effective class permission level.
- * @param {Object|null} classUser
- * @param {Object} classroom
- * @returns {number}
- */
-function getActorLevel(classUser, classroom) {
-    if (!classUser) return GUEST_PERMISSIONS;
-    const userScopes = getUserScopes(classUser, classroom);
-    return computeClassPermissionLevel(userScopes.class, {
-        isOwner: Boolean(classUser.isClassOwner),
-        globalScopes: userScopes.global,
-    });
 }
 
 /**
