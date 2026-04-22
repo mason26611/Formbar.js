@@ -178,7 +178,7 @@ async function createUser({ email, password, displayName, verified }) {
     const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
         email,
         password || null,
-        apiKey,
+        null,
         secret,
         uniqueDisplayName,
         verified ? 1 : 0,

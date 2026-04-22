@@ -1,5 +1,5 @@
 const { classStateStore } = require("@services/classroom-service");
-const { dbGet, dbGetAll } = require("@modules/database");
+const { dbGet } = require("@modules/database");
 const { compareBcrypt } = require("@modules/crypto");
 const { userHasScope } = require("@modules/scope-resolver");
 const { createStudentFromUserData } = require("@services/student-service");
@@ -24,6 +24,43 @@ function isDigipogHttpApiRequest(req) {
     return DIGIPOG_HTTP_API_PATH.test(req.originalUrl || req.baseUrl || req.path || "");
 }
 
+function normalizeTransferFrom(body) {
+    const rawFrom = body?.from ?? body?.fromUserId ?? body?.userId;
+    if (rawFrom === undefined || rawFrom === null || rawFrom === "") {
+        return null;
+    }
+
+    if (typeof rawFrom === "object") {
+        const type = rawFrom.type || "user";
+        const id = Number(rawFrom.id ?? rawFrom.userId ?? rawFrom.poolId);
+        if (!Number.isInteger(id) || id <= 0 || !["user", "pool"].includes(type)) {
+            return null;
+        }
+        return { id, type };
+    }
+
+    const id = Number(rawFrom);
+    if (!Number.isInteger(id) || id <= 0) {
+        return null;
+    }
+    return { id, type: "user" };
+}
+
+async function getPinAuthUser(from) {
+    if (from.type === "user") {
+        return dbGet("SELECT id, pin FROM users WHERE id = ? AND pin IS NOT NULL", [from.id]);
+    }
+
+    return dbGet(
+        `SELECT u.id, u.pin
+         FROM digipog_pool_users dpu
+         JOIN users u ON u.id = dpu.user_id
+         WHERE dpu.pool_id = ? AND dpu.owner = 1 AND u.pin IS NOT NULL
+         LIMIT 1`,
+        [from.id]
+    );
+}
+
 async function attachDigipogPinUser(req, res) {
     if (!isDigipogHttpApiRequest(req) || req.user?.email) {
         return;
@@ -38,27 +75,17 @@ async function attachDigipogPinUser(req, res) {
         return;
     }
 
-    const pin = String(req.body.pin);
-    const users = await dbGetAll("SELECT id, pin FROM users WHERE pin IS NOT NULL");
-    let matchedUserId = null;
-
-    for (const candidate of users) {
-        if (!candidate.pin || !(await compareBcrypt(pin, candidate.pin))) {
-            continue;
-        }
-
-        if (matchedUserId && matchedUserId !== candidate.id) {
-            return;
-        }
-
-        matchedUserId = candidate.id;
+    const from = normalizeTransferFrom(req.body);
+    if (!from) {
+        return new AuthError("Missing sender identifier.");
     }
 
-    if (!matchedUserId) {
+    const candidate = await getPinAuthUser(from);
+    if (!candidate || !(await compareBcrypt(String(req.body.pin), candidate.pin))) {
         return new AuthError("Invalid PIN.");
     }
 
-    const userData = await getUserDataFromDb(matchedUserId);
+    const userData = await getUserDataFromDb(candidate.id);
     if (!userData) {
         return;
     }
@@ -75,6 +102,7 @@ async function attachDigipogPinUser(req, res) {
         id: user.id || userData.id,
         userId: user.id || userData.id,
     };
+    req.pinAuthenticatedFrom = from;
 }
 
 /**

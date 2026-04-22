@@ -1,7 +1,7 @@
 // Use low salt rounds so bcrypt tests finish quickly
 process.env.SALT_ROUNDS = "4";
 
-const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt, isBcryptHash, sha256 } = require("@modules/crypto");
 
 describe("hashBcrypt()", () => {
     it("returns a bcrypt hash starting with $2b$", async () => {
@@ -37,6 +37,18 @@ describe("compareBcrypt()", () => {
 
     it("rejects when hash is not a string", async () => {
         await expect(compareBcrypt("text", 456)).rejects.toThrow("Both text and hash must be strings");
+    });
+});
+
+describe("isBcryptHash()", () => {
+    it("recognizes supported bcrypt prefixes", () => {
+        expect(isBcryptHash("$2a$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+        expect(isBcryptHash("$2b$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+        expect(isBcryptHash("$2y$10$abcdefghijklmnopqrstuuKdJ1tEFr1L1mZGhLeNYM8xA0xk1zYuG")).toBe(true);
+    });
+
+    it("rejects sha256-looking hashes", () => {
+        expect(isBcryptHash(sha256("api-key"))).toBe(false);
     });
 });
 

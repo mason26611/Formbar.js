@@ -18,6 +18,7 @@ const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
 const { hashBcrypt, compareBcrypt } = require("@modules/crypto");
+const { hashAPIKey, getEmailFromAPIKey: resolveEmailFromAPIKey } = require("@services/api-key-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
@@ -396,14 +397,13 @@ async function regenerateAPIKey(userId) {
         });
     }
 
-    // Generate a new API key for the user
-    const hashedAPIKey = await sha256(apiKey);
+    const apiKey = crypto.randomBytes(32).toString("hex");
+    const hashedAPIKey = hashAPIKey(apiKey);
     await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
 
     // Invalidate the cache for the user's email
-    const email = await getEmailFromId(userId);
-    if (email) {
-        apiKeyCacheStore.invalidateByEmail(email);
+    if (user.email) {
+        apiKeyCacheStore.invalidateByEmail(user.email);
     } else {
         apiKeyCacheStore.clear();
     }
@@ -442,34 +442,8 @@ async function getEmailFromAPIKey(api) {
     try {
         if (!api) return { error: "Missing API key" };
 
-        const cachedEmail = apiKeyCacheStore.get(api);
-        if (cachedEmail) return cachedEmail;
-
-        let user = await new Promise((resolve, reject) => {
-            database.all("SELECT * FROM users", [], async (err, users) => {
-                try {
-                    if (err) throw err;
-                    let userData = null;
-                    for (const user of users) {
-                        if (user.API && (await compareBcrypt(api, user.API))) {
-                            userData = user;
-                            break;
-                        }
-                    }
-                    if (!userData) {
-                        resolve({ error: "Not a valid API key" });
-                        return;
-                    }
-                    resolve(userData);
-                } catch (err) {
-                    reject(err);
-                }
-            });
-        });
-
-        if (user.error) return user;
-        apiKeyCacheStore.set(api, user.email);
-        return user.email;
+        const email = await resolveEmailFromAPIKey(api);
+        return email || { error: "Not a valid API key" };
     } catch (err) {
         return err;
     }

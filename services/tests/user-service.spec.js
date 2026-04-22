@@ -107,7 +107,7 @@ jest.mock("@services/student-service", () => ({
 const fs = require("fs");
 const realReadFileSync = fs.readFileSync;
 const bcrypt = require("bcrypt");
-const { hashBcrypt, compareBcrypt } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
 const { sendMail } = require("@modules/mail");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { classStateStore } = require("@services/classroom-service");
@@ -367,7 +367,7 @@ describe("regenerateAPIKey()", () => {
         await expect(regenerateAPIKey(99999)).rejects.toThrow(NotFoundError);
     });
 
-    it("returns a new plaintext API key and stores a hash", async () => {
+    it("returns a new plaintext API key and stores a sha256 hash", async () => {
         const seeded = await seedUser({ email: "apiuser@test.com", API: "oldapi" });
         const newKey = await regenerateAPIKey(seeded.id);
 
@@ -377,8 +377,7 @@ describe("regenerateAPIKey()", () => {
         const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [seeded.id]);
         expect(row.API).not.toBe("oldapi");
         expect(row.API).not.toBe(newKey);
-        const matches = await compareBcrypt(newKey, row.API);
-        expect(matches).toBe(true);
+        expect(row.API).toBe(sha256(newKey));
     });
 
     it("invalidates the API key cache", async () => {

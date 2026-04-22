@@ -76,7 +76,7 @@ function compareBcrypt(text, hash) {
  * @returns {boolean} True if the hash is a bcrypt hash, false otherwise.
  */
 function isBcryptHash(hash) {
-    return typeof hash === "string" && hash.startsWith("$2b$");
+    return typeof hash === "string" && /^\$2[aby]\$\d{2}\$/.test(hash);
 }
 
 /**

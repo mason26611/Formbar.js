@@ -193,7 +193,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
     });
 
     it("returns 403 for a guest user (permissions=1) who lacks global.digipogs.transfer", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
             email: "guest@example.com",
             displayName: "Guest",
             permissions: 1,
@@ -202,13 +202,13 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "1", amount: 5, pin: "1234" });
+            .send({ from: user.id, to: "1", amount: 5, pin: "1234" });
 
         expect(res.status).toBe(403);
     });
 
     it("returns 403 for a banned user (permissions=0)", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase, {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
             email: "banned@example.com",
             displayName: "Banned",
             permissions: 0,
@@ -217,7 +217,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "1", amount: 5, pin: "1234" });
+            .send({ from: user.id, to: "1", amount: 5, pin: "1234" });
 
         expect(res.status).toBe(403);
     });
@@ -231,23 +231,23 @@ describe("POST /api/v1/digipogs/transfer", () => {
     });
 
     it("returns 400 when pin is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "999", amount: 5 });
+            .send({ from: user.id, to: "999", amount: 5 });
 
         expect(res.status).toBe(400);
     });
 
     it("returns 400 when amount is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase);
 
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: "999", pin: "1234" });
+            .send({ from: user.id, to: "999", pin: "1234" });
 
         expect(res.status).toBe(400);
     });
@@ -270,7 +270,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 10, pin: "1234" });
+            .send({ from: sender.id, to: recipient.id, amount: 10, pin: "1234" });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
@@ -278,6 +278,25 @@ describe("POST /api/v1/digipogs/transfer", () => {
         // Verify balances changed
         const senderAfter = await mockDatabase.dbGet("SELECT digipogs FROM users WHERE id = ?", [sender.id]);
         expect(senderAfter.digipogs).toBe(90);
+    });
+
+    it("authenticates a PIN-only transfer by looking up the requested sender", async () => {
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
+
+        const { user: sender } = await seedAuthenticatedUser(mockDatabase);
+        await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
+
+        const { user: recipient } = await seedAuthenticatedUser(mockDatabase, {
+            email: "pin-recipient@example.com",
+            displayName: "PIN Recipient",
+            permissions: 2,
+        });
+
+        const res = await request(app).post("/api/v1/digipogs/transfer").send({ from: sender.id, to: recipient.id, amount: 10, pin: "1234" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
     });
 
     it("returns 400 when the sender has insufficient funds", async () => {
@@ -296,7 +315,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 50, pin: "1234" });
+            .send({ from: sender.id, to: recipient.id, amount: 50, pin: "1234" });
 
         expect(res.status).toBe(400);
     });
@@ -317,7 +336,7 @@ describe("POST /api/v1/digipogs/transfer", () => {
         const res = await request(app)
             .post("/api/v1/digipogs/transfer")
             .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ to: recipient.id, amount: 10, pin: "wrong" });
+            .send({ from: sender.id, to: recipient.id, amount: 10, pin: "wrong" });
 
         expect(res.status).toBe(400);
     });

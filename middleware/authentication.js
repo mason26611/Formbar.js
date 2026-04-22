@@ -1,12 +1,11 @@
 const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
-const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compareBcrypt } = require("@modules/crypto");
+const { dbGet, dbRun } = require("@modules/database");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
+const { resolveAPIKey } = require("@services/api-key-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
-const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const AuthError = require("@errors/auth-error");
 
 const whitelistedIps = {};
@@ -15,12 +14,7 @@ const blacklistedIps = {};
 // Removes expired refresh tokens and authorization codes from the database
 async function cleanRefreshTokens() {
     try {
-        const refreshTokens = await dbGetAll("SELECT * FROM refresh_tokens");
-        for (const refreshToken of refreshTokens) {
-            if (Date.now() >= refreshToken.exp) {
-                await dbRun("DELETE FROM refresh_tokens WHERE token_hash = ?", [refreshToken.token_hash]);
-            }
-        }
+        await dbRun("DELETE FROM refresh_tokens WHERE exp <= ?", [Date.now()]);
         // Also clean up expired authorization codes
         await cleanupExpiredAuthorizationCodes();
     } catch (err) {
@@ -85,27 +79,8 @@ async function isAuthenticated(req, res, next) {
     const apiKeyHeader = req.headers.api || req.query.api || req.body.api;
     const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
     if (apiKey) {
-        let apiUser = null;
-
-        // Fast path: check the in-memory cache to avoid bcrypt comparisons on repeat requests.
-        const cachedEmail = apiKeyCacheStore.get(apiKey);
-        if (cachedEmail) {
-            apiUser = await loadComputedUserByEmail(cachedEmail);
-        }
-
-        // Slow path: cache miss — scan all users with an API key and bcrypt-compare each one.
-        if (!apiUser) {
-            const users = await dbGetAll("SELECT * FROM users WHERE API IS NOT NULL");
-            for (const user of users) {
-                if (!user.API) continue;
-                const matches = await compareBcrypt(apiKey, user.API);
-                if (matches) {
-                    apiUser = await getUserDataFromDb(user.id);
-                    apiKeyCacheStore.set(apiKey, user.email);
-                    break;
-                }
-            }
-        }
+        const apiKeyUser = await resolveAPIKey(apiKey);
+        const apiUser = apiKeyUser ? await getUserDataFromDb(apiKeyUser.id) : null;
 
         if (!apiUser) {
             req.warnEvent("auth.invalid_api_key", "Invalid API key provided");

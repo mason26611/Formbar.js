@@ -189,6 +189,14 @@ module.exports = {
                 logger.log("info", `[classRemoveFromSession] ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`);
                 logger.log("info", `[classRemoveFromSession] userId=(${userId})`);
 
+                logEvent(
+                    logger,
+                    "info",
+                    "classRemoveFromSession",
+                    `ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`
+                );
+                logEvent(logger, "info", "classRemoveFromSession", `userId=(${userId})`);
+
                 const classId = await socketContext.resolveClassId();
                 classKickStudent(userId, classId, { exitRoom: false, ban: false });
             } catch (err) {

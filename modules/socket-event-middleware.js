@@ -3,6 +3,7 @@ const { dbGet } = require("@modules/database");
 const { getUserDataFromDb } = require("@services/user-service");
 const { userHasScope } = require("@modules/scope-resolver");
 const { handleSocketError } = require("@modules/socket-error-handler");
+const { getLogger, logEvent } = require("@modules/logger");
 const AuthError = require("@errors/auth-error");
 const ForbiddenError = require("@errors/forbidden-error");
 const ValidationError = require("@errors/validation-error");
@@ -45,7 +46,23 @@ async function getSocketUserData(socket, email) {
     return userRow ? getUserDataFromDb(userRow.id) : null;
 }
 
-function createSocketContext(socket, event, args) {
+async function createSocketContext(socket, event, args) {
+    const logger = await getLogger();
+    const baseMeta = {
+        socketId: socket.id,
+        event: event,
+        ip: socket.handshake?.address || socket.request?.socket?.remoteAddress,
+        session: JSON.stringify(socket.request.session),
+    };
+
+    socket.logger = logger.child(baseMeta);
+
+    socket.logger = socket.logger;
+    socket.logEvent = (...logArgs) => logEvent(socket.logger, ...logArgs);
+    socket.infoEvent = (...logArgs) => socket.logEvent("info", ...logArgs);
+    socket.warnEvent = (...logArgs) => socket.logEvent("warn", ...logArgs);
+    socket.errorEvent = (...logArgs) => socket.logEvent("error", ...logArgs);
+
     return {
         socket,
         socketUpdates: socket._socketUpdates,
@@ -184,7 +201,7 @@ function onSocketEvent(socket, event, ...middlewaresAndHandler) {
     const middlewares = middlewaresAndHandler;
 
     socket.on(event, async (...args) => {
-        const socketContext = createSocketContext(socket, event, args);
+        const socketContext = await createSocketContext(socket, event, args);
 
         try {
             for (const middleware of middlewares) {

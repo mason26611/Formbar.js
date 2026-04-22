@@ -3,6 +3,27 @@ const { hasScope } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const AppError = require("@errors/app-error");
 
+function normalizeTransferFrom(rawFrom) {
+    if (rawFrom === undefined || rawFrom === null || rawFrom === "") {
+        return null;
+    }
+
+    if (typeof rawFrom === "object") {
+        const type = rawFrom.type || "user";
+        const id = Number(rawFrom.id ?? rawFrom.userId ?? rawFrom.poolId);
+        if (!Number.isInteger(id) || id <= 0 || !["user", "pool"].includes(type)) {
+            return null;
+        }
+        return { id, type };
+    }
+
+    const id = Number(rawFrom);
+    if (!Number.isInteger(id) || id <= 0) {
+        return null;
+    }
+    return { id, type: "user" };
+}
+
 /**
  * * Register transfer controller routes.
  * @param {import("express").Router} router - router.
@@ -30,10 +51,17 @@ module.exports = (router) => {
      *           schema:
      *             type: object
      *             required:
+     *               - from
      *               - to
      *               - amount
      *               - pin
      *             properties:
+     *               from:
+     *                 oneOf:
+     *                   - type: integer
+     *                   - type: object
+     *                 example: 1
+     *                 description: Sender account. Required with PIN transfers so the PIN can be checked with a targeted lookup.
      *               to:
      *                 type: string
      *                 example: "user123"
@@ -81,19 +109,36 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/digipogs/transfer", hasScope(SCOPES.GLOBAL.DIGIPOGS.TRANSFER), async (req, res) => {
-        const { to, amount, pin, reason } = req.body || {};
+        const { from: rawFrom, to, amount, pin, reason, pool } = req.body || {};
+        const requestedFrom = normalizeTransferFrom(rawFrom);
 
-        // Derive the authenticated user ID from the server-side context, not from client input
-        const from = req.user?.id || req.user?.userId;
+        if (!requestedFrom) {
+            throw new AppError("Missing sender identifier.", {
+                statusCode: 400,
+                event: "digipogs.transfer.failed",
+                reason: "missing_sender",
+            });
+        }
 
-        if (!from) {
-            throw new AppError({
+        const authenticatedUserId = req.user?.id || req.user?.userId;
+
+        if (!authenticatedUserId) {
+            throw new AppError("Unable to determine authenticated user for digipogs transfer.", {
                 statusCode: 401,
-                message: "Unable to determine authenticated user for digipogs transfer.",
                 event: "digipogs.transfer.failed",
                 reason: "user_not_found",
             });
         }
+
+        if (!req.pinAuthenticatedFrom && requestedFrom.type === "user" && requestedFrom.id !== authenticatedUserId) {
+            throw new AppError("Sender identifier does not match the authenticated user.", {
+                statusCode: 403,
+                event: "digipogs.transfer.failed",
+                reason: "sender_mismatch",
+            });
+        }
+
+        const from = req.pinAuthenticatedFrom || (requestedFrom.type === "pool" ? requestedFrom : { id: authenticatedUserId, type: "user" });
 
         req.infoEvent("digipogs.transfer.attempt", "Attempting to transfer digipogs", { from, to, amount });
 
@@ -102,6 +147,7 @@ module.exports = (router) => {
             to,
             amount,
             pin,
+            ...(pool !== undefined && { pool }),
             ...(reason !== undefined && { reason }),
         };
 
