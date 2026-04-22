@@ -1,6 +1,6 @@
 const { classStateStore } = require("@services/classroom-service");
 const { dbGet, dbGetAll } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { userHasScope } = require("@modules/scope-resolver");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
@@ -43,7 +43,7 @@ async function attachDigipogPinUser(req, res) {
     let matchedUserId = null;
 
     for (const candidate of users) {
-        if (!candidate.pin || !(await compare(pin, candidate.pin))) {
+        if (!candidate.pin || !(await compareBcrypt(pin, candidate.pin))) {
             continue;
         }
 

@@ -3,7 +3,7 @@ const { database } = require("@modules/database");
 const { createStudentFromUserData, getIdFromEmail } = require("@services/student-service");
 const { getUserClass, getUserDataFromDb } = require("@services/user-service");
 const { classKickStudent } = require("@services/class-service");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
 const { socketStateStore } = require("@stores/socket-state-store");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
@@ -184,7 +184,7 @@ module.exports = {
                                 // Compare the provided API key with each user's hashed API key
                                 let userData = null;
                                 for (const user of users) {
-                                    if (user.API && (await compare(api, user.API))) {
+                                    if (user.API && *(await compareBcrypt(api, user.API))) {
                                         userData = user;
                                         break;
                                     }

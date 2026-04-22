@@ -52,9 +52,9 @@ describe("backwards-compat", () => {
 
         it("should emit an error when no user matches the API key", async () => {
             socket.request.session.email = null;
-            const { compare } = require("@modules/crypto");
+            const { compareBcrypt } = require("@modules/crypto");
             dbGetAll.mockResolvedValueOnce([{ id: 1, email: "other@test.com", API: "hashed" }]);
-            compare.mockResolvedValue(false);
+            compareBcrypt.mockResolvedValue(false);
 
             await getActiveClassHandler("invalidKey");
             expect(socket.emit).toHaveBeenCalledWith("error", "Invalid API key.");

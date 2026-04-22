@@ -2,7 +2,7 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
 
@@ -1040,7 +1040,7 @@ async function transferDigipogs(transferData) {
             return { success: false, message: "Account PIN not configured." };
         }
 
-        const isPinValid = await compare(String(pin), fromAccount.pin);
+        const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
         if (!isPinValid) {
             recordAttempt(accountId, false);
             return { success: false, message: "Invalid PIN." };

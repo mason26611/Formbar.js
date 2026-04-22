@@ -7,7 +7,7 @@
  */
 
 const { dbGetAll } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { verifyToken } = require("@services/auth-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { handleSocketError } = require("@modules/socket-error-handler");
@@ -42,7 +42,7 @@ module.exports = {
                 const users = await dbGetAll("SELECT id, email, API, tags, displayName FROM users WHERE API IS NOT NULL");
                 let userData = null;
                 for (const user of users) {
-                    if (user.API && (await compare(apiKey, user.API))) {
+                    if (user.API && (await compareBcrypt(apiKey, user.API))) {
                         userData = await getUserDataFromDb(user.id);
                         break;
                     }

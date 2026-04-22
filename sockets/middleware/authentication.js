@@ -1,5 +1,5 @@
 const { database } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { classStateStore } = require("@services/classroom-service");
 const authService = require("@services/auth-service");
 
@@ -66,7 +66,7 @@ module.exports = {
                             // Compare the provided API key with each user's hashed API key
                             let matchedUser = null;
                             for (const user of users) {
-                                if (user.API && (await compare(api, user.API))) {
+                                if (user.API && (await compareBcrypt(api, user.API))) {
                                     matchedUser = user;
                                     break;
                                 }

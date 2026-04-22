@@ -1,6 +1,5 @@
 const handlebars = require("handlebars");
 const fs = require("fs");
-const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
@@ -18,7 +17,7 @@ const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-se
 const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { hash } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt } = require("@modules/crypto");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getEmailFromId } = require("@services/student-service");
@@ -115,7 +114,7 @@ async function resetPin(newPin, token) {
         });
     }
 
-    const hashedPin = await hash(String(newPin));
+    const hashedPin = await hashBcrypt(String(newPin));
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, user.id]);
 }
 
@@ -141,7 +140,7 @@ async function updatePin(userId, oldPin, newPin) {
     // If user already has a PIN, verify the old one matches
     if (user.pin) {
         requireInternalParam(oldPin, "oldPin");
-        const oldPinMatches = await bcrypt.compare(String(oldPin), user.pin);
+        const oldPinMatches = await compareBcrypt(String(oldPin), user.pin);
         if (!oldPinMatches) {
             const AuthError = require("@errors/auth-error");
             throw new AuthError("Current PIN is incorrect.", {
@@ -151,7 +150,7 @@ async function updatePin(userId, oldPin, newPin) {
         }
     }
 
-    const hashedPin = await hash(String(newPin));
+    const hashedPin = await hashBcrypt(String(newPin));
     await dbRun("UPDATE users SET pin = ? WHERE id = ?", [hashedPin, userId]);
 }
 
@@ -181,7 +180,7 @@ async function verifyPin(userId, pin) {
         });
     }
 
-    const pinMatches = await bcrypt.compare(String(pin), user.pin);
+    const pinMatches = await compareBcrypt(String(pin), user.pin);
     if (!pinMatches) {
         const AuthError = require("@errors/auth-error");
         throw new AuthError("PIN is incorrect.", {
@@ -338,7 +337,7 @@ async function resetPassword(password, token) {
         });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashBcrypt(password);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, user.id]);
     return true;
 }
@@ -366,7 +365,7 @@ async function updatePassword(userId, oldPassword, newPassword) {
     if (user.password) {
         requireInternalParam(oldPassword, "oldPassword");
 
-        const oldPasswordMatches = await bcrypt.compare(oldPassword, user.password);
+        const oldPasswordMatches = await compareBcrypt(oldPassword, user.password);
         if (!oldPasswordMatches) {
             const AuthError = require("@errors/auth-error");
             throw new AuthError("Current password is incorrect.", {
@@ -376,7 +375,7 @@ async function updatePassword(userId, oldPassword, newPassword) {
         }
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashBcrypt(newPassword);
     await dbRun("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId]);
     return true;
 }
@@ -398,8 +397,7 @@ async function regenerateAPIKey(userId) {
     }
 
     // Generate a new API key for the user
-    const apiKey = crypto.randomBytes(32).toString("hex");
-    const hashedAPIKey = await hash(apiKey);
+    const hashedAPIKey = await sha256(apiKey);
     await dbRun("UPDATE users SET API = ? WHERE id = ?", [hashedAPIKey, userId]);
 
     // Invalidate the cache for the user's email
@@ -453,7 +451,7 @@ async function getEmailFromAPIKey(api) {
                     if (err) throw err;
                     let userData = null;
                     for (const user of users) {
-                        if (user.API && (await bcrypt.compare(api, user.API))) {
+                        if (user.API && (await compareBcrypt(api, user.API))) {
                             userData = user;
                             break;
                         }

@@ -107,7 +107,7 @@ jest.mock("@services/student-service", () => ({
 const fs = require("fs");
 const realReadFileSync = fs.readFileSync;
 const bcrypt = require("bcrypt");
-const { hash } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt } = require("@modules/crypto");
 const { sendMail } = require("@modules/mail");
 const { apiKeyCacheStore } = require("@stores/api-key-cache-store");
 const { classStateStore } = require("@services/classroom-service");
@@ -311,7 +311,7 @@ describe("resetPassword()", () => {
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
         expect(row.password).not.toBe("NewPassword1!");
         expect(row.password.startsWith("$2b$")).toBe(true);
-        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        const matches = await compareBcrypt("NewPassword1!", row.password);
         expect(matches).toBe(true);
     });
 
@@ -328,30 +328,30 @@ describe("updatePassword()", () => {
         expect(result).toBe(true);
 
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
-        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        const matches = await compareBcrypt("NewPassword1!", row.password);
         expect(matches).toBe(true);
     });
 
     it("updates an existing password when the old password matches", async () => {
-        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const hashedPassword = await hashBcrypt("OldPassword1!");
         const seeded = await seedUser({ password: hashedPassword });
 
         await updatePassword(seeded.id, "OldPassword1!", "NewPassword1!");
 
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
-        const matches = await bcrypt.compare("NewPassword1!", row.password);
+        const matches = await compareBcrypt("NewPassword1!", row.password);
         expect(matches).toBe(true);
     });
 
     it("requires the current password when one already exists", async () => {
-        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const hashedPassword = await hashBcrypt("OldPassword1!");
         const seeded = await seedUser({ password: hashedPassword });
 
         await expect(updatePassword(seeded.id, null, "NewPassword1!")).rejects.toThrow(AppError);
     });
 
     it("throws AuthError when the current password is incorrect", async () => {
-        const hashedPassword = await bcrypt.hash("OldPassword1!", 10);
+        const hashedPassword = await hashBcrypt("OldPassword1!");
         const seeded = await seedUser({ password: hashedPassword });
 
         await expect(updatePassword(seeded.id, "WrongPassword1!", "NewPassword1!")).rejects.toThrow(AuthError);
@@ -377,7 +377,7 @@ describe("regenerateAPIKey()", () => {
         const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [seeded.id]);
         expect(row.API).not.toBe("oldapi");
         expect(row.API).not.toBe(newKey);
-        const matches = await bcrypt.compare(newKey, row.API);
+        const matches = await compareBcrypt(newKey, row.API);
         expect(matches).toBe(true);
     });
 
@@ -426,7 +426,7 @@ describe("resetPin()", () => {
 
         const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
         expect(row.pin).not.toBe("5678");
-        const matches = await bcrypt.compare("5678", row.pin);
+        const matches = await compareBcrypt("5678", row.pin);
         expect(matches).toBe(true);
     });
 });
@@ -450,28 +450,28 @@ describe("updatePin()", () => {
         await updatePin(seeded.id, null, "1234");
 
         const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
-        const matches = await bcrypt.compare("1234", row.pin);
+        const matches = await compareBcrypt("1234", row.pin);
         expect(matches).toBe(true);
     });
 
     it("updates pin when old pin matches", async () => {
-        const hashedOld = await hash("1111");
+        const hashedOld = await hashBcrypt("1111");
         const seeded = await seedUser({ pin: hashedOld });
         await updatePin(seeded.id, "1111", "2222");
 
         const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
-        const matches = await bcrypt.compare("2222", row.pin);
+        const matches = await compareBcrypt("2222", row.pin);
         expect(matches).toBe(true);
     });
 
     it("throws AuthError when old pin is incorrect", async () => {
-        const hashedOld = await hash("1111");
+        const hashedOld = await hashBcrypt("1111");
         const seeded = await seedUser({ pin: hashedOld });
         await expect(updatePin(seeded.id, "9999", "2222")).rejects.toThrow(AuthError);
     });
 
     it("throws AppError when old pin is missing but user has a pin", async () => {
-        const hashedOld = await hash("1111");
+        const hashedOld = await hashBcrypt("1111");
         const seeded = await seedUser({ pin: hashedOld });
         await expect(updatePin(seeded.id, null, "2222")).rejects.toThrow(AppError);
     });
@@ -497,14 +497,14 @@ describe("verifyPin()", () => {
     });
 
     it("returns true when pin matches", async () => {
-        const hashedPin = await hash("5555");
+        const hashedPin = await hashBcrypt("5555");
         const seeded = await seedUser({ pin: hashedPin });
         const result = await verifyPin(seeded.id, "5555");
         expect(result).toBe(true);
     });
 
     it("throws AuthError when pin is incorrect", async () => {
-        const hashedPin = await hash("5555");
+        const hashedPin = await hashBcrypt("5555");
         const seeded = await seedUser({ pin: hashedPin });
         await expect(verifyPin(seeded.id, "0000")).rejects.toThrow(AuthError);
     });

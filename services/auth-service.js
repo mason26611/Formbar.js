@@ -1,4 +1,4 @@
-const { compare, hash } = require("bcrypt");
+const { compareBcrypt, hashBcrypt } = require("@modules/crypto");
 const { dbGet, dbRun, dbGetAll } = require("@modules/database");
 const { privateKey, publicKey } = require("@modules/config");
 const { computeGlobalPermissionLevel, computeClassPermissionLevel, MANAGER_PERMISSIONS, STUDENT_PERMISSIONS } = require("@modules/permissions");
@@ -248,7 +248,7 @@ async function register(email, password, displayName) {
         throw new ConflictError("A user with that email or display name already exists.", { event: "auth.register.failed", reason: "user_exists" });
     }
 
-    const hashedPassword = await hash(password, 10);
+    const hashedPassword = await hashBcrypt(password);
     const userData = await normalizeUserData(
         await createUser({
             email,
@@ -293,7 +293,7 @@ async function login(email, password) {
         return invalidCredentials();
     }
 
-    const passwordMatches = await compare(password, userData.password);
+    const passwordMatches = await compareBcrypt(password, userData.password);
     if (passwordMatches) {
         return { tokens: await issueAuthTokens(userData), user: userData };
     } else {

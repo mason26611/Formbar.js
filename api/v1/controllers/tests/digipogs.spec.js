@@ -253,8 +253,8 @@ describe("POST /api/v1/digipogs/transfer", () => {
     });
 
     it("returns 200 on a valid transfer between two users", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         // Seed sender with digipogs and a pin
         const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
@@ -281,8 +281,8 @@ describe("POST /api/v1/digipogs/transfer", () => {
     });
 
     it("returns 400 when the sender has insufficient funds", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
         await mockDatabase.dbRun("UPDATE users SET digipogs = 0, pin = ? WHERE id = ?", [pinHash, sender.id]);
@@ -302,8 +302,8 @@ describe("POST /api/v1/digipogs/transfer", () => {
     });
 
     it("returns 400 when the pin is incorrect", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         const { tokens, user: sender } = await seedAuthenticatedUser(mockDatabase);
         await mockDatabase.dbRun("UPDATE users SET digipogs = 100, pin = ? WHERE id = ?", [pinHash, sender.id]);
@@ -325,8 +325,8 @@ describe("POST /api/v1/digipogs/transfer", () => {
 
 describe("POST /api/v1/test-pin-scope", () => {
     it("does not allow pin-based auth outside digipog HTTP APIs", async () => {
-        const { hash } = require("@modules/crypto");
-        const pinHash = await hash("1234");
+        const { hashBcrypt } = require("@modules/crypto");
+        const pinHash = await hashBcrypt("1234");
 
         const { user } = await seedAuthenticatedUser(mockDatabase, {
             email: "pinonly@example.com",

@@ -2,7 +2,7 @@ const { getLogger } = require("@modules/logger");
 const { classStateStore } = require("@services/classroom-service");
 const { settings } = require("@modules/config");
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { createStudentFromUserData } = require("@services/student-service");
 const { getUserDataFromDb } = require("@services/user-service");
 const { verifyToken, cleanupExpiredAuthorizationCodes } = require("@services/auth-service");
@@ -98,7 +98,7 @@ async function isAuthenticated(req, res, next) {
             const users = await dbGetAll("SELECT * FROM users WHERE API IS NOT NULL");
             for (const user of users) {
                 if (!user.API) continue;
-                const matches = await compare(apiKey, user.API);
+                const matches = await compareBcrypt(apiKey, user.API);
                 if (matches) {
                     apiUser = await getUserDataFromDb(user.id);
                     apiKeyCacheStore.set(apiKey, user.email);
