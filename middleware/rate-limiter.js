@@ -8,6 +8,12 @@ const { getUserScopes } = require("@modules/scope-resolver");
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
 const rateLimits = {};
 
+const TIMED_RATE_LIMIT_WINDOW_MS = 60000;
+const UNAUTHENTICATED_USER_RATE_LIMIT = 25;
+const AUTHENTICATED_USER_RATE_LIMIT = 120;
+const AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS = 25;
+const TEACHER_RATE_LIMIT = 225;
+
 async function rateLimiter(req, res, next) {
     let user = null;
     if (req.headers.api) {
@@ -31,16 +37,18 @@ async function rateLimiter(req, res, next) {
 
     const identifier = user.email;
     const currentTime = Date.now();
-    const timeFrame = settings.rateLimitWindowMs ?? 60000;
-    let limit = 10; // Default limit for unauthenticated users
+    const timeFrame = settings.rateLimitWindowMs ?? TIMED_RATE_LIMIT_WINDOW_MS;
     const permissionLevel = computeGlobalPermissionLevel(getUserScopes(user).global);
+    
+    let maximumRequests = UNAUTHENTICATED_USER_RATE_LIMIT; // Default limit for unauthenticated users
     if (permissionLevel >= TEACHER_PERMISSIONS) {
-        limit = 225;
+        maximumRequests = TEACHER_RATE_LIMIT;
     } else if (permissionLevel >= STUDENT_PERMISSIONS) {
-        limit = req.path.startsWith("/auth/") ? 10 : 120;
+        maximumRequests = req.path.startsWith("/auth/") ? AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS : AUTHENTICATED_USER_RATE_LIMIT;
     }
+
     // Apply the configurable multiplier so test runs can relax limits.
-    limit = Math.max(1, Math.round(limit * (settings.rateLimitMultiplier ?? 1)));
+    maximumRequests = Math.max(1, Math.round(maximumRequests * (settings.rateLimitMultiplier ?? 1)));
 
     // Initialize rate limit log for the user if it doesn't exist
     if (!rateLimits[identifier]) {
@@ -65,13 +73,13 @@ async function rateLimiter(req, res, next) {
     // Check if the user has exceeded the limit
     // If they have, send a rate limit response
     // Otherwise, log the request and proceed
-    if (userRequests[path].length >= limit) {
+    if (userRequests[path].length >= maximumRequests) {
         if (!userRequests["hasBeenMessaged"]) {
             userRequests["hasBeenMessaged"] = true;
             req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
                 identifier,
                 path,
-                limit,
+                limit: maximumRequests,
                 permissionLevel,
             });
         }
