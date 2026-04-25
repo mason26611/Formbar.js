@@ -161,10 +161,7 @@ describe("POST /api/v1/apps/register", () => {
         const payload = { name: "Same Name", description: "First app" };
 
         const first = await request(app).post("/api/v1/apps/register").set(headers).send(payload);
-        const second = await request(app)
-            .post("/api/v1/apps/register")
-            .set(headers)
-            .send({ name: payload.name, description: "Second app" });
+        const second = await request(app).post("/api/v1/apps/register").set(headers).send({ name: payload.name, description: "Second app" });
 
         expect(first.status).toBe(200);
         expect(second.status).toBe(200);

@@ -452,53 +452,6 @@ describe("PATCH /api/v1/user/:id/perm", () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// Deprecated endpoints
-// ---------------------------------------------------------------------------
-describe("GET /api/v1/user/:id/ban (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager bans a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/ban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
-describe("GET /api/v1/user/:id/unban (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager unbans a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        await setGlobalPermissionLevel(mockDatabase, target.id, 0);
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/unban`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
-describe("GET /api/v1/user/:id/delete (deprecated)", () => {
-    it("returns 200 with deprecation headers when a manager deletes a user", async () => {
-        const { tokens: managerTokens } = await seedManager();
-        const { user: target } = await seedStudent();
-
-        const res = await request(app).get(`/api/v1/user/${target.id}/delete`).set("Authorization", `Bearer ${managerTokens.accessToken}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.headers["x-deprecated"]).toBeDefined();
-        expect(res.headers["warning"]).toMatch(/299/);
-    });
-});
-
 describe("GET /api/v1/user/:id/classes", () => {
     it("returns 200 when a user views their own classes", async () => {
         const { tokens, user } = await seedStudent();
