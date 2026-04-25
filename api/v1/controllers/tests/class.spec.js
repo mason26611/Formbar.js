@@ -438,6 +438,36 @@ describe("GET /api/v1/class/:id/students", () => {
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
     });
+
+    it("returns paginated class students for a loaded classroom", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-students@example.com",
+            displayName: "Teacher Students",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "STUD1", className: "Students Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-students@example.com",
+            displayName: "Student Students",
+            permissions: 2,
+        });
+        await enrollUserInClass(student, classId, 2);
+
+        const res = await request(app).get(`/api/v1/class/${classId}/students?limit=1`).set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(Array.isArray(res.body.data.students)).toBe(true);
+        expect(res.body.data.students).toHaveLength(1);
+        expect(res.body.data.pagination).toEqual({
+            total: 2,
+            limit: 1,
+            offset: 0,
+            hasMore: true,
+        });
+    });
 });
 
 describe("GET /api/v1/class/:id/active", () => {
@@ -697,12 +727,18 @@ describe("GET /api/v1/class/:id/links", () => {
 
         await mockDatabase.dbRun("INSERT INTO links (classId, name, url) VALUES (?, ?, ?)", [classId, "Course Website", "https://example.com"]);
 
-        const res = await request(app).get(`/api/v1/class/${classId}/links`).set("Authorization", `Bearer ${tokens.accessToken}`);
+        const res = await request(app).get(`/api/v1/class/${classId}/links?limit=1`).set("Authorization", `Bearer ${tokens.accessToken}`);
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.data.links)).toBe(true);
         expect(res.body.data.links).toHaveLength(1);
         expect(res.body.data.links[0]).toMatchObject({ name: "Course Website", url: "https://example.com" });
+        expect(res.body.data.pagination).toEqual({
+            total: 1,
+            limit: 1,
+            offset: 0,
+            hasMore: false,
+        });
     });
 });
 
@@ -921,8 +957,14 @@ describe("GET /api/v1/class/:id/banned", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
-        expect(res.body.data).toHaveLength(0);
+        expect(Array.isArray(res.body.data.banned)).toBe(true);
+        expect(res.body.data.banned).toHaveLength(0);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
     });
 });
 

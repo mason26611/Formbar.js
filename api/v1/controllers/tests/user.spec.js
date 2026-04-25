@@ -460,7 +460,13 @@ describe("GET /api/v1/user/:id/classes", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(Array.isArray(res.body.data.classes)).toBe(true);
+        expect(res.body.data.pagination).toEqual({
+            total: 0,
+            limit: 20,
+            offset: 0,
+            hasMore: false,
+        });
     });
 
     it("returns classPermissions on joined class entries", async () => {
@@ -474,7 +480,7 @@ describe("GET /api/v1/user/:id/classes", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.data).toEqual(
+        expect(res.body.data.classes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     id: classroom.id,
@@ -483,6 +489,7 @@ describe("GET /api/v1/user/:id/classes", () => {
                 }),
             ])
         );
+        expect(res.body.data.pagination.total).toBeGreaterThanOrEqual(1);
     });
 
     it("returns 200 when a manager views another user's classes", async () => {

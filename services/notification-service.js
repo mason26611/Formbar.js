@@ -21,6 +21,23 @@ async function getNotificationsForUser(userId) {
 }
 
 /**
+ * * Get notifications for a user with pagination.
+ * @param {number} userId - userId.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @returns {Promise<Object>}
+ */
+async function getNotificationsForUserPaginated(userId, limit = 20, offset = 0) {
+    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM notifications WHERE user_id = ?", [userId]);
+    const notifications = await dbGetAll("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?", [userId, limit, offset]);
+
+    return {
+        notifications,
+        total: totalRow ? totalRow.count : 0,
+    };
+}
+
+/**
  * * Mark a notification as read.
  * @param {Object} notificationId - notificationId.
  * @returns {Promise<void>}
@@ -61,6 +78,7 @@ async function emptyInboxForUser(userId) {
 module.exports = {
     getNotificationById,
     getNotificationsForUser,
+    getNotificationsForUserPaginated,
     markNotificationAsRead,
     createNotification,
     emptyInboxForUser,

@@ -283,6 +283,25 @@ function getClassLinks(classId) {
 }
 
 /**
+ * * Get saved links for a class with pagination.
+ * @param {number} classId - classId.
+ * @param {number} limit - limit.
+ * @param {number} offset - offset.
+ * @returns {Promise<Object>}
+ */
+async function getClassLinksPaginated(classId, limit = 20, offset = 0) {
+    requireInternalParam(classId, "classId");
+
+    const totalRow = await dbGet("SELECT COUNT(*) AS count FROM links WHERE classId = ?", [classId]);
+    const links = await dbGetAll("SELECT name, url FROM links WHERE classId = ? ORDER BY id ASC LIMIT ? OFFSET ?", [classId, limit, offset]);
+
+    return {
+        links,
+        total: totalRow ? totalRow.count : 0,
+    };
+}
+
+/**
  * * Middleware-compatible ownership check for classrooms.
  * * Returns a promise resolving to boolean, suitable for isOwnerOrHasScope middleware.
  * * Also caches the classroom on req._room for use by the handler.
@@ -308,4 +327,5 @@ module.exports = {
     unenrollFromClass,
     isUserEnrolled,
     getClassLinks,
+    getClassLinksPaginated,
 };
