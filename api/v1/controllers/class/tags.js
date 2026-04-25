@@ -30,7 +30,7 @@ module.exports = (router) => {
             throw new ValidationError("tags must be an array of strings");
         }
 
-        setTags(tags, req.user);
+        await setTags(tags, req.user);
         req.infoEvent("class.tags.update.success", "Class tags updated", { classId, tagCount: tags.length });
         res.status(200).json({
             success: true,

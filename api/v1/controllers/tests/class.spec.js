@@ -653,6 +653,32 @@ describe("PUT /api/v1/class/:id/tags", () => {
             .send({ tags: ["math"] });
         expect(res.status).toBe(403);
     });
+
+    it("persists tags for a loaded class when the teacher is active in that class", async () => {
+        const { tokens, user } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-tags@example.com",
+            displayName: "Tag Teacher",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(user.id);
+        await enrollUserInClass(user, classId, TEACHER_PERMISSIONS);
+
+        classStateStore.updateUser(user.email, { activeClass: classId });
+
+        const res = await request(app)
+            .put(`/api/v1/class/${classId}/tags`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`)
+            .send({ tags: ["math", "science"] });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const classroom = classStateStore.getClassroom(classId);
+        expect(classroom.tags).toEqual(["math", "science", "Offline"]);
+
+        const persisted = await mockDatabase.dbGet("SELECT tags FROM classroom WHERE id = ?", [classId]);
+        expect(persisted.tags).toBe("math,science,Offline");
+    });
 });
 
 describe("GET /api/v1/class/:id/links", () => {
@@ -931,6 +957,29 @@ describe("POST /api/v1/class/:id/students/:userId/kick", () => {
 
         const classUser = await mockDatabase.dbGet("SELECT 1 FROM classusers WHERE classId = ? AND studentId = ?", [classId, student.id]);
         expect(classUser).toBeUndefined();
+    });
+
+    it("returns 404 when the student is no longer enrolled in the class", async () => {
+        const { tokens: teacherTokens, user: teacher } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher-kick-missing@example.com",
+            displayName: "Teacher Kick Missing",
+            permissions: TEACHER_PERMISSIONS,
+        });
+        const classId = await seedClassroom(teacher.id, { key: "KICK2", className: "Kick Missing Test" });
+        await enrollUserInClass(teacher, classId, TEACHER_PERMISSIONS);
+
+        const { user: student } = await seedAuthenticatedUser(mockDatabase, {
+            email: "student-kick-missing@example.com",
+            displayName: "Student Missing",
+            permissions: 2,
+        });
+
+        const res = await request(app)
+            .post(`/api/v1/class/${classId}/students/${student.id}/kick`)
+            .set("Authorization", `Bearer ${teacherTokens.accessToken}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
     });
 });
 
