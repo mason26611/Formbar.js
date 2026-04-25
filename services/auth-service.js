@@ -169,6 +169,7 @@ async function getUniqueDisplayName(displayName, email) {
  */
 async function createUser({ email, password, displayName, verified }) {
     const apiKey = crypto.randomBytes(64).toString("hex");
+    const hashedApiKey = await hash(apiKey, 10);
     const secret = crypto.randomBytes(256).toString("hex");
 
     const allUsers = await dbGetAll("SELECT * FROM users", []);
@@ -178,7 +179,7 @@ async function createUser({ email, password, displayName, verified }) {
     const userId = await dbRun(`INSERT INTO users (email, password, API, secret, displayName, verified) VALUES (?, ?, ?, ?, ?, ?)`, [
         email,
         password || null,
-        apiKey,
+        hashedApiKey,
         secret,
         uniqueDisplayName,
         verified ? 1 : 0,

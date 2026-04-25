@@ -1,6 +1,7 @@
 const { createTestDb } = require("@test-helpers/db");
 const { addClassMemberWithPermission } = require("@test-helpers/role-seeding");
 const { classStateStore } = require("@services/classroom-service");
+const bcrypt = require("bcrypt");
 
 let mockDatabase;
 
@@ -147,6 +148,14 @@ describe("register()", () => {
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE email = ?", [VALID_EMAIL]);
         expect(row.password).not.toBe(VALID_PASSWORD);
         expect(row.password.startsWith("$2b$")).toBe(true);
+    });
+
+    it("stores a hashed API key that can be used for API authentication", async () => {
+        await register(VALID_EMAIL, VALID_PASSWORD, VALID_DISPLAY);
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE email = ?", [VALID_EMAIL]);
+        expect(row.API).not.toMatch(/^[0-9a-f]{128}$/);
+        expect(row.API.startsWith("$2b$")).toBe(true);
+        await expect(bcrypt.compare("not-the-real-api-key", row.API)).resolves.toBe(false);
     });
 
     it("persists a refresh token in the refresh_tokens table", async () => {

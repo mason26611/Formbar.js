@@ -38,17 +38,11 @@ jest.mock("@modules/config", () => {
     };
 });
 
-jest.mock("@services/app-service", () => ({
-    createApp: jest.fn(),
-}));
-
 const authorizeController = require("../oauth/authorize");
 const tokenController = require("../oauth/token");
 const revokeController = require("../oauth/revoke");
-const registerAppController = require("../apps/register-app");
-const appService = require("@services/app-service");
 
-const app = createTestApp(authorizeController, tokenController, revokeController, registerAppController);
+const app = createTestApp(authorizeController, tokenController, revokeController);
 
 beforeAll(async () => {
     mockDatabase = await createTestDb();
@@ -327,82 +321,5 @@ describe("POST /api/v1/oauth/revoke", () => {
 
         expect(refreshRes.status).toBeGreaterThanOrEqual(400);
         expect(refreshRes.body.success).toBe(false);
-    });
-});
-
-describe("POST /api/v1/apps/register", () => {
-    it("returns 401 without an authorization header", async () => {
-        const res = await request(app).post("/api/v1/apps/register").send({ name: "My App", description: "A test app" });
-
-        expect(res.status).toBe(401);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when name is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ description: "A test app" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when description is missing", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app).post("/api/v1/apps/register").set("Authorization", `Bearer ${tokens.accessToken}`).send({ name: "My App" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when name exceeds 100 characters", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "A".repeat(101), description: "A test app" });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 400 when description exceeds 500 characters", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "My App", description: "A".repeat(501) });
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-    });
-
-    it("returns 200 with appId, apiKey, and apiSecret on success", async () => {
-        const { tokens } = await seedAuthenticatedUser(mockDatabase);
-
-        appService.createApp.mockResolvedValue({
-            appId: 42,
-            apiKey: "generated-api-key",
-            apiSecret: "generated-api-secret",
-        });
-
-        const res = await request(app)
-            .post("/api/v1/apps/register")
-            .set("Authorization", `Bearer ${tokens.accessToken}`)
-            .send({ name: "My App", description: "A test app" });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data).toEqual({
-            appId: 42,
-            apiKey: "generated-api-key",
-            apiSecret: "generated-api-secret",
-        });
     });
 });

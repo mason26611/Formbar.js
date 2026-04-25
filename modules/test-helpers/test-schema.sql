@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS "inventory" (
 -- Item registry (migration 19)
 CREATE TABLE IF NOT EXISTS "item_registry" (
     "id"          INTEGER NOT NULL,
-    "name"        TEXT    NOT NULL UNIQUE,
+    "name"        TEXT    NOT NULL,
     "description" TEXT,
     "stack_size"  INTEGER NOT NULL DEFAULT 1 CHECK ("stack_size" >= 0),
     "image_url"   TEXT,
