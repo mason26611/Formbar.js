@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     "id"          INTEGER NOT NULL UNIQUE,
     "email"       TEXT    NOT NULL UNIQUE,
     "password"    TEXT,
-    "API"         TEXT    NOT NULL UNIQUE,
+    "API"         TEXT    UNIQUE,
     "secret"      TEXT    NOT NULL UNIQUE,
     "tags"        TEXT,
     "digipogs"    INTEGER NOT NULL DEFAULT 0,

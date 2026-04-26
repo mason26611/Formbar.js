@@ -1,4 +1,6 @@
-const { getUser } = require("@services/user-service");
+const { getUserDataFromDb } = require("@services/user-service");
+const { resolveAPIKey } = require("@services/api-key-service");
+const { dbGet } = require("@modules/database");
 const { verifyToken } = require("@services/auth-service");
 const { settings } = require("@modules/config");
 const { computeGlobalPermissionLevel, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
@@ -8,39 +10,60 @@ const { getUserScopes } = require("@modules/scope-resolver");
 // Structure: { identifier: { path: [timestamps], hasBeenMessaged: bool } }
 const rateLimits = {};
 
-async function rateLimiter(req, res, next) {
-    let user = null;
-    if (req.headers.api) {
-        user = await getUser({ api: req.headers.api });
-    } else if (req.headers.authorization) {
-        const decodedToken = verifyToken(req.headers.authorization);
-        if (!decodedToken || decodedToken.error || !decodedToken.email) {
-            user = { email: req.ip };
-        } else {
-            let email = decodedToken.email;
-            user = await getUser({ email: email });
+const TIMED_RATE_LIMIT_WINDOW_MS = 60000;
+const UNAUTHENTICATED_USER_RATE_LIMIT = 25;
+const AUTHENTICATED_USER_RATE_LIMIT = 120;
+const AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS = 25;
+const TEACHER_RATE_LIMIT = 225;
+
+async function resolveRateLimitIdentity(req) {
+    const fallbackIdentity = `ip:${req.ip || "unknown"}`;
+
+    const apiKeyHeader = req.headers.api;
+    const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
+    if (apiKey) {
+        const apiKeyUser = await resolveAPIKey(apiKey);
+        if (apiKeyUser?.id) {
+            const userData = await getUserDataFromDb(apiKeyUser.id);
+            if (userData?.id) {
+                return { identifier: `user:${userData.id}`, user: userData };
+            }
         }
-    } else {
-        user = { email: req.ip };
+        return { identifier: fallbackIdentity, user: null };
     }
 
-    // Fallback for invalid user data
-    if (!user || user.error || !user.email) {
-        user = { email: req.ip };
+    const authorizationHeader = req.headers.authorization;
+    if (authorizationHeader) {
+        const decodedToken = verifyToken(authorizationHeader);
+        if (decodedToken && !decodedToken.error && decodedToken.email) {
+            const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [decodedToken.email]);
+            if (userRow?.id) {
+                const userData = await getUserDataFromDb(userRow.id);
+                if (userData?.id) {
+                    return { identifier: `user:${userData.id}`, user: userData };
+                }
+            }
+        }
     }
 
-    const identifier = user.email;
+    return { identifier: fallbackIdentity, user: null };
+}
+
+async function rateLimiter(req, res, next) {
+    const { identifier, user } = await resolveRateLimitIdentity(req);
     const currentTime = Date.now();
-    const timeFrame = settings.rateLimitWindowMs ?? 60000;
-    let limit = 10; // Default limit for unauthenticated users
-    const permissionLevel = computeGlobalPermissionLevel(getUserScopes(user).global);
+    const timeFrame = settings.rateLimitWindowMs ?? TIMED_RATE_LIMIT_WINDOW_MS;
+    const permissionLevel = user ? computeGlobalPermissionLevel(getUserScopes(user).global) : 0;
+
+    let maximumRequests = UNAUTHENTICATED_USER_RATE_LIMIT; // Default limit for unauthenticated users
     if (permissionLevel >= TEACHER_PERMISSIONS) {
-        limit = 225;
+        maximumRequests = TEACHER_RATE_LIMIT;
     } else if (permissionLevel >= STUDENT_PERMISSIONS) {
-        limit = req.path.startsWith("/auth/") ? 10 : 120;
+        maximumRequests = req.path.startsWith("/auth/") ? AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS : AUTHENTICATED_USER_RATE_LIMIT;
     }
+
     // Apply the configurable multiplier so test runs can relax limits.
-    limit = Math.max(1, Math.round(limit * (settings.rateLimitMultiplier ?? 1)));
+    maximumRequests = Math.max(1, Math.round(maximumRequests * (settings.rateLimitMultiplier ?? 1)));
 
     // Initialize rate limit log for the user if it doesn't exist
     if (!rateLimits[identifier]) {
@@ -65,13 +88,13 @@ async function rateLimiter(req, res, next) {
     // Check if the user has exceeded the limit
     // If they have, send a rate limit response
     // Otherwise, log the request and proceed
-    if (userRequests[path].length >= limit) {
+    if (userRequests[path].length >= maximumRequests) {
         if (!userRequests["hasBeenMessaged"]) {
             userRequests["hasBeenMessaged"] = true;
             req.warnEvent("rate_limit.exceeded", `Rate limit exceeded for user ${identifier} on path ${path}`, {
                 identifier,
                 path,
-                limit,
+                limit: maximumRequests,
                 permissionLevel,
             });
         }

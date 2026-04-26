@@ -2,7 +2,7 @@ const { dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
-const { compare } = require("@modules/crypto");
+const { compareBcrypt } = require("@modules/crypto");
 const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
 
@@ -1019,19 +1019,29 @@ async function transferDigipogs(transferData) {
 
         let fromAccount;
         if (from.type === "user") {
-            fromAccount = await dbGet("SELECT * FROM users WHERE id = ?", [from.id]);
+            fromAccount = await dbGet("SELECT id, digipogs, pin FROM users WHERE id = ?", [from.id]);
             if (!fromAccount) {
                 recordAttempt(accountId, false);
                 return { success: false, message: "Sender account not found." };
             }
         } else {
-            fromAccount = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [from.id]);
-            const poolUser = await dbGet("SELECT user_id FROM digipog_pool_users WHERE pool_id = ? AND owner = 1", [from.id]);
+            fromAccount = await dbGet("SELECT id, amount FROM digipog_pools WHERE id = ?", [from.id]);
             if (!fromAccount) {
                 recordAttempt(accountId, false);
                 return { success: false, message: "Sender pool not found." };
             }
-            const poolOwner = await dbGet("SELECT pin FROM users WHERE id = ?", [poolUser.user_id]);
+            const poolOwner = await dbGet(
+                `SELECT u.pin
+                 FROM digipog_pool_users dpu
+                 JOIN users u ON u.id = dpu.user_id
+                 WHERE dpu.pool_id = ? AND dpu.owner = 1
+                 LIMIT 1`,
+                [from.id]
+            );
+            if (!poolOwner) {
+                recordAttempt(accountId, false);
+                return { success: false, message: "Sender pool owner not found." };
+            }
             fromAccount.pin = poolOwner.pin;
         }
 
@@ -1040,7 +1050,7 @@ async function transferDigipogs(transferData) {
             return { success: false, message: "Account PIN not configured." };
         }
 
-        const isPinValid = await compare(String(pin), fromAccount.pin);
+        const isPinValid = await compareBcrypt(String(pin), fromAccount.pin);
         if (!isPinValid) {
             recordAttempt(accountId, false);
             return { success: false, message: "Invalid PIN." };
@@ -1057,13 +1067,13 @@ async function transferDigipogs(transferData) {
 
         let toAccount;
         if (to.type === "user") {
-            toAccount = await dbGet("SELECT * FROM users WHERE id = ?", [to.id]);
+            toAccount = await dbGet("SELECT id FROM users WHERE id = ?", [to.id]);
             if (!toAccount) {
                 recordAttempt(accountId, false);
                 return { success: false, message: "Recipient account not found." };
             }
         } else {
-            toAccount = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [to.id]);
+            toAccount = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [to.id]);
             if (!toAccount) {
                 recordAttempt(accountId, false);
                 return { success: false, message: "Recipient pool not found." };
@@ -1082,7 +1092,7 @@ async function transferDigipogs(transferData) {
             } else {
                 await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxedAmount, to.id]);
             }
-            const devPool = await dbGet("SELECT * FROM digipog_pools WHERE id = ?", [0]);
+            const devPool = await dbGet("SELECT id FROM digipog_pools WHERE id = ?", [0]);
             if (devPool) await dbRun("UPDATE digipog_pools SET amount = amount + ? WHERE id = ?", [taxAmount, 0]);
             await dbRun("COMMIT");
         } catch (err) {
