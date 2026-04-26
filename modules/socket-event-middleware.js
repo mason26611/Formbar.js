@@ -56,8 +56,6 @@ async function createSocketContext(socket, event, args) {
     };
 
     socket.logger = logger.child(baseMeta);
-
-    socket.logger = socket.logger;
     socket.logEvent = (...logArgs) => logEvent(socket.logger, ...logArgs);
     socket.infoEvent = (...logArgs) => socket.logEvent("info", ...logArgs);
     socket.warnEvent = (...logArgs) => socket.logEvent("warn", ...logArgs);
@@ -201,9 +199,9 @@ function onSocketEvent(socket, event, ...middlewaresAndHandler) {
     const middlewares = middlewaresAndHandler;
 
     socket.on(event, async (...args) => {
-        const socketContext = await createSocketContext(socket, event, args);
-
         try {
+            const socketContext = await createSocketContext(socket, event, args);
+
             for (const middleware of middlewares) {
                 await middleware(socketContext, ...args);
             }

@@ -175,7 +175,7 @@ module.exports = {
             try {
                 const classId = await socketContext.resolveClassId();
                 const userId = await getIdFromEmail(email);
-                classKickStudent(userId, classId);
+                await classKickStudent(userId, classId);
                 advancedEmitToClass("leaveSound", classId, {});
             } catch (err) {
                 handleSocketError(err, socket, "classKickStudent");
@@ -189,21 +189,16 @@ module.exports = {
          */
         onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, userId) => {
             try {
-                logger.log("info", `[classRemoveFromSession] ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`);
-                logger.log("info", `[classRemoveFromSession] userId=(${userId})`);
-
-                logEvent(
-                    logger,
-                    "info",
+                socketContext.infoEvent(
                     "classRemoveFromSession",
                     `ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`
                 );
-                logEvent(logger, "info", "classRemoveFromSession", `userId=(${userId})`);
+                socketContext.infoEvent("classRemoveFromSession", `userId=(${userId})`);
 
                 const classId = await socketContext.resolveClassId();
-                classKickStudent(userId, classId, { exitRoom: false, ban: false });
+                await classKickStudent(userId, classId, { exitRoom: false, ban: false });
             } catch (err) {
-                logger.log("error", err.stack);
+                handleSocketError(err, socket, "classRemoveFromSession");
             }
         });
 

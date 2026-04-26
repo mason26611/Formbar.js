@@ -86,7 +86,6 @@ module.exports = (router) => {
      *       - Class
      *     description: |
      *       Removes all students in the class who do not have teacher-level permissions.
-     *       The `userId` path parameter is accepted for compatibility and is ignored by this operation.
      *
      *       **Required scope:** `class.students.kick`
      *     security:
@@ -99,12 +98,6 @@ module.exports = (router) => {
      *         schema:
      *           type: string
      *         description: Class ID
-     *       - in: path
-     *         name: userId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Placeholder user ID (ignored)
      *     responses:
      *       200:
      *         description: Students were kicked successfully
@@ -127,19 +120,15 @@ module.exports = (router) => {
      */
     router.post("/class/:id/students/kick-all", isAuthenticated, hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (req, res) => {
         const classId = Number(req.params.id);
-        const targetUserId = req.params.userId !== undefined ? Number(req.params.userId) : undefined;
 
         requireQueryParam(classId, "id");
-        if (req.params.userId !== undefined) {
-            requireQueryParam(targetUserId, "userId");
-        }
 
-        req.infoEvent("class.kick.all.attempt", "Attempting to kick all eligible students from class", { classId, targetUserId });
+        req.infoEvent("class.kick.all.attempt", "Attempting to kick all eligible students from class", { classId });
 
         await classKickStudents(classId);
         await advancedEmitToClass("kickStudentsSound", classId, { api: true });
 
-        req.infoEvent("class.kick.all.success", "Kicked all students from class", { classId, targetUserId });
+        req.infoEvent("class.kick.all.success", "Kicked all students from class", { classId });
         res.status(200).json({
             success: true,
             data: {},
