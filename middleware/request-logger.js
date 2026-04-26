@@ -3,19 +3,33 @@ const crypto = require("crypto");
 
 // Middleware to log incoming requests and their completion time
 
-const REDACTED_QUERY_PARAMS = new Set(["api", "token", "code", "accessToken", "refreshToken", "legacyToken", "client_secret"]);
+const REDACTED_QUERY_PARAMS = new Set(
+    ["api", "token", "code", "accessToken", "access_token", "refreshToken", "refresh_token", "legacyToken", "client_secret"].map((param) =>
+        param.toLowerCase()
+    )
+);
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const REDACTED_QUERY_PARAM_PATTERN = Array.from(REDACTED_QUERY_PARAMS).map(escapeRegExp).join("|");
+
+function isRedactedQueryParam(param) {
+    return REDACTED_QUERY_PARAMS.has(String(param).toLowerCase());
+}
 
 function redactUrl(rawUrl) {
     try {
         const url = new URL(rawUrl, "http://local");
-        for (const param of REDACTED_QUERY_PARAMS) {
-            if (url.searchParams.has(param)) {
+        for (const param of Array.from(url.searchParams.keys())) {
+            if (isRedactedQueryParam(param)) {
                 url.searchParams.set(param, "[REDACTED]");
             }
         }
         return `${url.pathname}${url.search}`;
     } catch {
-        return String(rawUrl || "").replace(/([?&](?:api|token|code|accessToken|refreshToken|legacyToken|client_secret)=)[^&]*/gi, "$1[REDACTED]");
+        return String(rawUrl || "").replace(new RegExp(`([?&](?:${REDACTED_QUERY_PARAM_PATTERN})=)[^&]*`, "gi"), "$1[REDACTED]");
     }
 }
 

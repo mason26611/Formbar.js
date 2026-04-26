@@ -69,7 +69,7 @@ async function issueAccountToken(userId, purpose) {
     return token;
 }
 
-async function consumeAccountToken(token, purpose, event) {
+async function consumeAccountToken(token, purpose) {
     requireInternalParam(token, "token");
     requireInternalParam(purpose, "purpose");
 
@@ -81,10 +81,7 @@ async function consumeAccountToken(token, purpose, event) {
     );
 
     if (!markedUsed) {
-        throw new NotFoundError("Token is invalid or has expired.", {
-            event,
-            reason: "invalid_token",
-        });
+        return null;
     }
 
     return dbGet(
@@ -176,7 +173,7 @@ async function resetPin(newPin, token) {
     requireInternalParam(newPin, "newPin");
     requireInternalParam(token, "token");
 
-    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PIN_RESET, "user.pin.reset.failed");
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PIN_RESET);
     if (!user) {
         throw new NotFoundError("PIN reset token is invalid or has expired.", {
             event: "user.pin.reset.failed",
@@ -368,7 +365,7 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
 async function verifyEmailFromCode(code) {
     requireInternalParam(code, "code");
 
-    const user = await consumeAccountToken(code, TOKEN_PURPOSES.EMAIL_VERIFY, "user.verify.email.failed");
+    const user = await consumeAccountToken(code, TOKEN_PURPOSES.EMAIL_VERIFY);
     if (!user) {
         throw new NotFoundError("Verification token is invalid or has expired.", {
             event: "user.verify.email.failed",
@@ -397,7 +394,7 @@ async function resetPassword(password, token) {
     requireInternalParam(token, "token");
     assertValidPassword(password, { event: "user.password.reset.failed", reason: "invalid_password" });
 
-    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PASSWORD_RESET, "user.password.reset.failed");
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PASSWORD_RESET);
     if (!user) {
         throw new NotFoundError("Password reset token is invalid or has expired.", {
             event: "user.password.reset.failed",

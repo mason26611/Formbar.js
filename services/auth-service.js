@@ -495,7 +495,7 @@ async function oidcOAuthLogin(provider, email, displayName, options = {}) {
  * @param {string} params.redirect_uri - The redirect URI
  * @param {string} params.scope - The requested scopes
  * @param {string} params.authorization - The user's authorization token
- * @returns {string} A newly generated authorization code
+ * @returns {Promise<string>} A newly generated authorization code after validating the client redirect and authorization token
  */
 function getBearerToken(value) {
     return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : value;

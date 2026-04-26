@@ -272,7 +272,12 @@ describe("verifyEmailFromCode()", () => {
     });
 
     it("throws NotFoundError for invalid code", async () => {
-        await expect(verifyEmailFromCode("nonexistent-code")).rejects.toThrow(NotFoundError);
+        await expect(verifyEmailFromCode("nonexistent-code")).rejects.toMatchObject({
+            message: "Verification token is invalid or has expired.",
+            event: "user.verify.email.failed",
+            reason: "invalid_code",
+            statusCode: 404,
+        });
     });
 
     it("marks the user as verified and returns userId", async () => {
@@ -320,7 +325,12 @@ describe("resetPassword()", () => {
     });
 
     it("throws NotFoundError for invalid token", async () => {
-        await expect(resetPassword("newpass", "badtoken")).rejects.toThrow(NotFoundError);
+        await expect(resetPassword("newpass", "badtoken")).rejects.toMatchObject({
+            message: "Password reset token is invalid or has expired.",
+            event: "user.password.reset.failed",
+            reason: "invalid_token",
+            statusCode: 404,
+        });
     });
 
     it("hashes and stores the new password", async () => {
@@ -441,7 +451,12 @@ describe("resetPin()", () => {
     });
 
     it("throws NotFoundError for invalid token", async () => {
-        await expect(resetPin("1234", "badtoken")).rejects.toThrow(NotFoundError);
+        await expect(resetPin("1234", "badtoken")).rejects.toMatchObject({
+            message: "PIN reset token is invalid or has expired.",
+            event: "user.pin.reset.failed",
+            reason: "invalid_token",
+            statusCode: 404,
+        });
     });
 
     it("hashes and stores the new pin", async () => {
