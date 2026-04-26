@@ -83,7 +83,7 @@ const kickController = require("../class/kick");
 const regenerateCodeController = require("../class/regenerate-code");
 
 const { classStateStore, Classroom } = require("@services/classroom-service");
-const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS } = require("@modules/permissions");
+const { TEACHER_PERMISSIONS, MANAGER_PERMISSIONS, MOD_PERMISSIONS, GUEST_PERMISSIONS } = require("@modules/permissions");
 
 const app = createTestApp(
     createController,
@@ -353,6 +353,46 @@ describe("POST /api/v1/class/:id/join", () => {
 
         expect(res.status).toBe(403);
         expect(res.body.success).toBe(false);
+    });
+
+    it("requires guests to use code enrollment instead of joining by class id", async () => {
+        const { tokens: teacherTokens } = await seedAuthenticatedUser(mockDatabase, {
+            email: "teacher@example.com",
+            displayName: "Teacher",
+            permissions: 4,
+        });
+
+        const createRes = await createClassAsTeacher(teacherTokens, "Guest Code Only");
+        const { classId, key } = createRes.body.data;
+
+        const { loginAsGuest } = require("@services/auth-service");
+        const { createStudentFromUserData } = require("@services/student-service");
+        const guestUser = {
+            id: 9001,
+            email: "guest-join@example.com",
+            displayName: "Guest",
+            API: null,
+            digipogs: 0,
+            permissions: GUEST_PERMISSIONS,
+            globalRoles: [],
+            role: "Guest",
+            verified: 0,
+        };
+        classStateStore.setUser(guestUser.email, createStudentFromUserData(guestUser, { isGuest: true }));
+        const { accessToken } = loginAsGuest(guestUser);
+
+        const joinRes = await request(app).post(`/api/v1/class/${classId}/join`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(joinRes.status).toBe(403);
+        expect(joinRes.body.success).toBe(false);
+
+        const enrollRes = await request(app).post(`/api/v1/class/enroll/${key}`).set("Authorization", `Bearer ${accessToken}`);
+
+        expect(enrollRes.status).toBe(200);
+        expect(enrollRes.body).toMatchObject({
+            success: true,
+            data: { roomId: classId },
+        });
     });
 });
 

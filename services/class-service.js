@@ -396,14 +396,18 @@ async function joinClass(userData, classId) {
         throw new ValidationError("You are already in that class");
     }
 
+    const isGuest = !!classStateStore.getUser(email)?.isGuest;
+    if (isGuest) {
+        throw new ForbiddenError("Guests must enroll in classes with a class code");
+    }
+
     // Check if the user is in the class to prevent people from joining classes just from the class ID
     const studentId = await getIdFromEmail(email);
     const classUsers = await dbGet("SELECT * FROM classusers WHERE studentId=? AND classId=?", [studentId, classId]);
     const classroomOwner = await dbGet("SELECT owner FROM classroom WHERE id=?", [classId]);
-    const isGuest = !!classStateStore.getUser(email)?.isGuest;
 
-    // User must either be in classusers table or be the owner of the classroom (global guests bypass enrollment)
-    if (!isGuest && !classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
+    // User must either be in classusers table or be the owner of the classroom.
+    if (!classUsers && (!classroomOwner || classroomOwner.owner !== studentId)) {
         throw new ForbiddenError("You are not in that class");
     }
 
