@@ -14,7 +14,8 @@ const blacklistedIps = {};
 // Removes expired refresh tokens and authorization codes from the database
 async function cleanRefreshTokens() {
     try {
-        await dbRun("DELETE FROM refresh_tokens WHERE exp <= ?", [Date.now()]);
+        const nowInSeconds = Math.floor(Date.now() / 1000);
+        await dbRun("DELETE FROM refresh_tokens WHERE exp <= ?", [nowInSeconds]);
         // Also clean up expired authorization codes
         await cleanupExpiredAuthorizationCodes();
     } catch (err) {

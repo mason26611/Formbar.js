@@ -168,7 +168,6 @@ async function getUniqueDisplayName(displayName, email) {
  * @returns {Promise<Object>}
  */
 async function createUser({ email, password, displayName, verified }) {
-    const apiKey = crypto.randomBytes(64).toString("hex");
     const secret = crypto.randomBytes(256).toString("hex");
 
     const allUsers = await dbGetAll("SELECT * FROM users", []);

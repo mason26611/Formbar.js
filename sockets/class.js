@@ -189,11 +189,11 @@ module.exports = {
          */
         onSocketEvent(socket, "classRemoveFromSession", hasClassScope(SCOPES.CLASS.STUDENTS.KICK), async (socketContext, userId) => {
             try {
-                socketContext.infoEvent(
+                socketContext.socket.infoEvent(
                     "classRemoveFromSession",
                     `ip=(${socket.handshake.address}) session=(${JSON.stringify(socket.request.session)})`
                 );
-                socketContext.infoEvent("classRemoveFromSession", `userId=(${userId})`);
+                socketContext.socket.infoEvent("classRemoveFromSession", `userId=(${userId})`);
 
                 const classId = await socketContext.resolveClassId();
                 await classKickStudent(userId, classId, { exitRoom: false, ban: false });
