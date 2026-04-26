@@ -1,7 +1,7 @@
 const { dbGet, dbGetAll, dbRun } = require("@modules/database");
 
 /**
- * * Get a notification by ID.
+ * Get a notification by ID.
  * @param {Object} notificationId - notificationId.
  * @returns {Promise<Object|null>}
  */
@@ -11,7 +11,7 @@ async function getNotificationById(notificationId) {
 }
 
 /**
- * * Get notifications for a user.
+ * Get notifications for a user.
  * @param {number} userId - userId.
  * @returns {Promise<Object[]>}
  */
@@ -21,7 +21,7 @@ async function getNotificationsForUser(userId) {
 }
 
 /**
- * * Get notifications for a user with pagination.
+ * Get notifications for a user with pagination.
  * @param {number} userId - userId.
  * @param {number} limit - limit.
  * @param {number} offset - offset.
@@ -38,7 +38,7 @@ async function getNotificationsForUserPaginated(userId, limit = 20, offset = 0) 
 }
 
 /**
- * * Mark a notification as read.
+ * Mark a notification as read.
  * @param {Object} notificationId - notificationId.
  * @returns {Promise<void>}
  */
@@ -47,7 +47,7 @@ async function markNotificationAsRead(notificationId) {
 }
 
 /**
- * * Create a notification.
+ * Create a notification.
  * @param {number} userId - userId.
  * @param {string} type - type.
  * @param {Object} data - data.
@@ -58,7 +58,7 @@ async function createNotification(userId, type, data) {
 }
 
 /**
- * * Delete a notification.
+ * Delete a notification.
  * @param {Object} notificationId - notificationId.
  * @returns {Promise<void>}
  */
@@ -67,7 +67,7 @@ async function deleteNotification(notificationId) {
 }
 
 /**
- * * Delete all notifications for a user.
+ * Delete all notifications for a user.
  * @param {number} userId - userId.
  * @returns {Promise<void>}
  */

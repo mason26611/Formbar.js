@@ -8,7 +8,7 @@ const DEFAULT_MANAGER_LIMIT = 24;
 const MAX_MANAGER_LIMIT = 200;
 
 /**
- * * Register manager controller routes.
+ * Register manager controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

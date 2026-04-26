@@ -1,7 +1,7 @@
 const { dbGet, dbGetAll } = require("@modules/database");
 
 /**
- * * Get configured IP access records.
+ * Get configured IP access records.
  * @param {string} type - type.
  * @returns {Promise<Object>}
  */
@@ -15,7 +15,7 @@ async function getIpAccess(type) {
 }
 
 /**
- * * Get configured IP access records with pagination.
+ * Get configured IP access records with pagination.
  * @param {string} type - type.
  * @param {number} limit - limit.
  * @param {number} offset - offset.

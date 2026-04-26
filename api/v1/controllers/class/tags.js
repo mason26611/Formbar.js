@@ -7,11 +7,18 @@ const NotFoundError = require("@errors/not-found-error");
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Register tags controller routes.
+ * Register tags controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
 module.exports = (router) => {
+    /**
+     * Ensure the requested class is loaded in memory.
+     * @param {import("express").Request} req - req.
+     * @param {import("express").Response} res - res.
+     * @param {import("express").NextFunction} next - next.
+     * @returns {void}
+     */
     const ensureClassLoaded = (req, res, next) => {
         const classId = req.params.id;
         if (!classId || !classStateStore.getClassroom(classId)) {
@@ -21,7 +28,7 @@ module.exports = (router) => {
     };
 
     /**
-     * * Handle the set tags request.
+     * Handle the set tags request.
      * @param {import("express").Request} req - req.
      * @param {import("express").Response} res - res.
      * @returns {Promise<void>}
@@ -48,7 +55,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/tags:
+     * /api/v1/class/{id}/tags:
      *   get:
      *     summary: Get current class tags
      *     tags:
@@ -99,7 +106,7 @@ module.exports = (router) => {
 
     /**
      * @swagger
-     * /api/v1/class/:id/tags:
+     * /api/v1/class/{id}/tags:
      *   put:
      *     summary: Set class tags
      *     tags:

@@ -7,7 +7,7 @@ const ForbiddenError = require("@errors/forbidden-error");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register request controller routes.
+ * Register request controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

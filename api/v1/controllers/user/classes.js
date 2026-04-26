@@ -11,7 +11,7 @@ const DEFAULT_CLASS_LIMIT = 20;
 const MAX_CLASS_LIMIT = 100;
 
 /**
- * * Register classes controller routes.
+ * Register classes controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

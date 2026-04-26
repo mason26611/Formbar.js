@@ -15,7 +15,7 @@ const DEFAULT_IP_LIMIT = 20;
 const MAX_IP_LIMIT = 100;
 
 /**
- * * Validate an IP address or CIDR range.
+ * Validate an IP address or CIDR range.
  * @param {string} ip - IP address or CIDR range.
  * @returns {boolean}
  */
@@ -33,7 +33,7 @@ function validateIp(ip) {
 }
 
 /**
- * * Register ip controller routes.
+ * Register ip controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

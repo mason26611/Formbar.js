@@ -8,7 +8,7 @@ const DEFAULT_LOG_LIMIT = 20;
 const MAX_LOG_LIMIT = 100;
 
 /**
- * * Register logs controller routes.
+ * Register logs controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
@@ -72,7 +72,6 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/ServerError'
      */
-    // Handle displaying all logs to the manager
     router.get("/logs", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         req.infoEvent("logs.view_all", "Viewing all logs");
         const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT);
@@ -123,7 +122,6 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    // Handle displaying a specific log to the manager
     router.get("/logs/:log", isAuthenticated, hasScope(SCOPES.GLOBAL.SYSTEM.ADMIN), async (req, res) => {
         const logFileName = req.params.log;
         req.infoEvent("logs.view_single", "Viewing log file", { logFileName });

@@ -10,7 +10,7 @@ const DEFAULT_POOL_LIMIT = 20;
 const MAX_POOL_LIMIT = 100;
 
 /**
- * * Register pools controller routes.
+ * Register pools controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

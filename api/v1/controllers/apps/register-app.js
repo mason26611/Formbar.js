@@ -6,7 +6,7 @@ const maxAppNameLength = 100;
 const maxAppDescriptionLength = 500;
 
 /**
- * * Register register-app controller routes.
+ * Register register-app controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

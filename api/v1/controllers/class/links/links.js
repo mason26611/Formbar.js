@@ -10,7 +10,7 @@ const DEFAULT_LINK_LIMIT = 20;
 const MAX_LINK_LIMIT = 100;
 
 /**
- * * Register links controller routes.
+ * Register links controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

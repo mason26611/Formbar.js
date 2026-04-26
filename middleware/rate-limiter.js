@@ -18,10 +18,22 @@ const TEACHER_RATE_LIMIT = 225;
 const GLOBAL_BUCKET_MULTIPLIER = 4;
 const MAX_PATH_BUCKETS_PER_IDENTITY = 250;
 
+/**
+ * Strip the bearer prefix from an Authorization header before token validation.
+ *
+ * @param {*} value - value.
+ * @returns {*}
+ */
 function getBearerToken(value) {
     return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : null;
 }
 
+/**
+ * Collapse variable path segments so similar routes share a stable rate-limit bucket.
+ *
+ * @param {*} path - path.
+ * @returns {*}
+ */
 function normalizeRateLimitPath(path) {
     return String(path || "/")
         .split("/")
@@ -35,14 +47,34 @@ function normalizeRateLimitPath(path) {
         .join("/");
 }
 
+/**
+ * Detect auth routes that should use the stricter login and token exchange limits.
+ *
+ * @param {*} path - path.
+ * @returns {boolean}
+ */
 function isAuthPath(path) {
     return /(?:^|\/)auth(?:\/|$)/.test(path);
 }
 
+/**
+ * Pick a non-critical bucket to evict when one identity has too many tracked paths.
+ *
+ * @param {*} userRequests - userRequests.
+ * @param {*} path - path.
+ * @param {*} globalPath - globalPath.
+ * @returns {*}
+ */
 function getBucketKeyToEvict(userRequests, path, globalPath) {
     return Object.keys(userRequests).find((key) => key !== path && key !== globalPath && key !== "hasBeenMessaged");
 }
 
+/**
+ * Resolve a stable identity from the request so API keys, JWTs, and IPs share consistent limits.
+ *
+ * @param {import("express").Request} req - req.
+ * @returns {Promise<*>}
+ */
 async function resolveRateLimitIdentity(req) {
     const fallbackIdentity = `ip:${req.ip || "unknown"}`;
 
@@ -76,6 +108,14 @@ async function resolveRateLimitIdentity(req) {
     return { identifier: fallbackIdentity, user: null };
 }
 
+/**
+ * Enforce per-identity request caps and fail fast with 429 before the handlers do extra work.
+ *
+ * @param {import("express").Request} req - req.
+ * @param {import("express").Response} res - res.
+ * @param {import("express").NextFunction} next - next.
+ * @returns {Promise<*>}
+ */
 async function rateLimiter(req, res, next) {
     const { identifier, user } = await resolveRateLimitIdentity(req);
     const currentTime = Date.now();

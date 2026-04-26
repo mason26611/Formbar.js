@@ -10,7 +10,7 @@ const DEFAULT_POLL_LIMIT = 20;
 const MAX_POLL_LIMIT = 100;
 
 /**
- * * Register polls controller routes.
+ * Register polls controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

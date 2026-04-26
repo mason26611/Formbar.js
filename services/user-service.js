@@ -39,6 +39,13 @@ const TOKEN_TTL_SECONDS = {
     [TOKEN_PURPOSES.EMAIL_VERIFY]: 24 * 60 * 60,
 };
 
+/**
+ * Db Run Changes.
+ *
+ * @param {*} query - query.
+ * @param {*} params - params.
+ * @returns {*}
+ */
 function dbRunChanges(query, params = []) {
     return new Promise((resolve, reject) => {
         database.run(query, params, function (err) {
@@ -48,6 +55,13 @@ function dbRunChanges(query, params = []) {
     });
 }
 
+/**
+ * Issue Account Token.
+ *
+ * @param {*} userId - userId.
+ * @param {*} purpose - purpose.
+ * @returns {Promise<*>}
+ */
 async function issueAccountToken(userId, purpose) {
     requireInternalParam(userId, "userId");
     requireInternalParam(purpose, "purpose");
@@ -69,6 +83,13 @@ async function issueAccountToken(userId, purpose) {
     return token;
 }
 
+/**
+ * Consume Account Token.
+ *
+ * @param {*} token - token.
+ * @param {*} purpose - purpose.
+ * @returns {Promise<*>}
+ */
 async function consumeAccountToken(token, purpose) {
     requireInternalParam(token, "token");
     requireInternalParam(purpose, "purpose");
@@ -95,7 +116,7 @@ async function consumeAccountToken(token, purpose) {
 }
 
 /**
- * * Load the password reset email template.
+ * Load the password reset email template.
  * @returns {string}
  */
 function loadPasswordResetTemplate() {
@@ -119,7 +140,7 @@ function loadPasswordResetTemplate() {
 }
 
 /**
- * * Load the PIN reset email template.
+ * Load the PIN reset email template.
  * @returns {string}
  */
 function loadPinResetTemplate() {
@@ -142,7 +163,7 @@ function loadPinResetTemplate() {
 }
 
 /**
- * * Send a PIN reset email.
+ * Send a PIN reset email.
  * @param {number} userId - userId.
  * @returns {Promise<void>}
  */
@@ -164,7 +185,7 @@ async function requestPinReset(userId) {
 }
 
 /**
- * * Reset a PIN using a token.
+ * Reset a PIN using a token.
  * @param {string} newPin - newPin.
  * @param {string} token - token.
  * @returns {Promise<void>}
@@ -186,7 +207,7 @@ async function resetPin(newPin, token) {
 }
 
 /**
- * * Update a user PIN after verifying the old PIN.
+ * Update a user PIN after verifying the old PIN.
  * @param {number} userId - userId.
  * @param {string} oldPin - oldPin.
  * @param {string} newPin - newPin.
@@ -222,7 +243,7 @@ async function updatePin(userId, oldPin, newPin) {
 }
 
 /**
- * * Verify a user PIN.
+ * Verify a user PIN.
  * @param {number} userId - userId.
  * @param {string} pin - pin.
  * @returns {Promise<boolean>}
@@ -260,7 +281,7 @@ async function verifyPin(userId, pin) {
 }
 
 /**
- * * Load the verification email template.
+ * Load the verification email template.
  * @returns {string}
  */
 function loadVerifyEmailTemplate() {
@@ -283,7 +304,7 @@ function loadVerifyEmailTemplate() {
 }
 
 /**
- * * Get user data from the database.
+ * Get user data from the database.
  * @param {number} userId - userId.
  * @returns {Promise<Object|null>}
  */
@@ -307,7 +328,7 @@ async function getUserDataFromDb(userId) {
 }
 
 /**
- * * Send a password reset email.
+ * Send a password reset email.
  * @param {string} email - email.
  * @returns {Promise<void>}
  */
@@ -328,7 +349,7 @@ async function requestPasswordReset(email) {
 }
 
 /**
- * * Send a verification email.
+ * Send a verification email.
  * @param {number} userId - userId.
  * @param {string} apiBaseUrl - apiBaseUrl.
  * @returns {Promise<void>}
@@ -358,7 +379,7 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
 }
 
 /**
- * * Verify an email address from a code.
+ * Verify an email address from a code.
  * @param {string} code - code.
  * @returns {Promise<void>}
  */
@@ -384,7 +405,7 @@ async function verifyEmailFromCode(code) {
 }
 
 /**
- * * Reset a password using a token.
+ * Reset a password using a token.
  * @param {string} password - password.
  * @param {string} token - token.
  * @returns {Promise<void>}
@@ -408,7 +429,7 @@ async function resetPassword(password, token) {
 }
 
 /**
- * * Update a password after verifying the old password.
+ * Update a password after verifying the old password.
  * @param {number} userId - userId.
  * @param {string} oldPassword - oldPassword.
  * @param {string} newPassword - newPassword.
@@ -446,7 +467,7 @@ async function updatePassword(userId, oldPassword, newPassword) {
 }
 
 /**
- * * Create and save a new API key for a user.
+ * Create and save a new API key for a user.
  * @param {number} userId - userId.
  * @returns {Promise<string>}
  */
@@ -478,7 +499,7 @@ async function regenerateAPIKey(userId) {
 // User lookup
 
 /**
- * * Gets the class id for the given user by checking in-memory classrooms.
+ * Gets the class id for the given user by checking in-memory classrooms.
  * @param {string} email - User email.
  * @returns {number|null|Error}
  */
@@ -498,7 +519,7 @@ function getUserClass(email) {
 }
 
 /**
- * * Gets the email associated with an API key, with caching.
+ * Gets the email associated with an API key, with caching.
  * @param {string} api - API key.
  * @returns {Promise<string|Object|Error>}
  */
@@ -514,7 +535,7 @@ async function getEmailFromAPIKey(api) {
 }
 
 /**
- * * Gets the current user's data including class/session info.
+ * Gets the current user's data including class/session info.
  * @param {Object} userIdentifier - User lookup data.
  * @returns {Promise<Object|Error>}
  */
@@ -589,7 +610,7 @@ async function getUser(userIdentifier) {
 }
 
 /**
- * * Gets the classes owned by a user from their email.
+ * Gets the classes owned by a user from their email.
  * @param {string} email - User email.
  * @returns {Promise<Object[]>}
  */
@@ -601,7 +622,7 @@ async function getUserOwnedClasses(email) {
 // Session Management
 
 /**
- * * Logs a user out from a specific socket, cleaning up session state.
+ * Logs a user out from a specific socket, cleaning up session state.
  * @param {Object} socket - Socket connection.
  * @returns {void}
  */
@@ -670,7 +691,7 @@ function logout(socket) {
 }
 
 /**
- * * Deletes a user account and all associated data.
+ * Deletes a user account and all associated data.
  * @param {number|string} userId - User ID or pending user secret.
  * @param {Object} userSession - Session user data.
  * @returns {Promise<string|void>}

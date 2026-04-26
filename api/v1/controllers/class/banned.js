@@ -10,7 +10,7 @@ const DEFAULT_BANNED_LIMIT = 20;
 const MAX_BANNED_LIMIT = 100;
 
 /**
- * * Register banned controller routes.
+ * Register banned controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

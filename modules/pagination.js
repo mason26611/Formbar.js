@@ -1,7 +1,7 @@
 const ValidationError = require("@errors/validation-error");
 
 /**
- * * Parse an integer query parameter.
+ * Parse an integer query parameter.
  * @param {string|number|undefined} value - Query value.
  * @param {number} defaultValue - Default value.
  * @returns {number}
@@ -20,7 +20,7 @@ function parseIntegerQueryParam(value, defaultValue) {
 }
 
 /**
- * * Parse and validate limit/offset pagination parameters.
+ * Parse and validate limit/offset pagination parameters.
  * @param {Object} query - Query object.
  * @param {number} defaultLimit - Default limit value.
  * @param {number} maxLimit - Maximum allowed limit value.
@@ -43,7 +43,7 @@ function parsePaginationQuery(query, defaultLimit, maxLimit, minLimit = 1) {
 }
 
 /**
- * * Build the standardized pagination response object.
+ * Build the standardized pagination response object.
  * @param {number} total - Total matching records.
  * @param {number} limit - Page size.
  * @param {number} offset - Offset into the result set.

@@ -9,7 +9,7 @@ const DEFAULT_NOTIFICATION_LIMIT = 20;
 const MAX_NOTIFICATION_LIMIT = 100;
 
 /**
- * * Register get-notifications controller routes.
+ * Register get-notifications controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

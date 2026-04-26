@@ -5,7 +5,7 @@ const AppError = require("@errors/app-error");
 const NotFoundError = require("@errors/not-found-error");
 
 /**
- * * Get available log files and contents.
+ * Get available log files and contents.
  * @returns {Promise<Object[]>}
  */
 async function getAllLogs() {
@@ -30,7 +30,7 @@ async function getAllLogs() {
 }
 
 /**
- * * Read a log file by name.
+ * Read a log file by name.
  * @param {string} logFileName - logFileName.
  * @returns {Promise<string>}
  */

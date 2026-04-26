@@ -11,7 +11,7 @@ const DEFAULT_STUDENT_LIMIT = 20;
 const MAX_STUDENT_LIMIT = 100;
 
 /**
- * * Register students controller routes.
+ * Register students controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

@@ -8,7 +8,7 @@ const ValidationError = require("@errors/validation-error");
 const SHARES_PER_APP = 100;
 
 /**
- * * Create an app record owned by a user.
+ * Create an app record, issue credentials, and seed the matching share item and pool.
  * @param {Object} appData - App data.
  * @param {string} appData.name - App name.
  * @param {string} appData.description - App description.
@@ -44,6 +44,12 @@ function normalizeRedirectUris(redirectUris = []) {
     return [...new Set(normalized)];
 }
 
+/**
+ * Create an app record, issue credentials, and attach its redirect URIs.
+ *
+ * @param {Object} params - params.
+ * @returns {Promise<*>}
+ */
 async function createApp({ name, description, ownerId, redirectUris = [] }) {
     const normalizedRedirectUris = normalizeRedirectUris(redirectUris);
 
@@ -86,6 +92,12 @@ async function createApp({ name, description, ownerId, redirectUris = [] }) {
     }
 }
 
+/**
+ * Validate OAuth Client Redirect.
+ *
+ * @param {Object} params - params.
+ * @returns {Promise<*>}
+ */
 async function validateOAuthClientRedirect({ clientId, redirectUri }) {
     const normalizedRedirectUri = normalizeRedirectUris([redirectUri])[0];
     const app = await dbGet(
@@ -100,6 +112,12 @@ async function validateOAuthClientRedirect({ clientId, redirectUri }) {
     return app ? { ...app, redirectUri: normalizedRedirectUri } : null;
 }
 
+/**
+ * Validate OAuth Client Secret.
+ *
+ * @param {Object} params - params.
+ * @returns {Promise<*>}
+ */
 async function validateOAuthClientSecret({ clientId, redirectUri, clientSecret }) {
     const app = await validateOAuthClientRedirect({ clientId, redirectUri });
     if (!app || typeof clientSecret !== "string" || !clientSecret.trim()) {

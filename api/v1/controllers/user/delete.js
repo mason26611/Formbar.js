@@ -5,7 +5,7 @@ const { isAuthenticated } = require("@middleware/authentication");
 const AppError = require("@errors/app-error");
 
 /**
- * * Register delete controller routes.
+ * Register delete controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */

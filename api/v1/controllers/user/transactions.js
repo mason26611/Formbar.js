@@ -11,7 +11,7 @@ const DEFAULT_TRANSACTION_LIMIT = 25;
 const MAX_TRANSACTION_LIMIT = 100;
 
 /**
- * * Register transactions controller routes.
+ * Register transactions controller routes.
  * @param {import("express").Router} router - router.
  * @returns {void}
  */
