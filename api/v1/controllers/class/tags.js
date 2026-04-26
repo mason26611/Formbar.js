@@ -1,4 +1,4 @@
-const { hasClassScope } = require("@middleware/permission-check");
+const { hasClassScope, isClassMember } = require("@middleware/permission-check");
 const { SCOPES } = require("@modules/permissions");
 const { classStateStore } = require("@services/classroom-service");
 const { setTags } = require("@services/class-service");
@@ -12,6 +12,14 @@ const ValidationError = require("@errors/validation-error");
  * @returns {void}
  */
 module.exports = (router) => {
+    const ensureClassLoaded = (req, res, next) => {
+        const classId = req.params.id;
+        if (!classId || !classStateStore.getClassroom(classId)) {
+            throw new NotFoundError("Class not found or not loaded.");
+        }
+        next();
+    };
+
     /**
      * * Handle the set tags request.
      * @param {import("express").Request} req - req.
@@ -72,7 +80,7 @@ module.exports = (router) => {
      *             schema:
      *               $ref: '#/components/schemas/NotFoundError'
      */
-    router.get("/class/:id/tags", isAuthenticated, async (req, res) => {
+    router.get("/class/:id/tags", isAuthenticated, ensureClassLoaded, isClassMember(), async (req, res) => {
         const classId = req.params.id;
         req.infoEvent("class.tags.view.attempt", "Attempting to view class tags", { classId });
         if (!classId || !classStateStore.getClassroom(classId)) {

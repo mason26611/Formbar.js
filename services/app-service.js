@@ -1,8 +1,9 @@
 const crypto = require("crypto");
-const { dbRun } = require("@modules/database");
+const { dbGet, dbRun } = require("@modules/database");
 const { sha256 } = require("@modules/crypto");
 const { createPool } = require("@services/digipog-service");
 const { createItem, addItemToInventory } = require("@services/inventory-service");
+const ValidationError = require("@errors/validation-error");
 
 const SHARES_PER_APP = 100;
 
@@ -14,7 +15,38 @@ const SHARES_PER_APP = 100;
  * @param {number} appData.ownerId - Owner user ID.
  * @returns {Promise<Object>}
  */
-async function createApp({ name, description, ownerId }) {
+function normalizeRedirectUris(redirectUris = []) {
+    if (!Array.isArray(redirectUris)) {
+        throw new ValidationError("redirectUris must be an array.");
+    }
+
+    const normalized = [];
+    for (const redirectUri of redirectUris) {
+        if (typeof redirectUri !== "string" || !redirectUri.trim()) {
+            throw new ValidationError("Each redirect URI must be a non-empty string.");
+        }
+
+        let parsed;
+        try {
+            parsed = new URL(redirectUri);
+        } catch {
+            throw new ValidationError("Each redirect URI must be an absolute URL.");
+        }
+
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+            throw new ValidationError("Redirect URIs must use http or https.");
+        }
+
+        parsed.hash = "";
+        normalized.push(parsed.toString());
+    }
+
+    return [...new Set(normalized)];
+}
+
+async function createApp({ name, description, ownerId, redirectUris = [] }) {
+    const normalizedRedirectUris = normalizeRedirectUris(redirectUris);
+
     await dbRun("BEGIN TRANSACTION");
 
     try {
@@ -36,6 +68,10 @@ async function createApp({ name, description, ownerId }) {
             [name, description, ownerId, shareItemId, poolId, hashedAPIKey, hashedAPISecret]
         );
 
+        for (const redirectUri of normalizedRedirectUris) {
+            await dbRun("INSERT INTO app_redirect_uris (app_id, redirect_uri) VALUES (?, ?)", [appId, redirectUri]);
+        }
+
         await addItemToInventory(ownerId, shareItemId, SHARES_PER_APP);
         await dbRun("COMMIT");
 
@@ -50,6 +86,32 @@ async function createApp({ name, description, ownerId }) {
     }
 }
 
+async function validateOAuthClientRedirect({ clientId, redirectUri }) {
+    const normalizedRedirectUri = normalizeRedirectUris([redirectUri])[0];
+    const app = await dbGet(
+        `SELECT apps.id, apps.api_secret_hash
+         FROM apps
+         JOIN app_redirect_uris ON app_redirect_uris.app_id = apps.id
+         WHERE apps.id = ?
+           AND app_redirect_uris.redirect_uri = ?`,
+        [clientId, normalizedRedirectUri]
+    );
+
+    return app ? { ...app, redirectUri: normalizedRedirectUri } : null;
+}
+
+async function validateOAuthClientSecret({ clientId, redirectUri, clientSecret }) {
+    const app = await validateOAuthClientRedirect({ clientId, redirectUri });
+    if (!app || typeof clientSecret !== "string" || !clientSecret.trim()) {
+        return null;
+    }
+
+    return sha256(clientSecret) === app.api_secret_hash ? app : null;
+}
+
 module.exports = {
     createApp,
+    normalizeRedirectUris,
+    validateOAuthClientRedirect,
+    validateOAuthClientSecret,
 };

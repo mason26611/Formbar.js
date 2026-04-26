@@ -3,12 +3,28 @@ const crypto = require("crypto");
 
 // Middleware to log incoming requests and their completion time
 
+const REDACTED_QUERY_PARAMS = new Set(["api", "token", "code", "accessToken", "refreshToken", "legacyToken", "client_secret"]);
+
+function redactUrl(rawUrl) {
+    try {
+        const url = new URL(rawUrl, "http://local");
+        for (const param of REDACTED_QUERY_PARAMS) {
+            if (url.searchParams.has(param)) {
+                url.searchParams.set(param, "[REDACTED]");
+            }
+        }
+        return `${url.pathname}${url.search}`;
+    } catch {
+        return String(rawUrl || "").replace(/([?&](?:api|token|code|accessToken|refreshToken|legacyToken|client_secret)=)[^&]*/gi, "$1[REDACTED]");
+    }
+}
+
 async function requestLogger(req, res, next) {
     // Attach a child logger to the request with relevant metadata
     const baseMeta = {
         requestId: crypto.randomUUID(),
         method: req.method,
-        path: req.originalUrl,
+        path: redactUrl(req.originalUrl),
         ip: req.ip,
     };
 

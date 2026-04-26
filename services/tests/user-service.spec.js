@@ -148,6 +148,11 @@ function mockTemplateFileReads() {
     });
 }
 
+function getTokenFromLastEmail() {
+    const body = sendMail.mock.calls.at(-1)[2];
+    return body.match(/code(?:=|&#x3D;)([0-9a-f]+)/)?.[1] || "";
+}
+
 beforeAll(async () => {
     mockDatabase = await createTestDb();
     // Spy AFTER createTestDb so test-schema.sql is read with the real fs
@@ -213,12 +218,14 @@ describe("getUserDataFromDb()", () => {
 });
 
 describe("requestPasswordReset()", () => {
-    it("updates the user secret and calls sendMail", async () => {
+    it("stores a purpose-bound token and calls sendMail", async () => {
         const seeded = await seedUser({ email: "reset@test.com", secret: "oldsecret" });
         await requestPasswordReset("reset@test.com");
 
         const row = await mockDatabase.dbGet("SELECT secret FROM users WHERE id = ?", [seeded.id]);
-        expect(row.secret).not.toBe("oldsecret");
+        expect(row.secret).toBe("oldsecret");
+        const tokenRow = await mockDatabase.dbGet("SELECT purpose, used_at FROM user_tokens WHERE user_id = ?", [seeded.id]);
+        expect(tokenRow).toMatchObject({ purpose: "password_reset", used_at: null });
         expect(sendMail).toHaveBeenCalledWith("reset@test.com", "Formbar Password Change", expect.any(String));
     });
 
@@ -253,7 +260,9 @@ describe("requestVerificationEmail()", () => {
         expect(sendMail).toHaveBeenCalledWith("unver@test.com", "Formbar Email Verification", expect.any(String));
 
         const row = await mockDatabase.dbGet("SELECT secret FROM users WHERE id = ?", [seeded.id]);
-        expect(row.secret).not.toBe("vold");
+        expect(row.secret).toBe("vold");
+        const tokenRow = await mockDatabase.dbGet("SELECT purpose FROM user_tokens WHERE user_id = ?", [seeded.id]);
+        expect(tokenRow.purpose).toBe("email_verify");
     });
 });
 
@@ -267,8 +276,10 @@ describe("verifyEmailFromCode()", () => {
     });
 
     it("marks the user as verified and returns userId", async () => {
-        const seeded = await seedUser({ verified: 0, secret: "vercode1" });
-        const result = await verifyEmailFromCode("vercode1");
+        const seeded = await seedUser({ verified: 0 });
+        await requestVerificationEmail(seeded.id, "http://api");
+        const token = getTokenFromLastEmail();
+        const result = await verifyEmailFromCode(token);
         expect(result.userId).toBe(seeded.id);
         expect(result.alreadyVerified).toBe(false);
 
@@ -277,15 +288,24 @@ describe("verifyEmailFromCode()", () => {
     });
 
     it("returns alreadyVerified=true without updating if already verified", async () => {
-        const seeded = await seedUser({ verified: 1, secret: "vercode2" });
+        const seeded = await seedUser({ verified: 1 });
+        await mockDatabase.dbRun("INSERT INTO user_tokens (user_id, purpose, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", [
+            seeded.id,
+            "email_verify",
+            sha256("vercode2"),
+            1,
+            Math.floor(Date.now() / 1000) + 60,
+        ]);
         const result = await verifyEmailFromCode("vercode2");
         expect(result.alreadyVerified).toBe(true);
     });
 
     it("updates classStateStore when user is in memory", async () => {
-        const seeded = await seedUser({ verified: 0, secret: "vercode3" });
+        const seeded = await seedUser({ verified: 0 });
+        await requestVerificationEmail(seeded.id, "http://api");
+        const token = getTokenFromLastEmail();
         classStateStore._users[seeded.email] = { email: seeded.email, verified: 0 };
-        await verifyEmailFromCode("vercode3");
+        await verifyEmailFromCode(token);
         expect(classStateStore.updateUser).toHaveBeenCalledWith(seeded.email, { verified: 1 });
     });
 });
@@ -304,8 +324,10 @@ describe("resetPassword()", () => {
     });
 
     it("hashes and stores the new password", async () => {
-        const seeded = await seedUser({ secret: "resettoken1" });
-        const result = await resetPassword("NewPassword1!", "resettoken1");
+        const seeded = await seedUser({ email: "reset-password@test.com" });
+        await requestPasswordReset(seeded.email);
+        const token = getTokenFromLastEmail();
+        const result = await resetPassword("NewPassword1!", token);
         expect(result).toBe(true);
 
         const row = await mockDatabase.dbGet("SELECT password FROM users WHERE id = ?", [seeded.id]);
@@ -316,8 +338,9 @@ describe("resetPassword()", () => {
     });
 
     it("rejects passwords that do not meet validation requirements", async () => {
-        await seedUser({ secret: "resettoken2" });
-        await expect(resetPassword("bad", "resettoken2")).rejects.toThrow(/Password must be 5-20 characters/i);
+        const seeded = await seedUser({ email: "bad-password@test.com" });
+        await requestPasswordReset(seeded.email);
+        await expect(resetPassword("bad", getTokenFromLastEmail())).rejects.toThrow(/Password must be 5-20 characters/i);
     });
 });
 
@@ -396,12 +419,14 @@ describe("requestPinReset()", () => {
         await expect(requestPinReset(99999)).rejects.toThrow(NotFoundError);
     });
 
-    it("updates the secret and sends an email", async () => {
+    it("stores a purpose-bound token and sends an email", async () => {
         const seeded = await seedUser({ email: "pinreset@test.com", secret: "oldsec" });
         await requestPinReset(seeded.id);
 
         const row = await mockDatabase.dbGet("SELECT secret FROM users WHERE id = ?", [seeded.id]);
-        expect(row.secret).not.toBe("oldsec");
+        expect(row.secret).toBe("oldsec");
+        const tokenRow = await mockDatabase.dbGet("SELECT purpose, used_at FROM user_tokens WHERE user_id = ?", [seeded.id]);
+        expect(tokenRow).toMatchObject({ purpose: "pin_reset", used_at: null });
         expect(sendMail).toHaveBeenCalledWith("pinreset@test.com", "Formbar PIN Reset", expect.any(String));
     });
 });
@@ -420,8 +445,9 @@ describe("resetPin()", () => {
     });
 
     it("hashes and stores the new pin", async () => {
-        const seeded = await seedUser({ secret: "pintoken1" });
-        await resetPin("5678", "pintoken1");
+        const seeded = await seedUser({ email: "pin-token@test.com" });
+        await requestPinReset(seeded.id);
+        await resetPin("5678", getTokenFromLastEmail());
 
         const row = await mockDatabase.dbGet("SELECT pin FROM users WHERE id = ?", [seeded.id]);
         expect(row.pin).not.toBe("5678");

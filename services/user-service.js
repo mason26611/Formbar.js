@@ -17,7 +17,7 @@ const { managerUpdate, userUpdateSocket } = require("@services/socket-updates-se
 const { endClass } = require("@services/class-service");
 const { deleteClassrooms } = require("@services/class-service");
 const { deleteCustomPolls } = require("@services/poll-service");
-const { hashBcrypt, compareBcrypt } = require("@modules/crypto");
+const { hashBcrypt, compareBcrypt, sha256 } = require("@modules/crypto");
 const { hashAPIKey, getEmailFromAPIKey: resolveEmailFromAPIKey } = require("@services/api-key-service");
 const { requireInternalParam } = require("@modules/error-wrapper");
 const { assertValidPassword } = require("@modules/password-validation");
@@ -26,6 +26,76 @@ const { getEmailFromId } = require("@services/student-service");
 let passwordResetTemplate;
 let verifyEmailTemplate;
 let pinResetTemplate;
+
+const TOKEN_PURPOSES = {
+    PASSWORD_RESET: "password_reset",
+    PIN_RESET: "pin_reset",
+    EMAIL_VERIFY: "email_verify",
+};
+
+const TOKEN_TTL_SECONDS = {
+    [TOKEN_PURPOSES.PASSWORD_RESET]: 60 * 60,
+    [TOKEN_PURPOSES.PIN_RESET]: 60 * 60,
+    [TOKEN_PURPOSES.EMAIL_VERIFY]: 24 * 60 * 60,
+};
+
+function dbRunChanges(query, params = []) {
+    return new Promise((resolve, reject) => {
+        database.run(query, params, function (err) {
+            if (err) return reject(err);
+            resolve(this.changes || 0);
+        });
+    });
+}
+
+async function issueAccountToken(userId, purpose) {
+    requireInternalParam(userId, "userId");
+    requireInternalParam(purpose, "purpose");
+
+    const now = Math.floor(Date.now() / 1000);
+    const token = crypto.randomBytes(64).toString("hex");
+    const tokenHash = sha256(token);
+    const expiresAt = now + (TOKEN_TTL_SECONDS[purpose] || 60 * 60);
+
+    await dbRun("UPDATE user_tokens SET used_at = ? WHERE user_id = ? AND purpose = ? AND used_at IS NULL", [now, userId, purpose]);
+    await dbRun("INSERT INTO user_tokens (user_id, purpose, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", [
+        userId,
+        purpose,
+        tokenHash,
+        now,
+        expiresAt,
+    ]);
+
+    return token;
+}
+
+async function consumeAccountToken(token, purpose, event) {
+    requireInternalParam(token, "token");
+    requireInternalParam(purpose, "purpose");
+
+    const tokenHash = sha256(String(token));
+    const now = Math.floor(Date.now() / 1000);
+    const markedUsed = await dbRunChanges(
+        "UPDATE user_tokens SET used_at = ? WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?",
+        [now, tokenHash, purpose, now]
+    );
+
+    if (!markedUsed) {
+        throw new NotFoundError("Token is invalid or has expired.", {
+            event,
+            reason: "invalid_token",
+        });
+    }
+
+    return dbGet(
+        `SELECT users.*
+         FROM user_tokens
+         JOIN users ON users.id = user_tokens.user_id
+         WHERE user_tokens.token_hash = ?
+           AND user_tokens.purpose = ?`,
+        [tokenHash, purpose]
+    );
+}
 
 /**
  * * Load the password reset email template.
@@ -91,8 +161,7 @@ async function requestPinReset(userId) {
     }
 
     const template = loadPinResetTemplate();
-    const token = crypto.randomBytes(64).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [token, userId]);
+    const token = await issueAccountToken(userId, TOKEN_PURPOSES.PIN_RESET);
 
     sendMail(user.email, "Formbar PIN Reset", template({ resetUrl: `${frontendUrl}/user/me/pin?code=${token}` }));
 }
@@ -107,7 +176,7 @@ async function resetPin(newPin, token) {
     requireInternalParam(newPin, "newPin");
     requireInternalParam(token, "token");
 
-    const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PIN_RESET, "user.pin.reset.failed");
     if (!user) {
         throw new NotFoundError("PIN reset token is invalid or has expired.", {
             event: "user.pin.reset.failed",
@@ -255,8 +324,7 @@ async function requestPasswordReset(email) {
     }
 
     const template = loadPasswordResetTemplate();
-    const secret = crypto.randomBytes(256).toString("hex");
-    await dbRun("UPDATE users SET secret = ? WHERE email = ?", [secret, normalizedEmail]);
+    const secret = await issueAccountToken(user.id, TOKEN_PURPOSES.PASSWORD_RESET);
 
     sendMail(normalizedEmail, "Formbar Password Change", template({ resetUrl: `${frontendUrl}/user/me/password?code=${secret}` }));
     return true;
@@ -284,10 +352,9 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
     }
 
     const template = loadVerifyEmailTemplate();
-    const secret = crypto.randomBytes(256).toString("hex");
+    const secret = await issueAccountToken(user.id, TOKEN_PURPOSES.EMAIL_VERIFY);
     const verifyUrl = frontendUrl ? `${frontendUrl}/user/verify/email?code=${secret}` : `${apiBaseUrl}/api/v1/user/verify/email?code=${secret}`;
 
-    await dbRun("UPDATE users SET secret = ? WHERE id = ?", [secret, user.id]);
     sendMail(user.email, "Formbar Email Verification", template({ verifyUrl }));
 
     return { alreadyVerified: false };
@@ -301,7 +368,7 @@ async function requestVerificationEmail(userId, apiBaseUrl) {
 async function verifyEmailFromCode(code) {
     requireInternalParam(code, "code");
 
-    const user = await dbGet("SELECT id, email, verified FROM users WHERE secret = ?", [code]);
+    const user = await consumeAccountToken(code, TOKEN_PURPOSES.EMAIL_VERIFY, "user.verify.email.failed");
     if (!user) {
         throw new NotFoundError("Verification token is invalid or has expired.", {
             event: "user.verify.email.failed",
@@ -330,7 +397,7 @@ async function resetPassword(password, token) {
     requireInternalParam(token, "token");
     assertValidPassword(password, { event: "user.password.reset.failed", reason: "invalid_password" });
 
-    const user = await dbGet("SELECT * FROM users WHERE secret = ?", [token]);
+    const user = await consumeAccountToken(token, TOKEN_PURPOSES.PASSWORD_RESET, "user.password.reset.failed");
     if (!user) {
         throw new NotFoundError("Password reset token is invalid or has expired.", {
             event: "user.password.reset.failed",

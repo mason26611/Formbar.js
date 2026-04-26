@@ -1,6 +1,8 @@
 const fs = require("fs").promises;
+const path = require("path");
 const logDir = "logs/";
 const AppError = require("@errors/app-error");
+const NotFoundError = require("@errors/not-found-error");
 
 /**
  * * Get available log files and contents.
@@ -34,9 +36,15 @@ async function getAllLogs() {
  */
 async function getLog(logFileName) {
     try {
-        const content = await fs.readFile(`${logDir}${logFileName}`, "utf8");
+        const safeName = path.basename(String(logFileName || ""));
+        if (safeName !== logFileName || !safeName.endsWith(".log")) {
+            throw new NotFoundError("Log file not found", { event: "logs.get.failed", reason: "invalid_log_name" });
+        }
+
+        const content = await fs.readFile(`${logDir}${safeName}`, "utf8");
         return content;
     } catch (err) {
+        if (err instanceof NotFoundError) throw err;
         throw new AppError(`Failed to read log file ${logFileName}: ${err.message}`, {
             statusCode: 500,
             event: "logs.get.failed",

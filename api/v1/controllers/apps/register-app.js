@@ -85,7 +85,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/ServerError'
      */
     router.post("/apps/register", isAuthenticated, async (req, res) => {
-        const { name, description } = req.body;
+        const { name, description, redirectUris = [] } = req.body;
 
         req.infoEvent("apps.register.attempt", "User is attempting to register a new app", { name });
 
@@ -110,7 +110,7 @@ module.exports = (router) => {
             });
         }
 
-        const { appId, apiKey, apiSecret } = await appService.createApp({ name, description, ownerId: req.user.id });
+        const { appId, apiKey, apiSecret } = await appService.createApp({ name, description, ownerId: req.user.id, redirectUris });
 
         req.infoEvent("apps.register.success", "App registered successfully", { appId });
 

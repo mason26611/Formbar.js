@@ -84,7 +84,7 @@ module.exports = (router) => {
      *               $ref: '#/components/schemas/UnauthorizedError'
      */
     router.post("/oauth/token", async (req, res) => {
-        const { grant_type, code, redirect_uri, client_id, refresh_token } = req.body;
+        const { grant_type, code, redirect_uri, client_id, client_secret, refresh_token } = req.body;
 
         requireBodyParam(grant_type, "grant_type");
 
@@ -94,9 +94,10 @@ module.exports = (router) => {
             requireBodyParam(code, "code");
             requireBodyParam(redirect_uri, "redirect_uri");
             requireBodyParam(client_id, "client_id");
+            requireBodyParam(client_secret, "client_secret");
 
             req.infoEvent("oauth.token.authorization_code", "Exchanging authorization code for token", { client_id });
-            tokenResponse = await authService.exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id });
+            tokenResponse = await authService.exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, client_secret });
             req.infoEvent("oauth.token.success", "Authorization code exchanged successfully", { client_id });
         } else if (grant_type === "refresh_token") {
             requireBodyParam(refresh_token, "refresh_token");

@@ -1,4 +1,4 @@
-const { dbGetAll, dbGet, dbRun } = require("@modules/database");
+const { database, dbGetAll, dbGet, dbRun } = require("@modules/database");
 const { SCOPES, filterScopesByDomain, parseScopesField, TEACHER_PERMISSIONS } = require("@modules/permissions");
 const { getClassIDFromCode } = require("@services/classroom-service");
 const { getGlobalPermissionLevelForUser } = require("@modules/scope-resolver");
@@ -7,6 +7,15 @@ const { rateLimit } = require("@modules/config");
 const AppError = require("@errors/app-error");
 
 // Rate limiting
+
+function dbRunChanges(query, params = []) {
+    return new Promise((resolve, reject) => {
+        database.run(query, params, function (err) {
+            if (err) return reject(err);
+            resolve(this.changes || 0);
+        });
+    });
+}
 
 const failedAttempts = new Map();
 
@@ -1081,11 +1090,25 @@ async function transferDigipogs(transferData) {
         }
 
         try {
-            await dbRun("BEGIN TRANSACTION");
+            await dbRun("BEGIN IMMEDIATE TRANSACTION");
             if (from.type === "user") {
-                await dbRun("UPDATE users SET digipogs = digipogs - ? WHERE id = ?", [amount, from.id]);
+                const debited = await dbRunChanges("UPDATE users SET digipogs = digipogs - ? WHERE id = ? AND digipogs >= ?", [
+                    amount,
+                    from.id,
+                    amount,
+                ]);
+                if (!debited) {
+                    throw new Error("Insufficient funds.");
+                }
             } else {
-                await dbRun("UPDATE digipog_pools SET amount = amount - ? WHERE id = ?", [amount, from.id]);
+                const debited = await dbRunChanges("UPDATE digipog_pools SET amount = amount - ? WHERE id = ? AND amount >= ?", [
+                    amount,
+                    from.id,
+                    amount,
+                ]);
+                if (!debited) {
+                    throw new Error("Insufficient funds.");
+                }
             }
             if (to.type === "user") {
                 await dbRun("UPDATE users SET digipogs = digipogs + ? WHERE id = ?", [taxedAmount, to.id]);
@@ -1100,6 +1123,9 @@ async function transferDigipogs(transferData) {
                 await dbRun("ROLLBACK");
             } catch (rollbackErr) {}
             recordAttempt(accountId, false);
+            if (err && err.message === "Insufficient funds.") {
+                return { success: false, message: "Insufficient funds." };
+            }
             return { success: false, message: "Transfer failed due to database error." };
         }
 

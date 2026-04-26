@@ -39,25 +39,63 @@ function buildCallbackUrl(req, provider) {
  * @param {Object} userData - User data.
  * @returns {string|null}
  */
-function getRedirectTarget(req, tokens, userData) {
-    const clientOrigin = req.session?.oauthOrigin || (frontendUrl ? new URL("/login", frontendUrl).toString() : null);
+function getSafeFrontendRedirect(origin) {
+    if (!frontendUrl) {
+        return null;
+    }
+
+    const frontend = new URL(frontendUrl);
+    const fallback = new URL("/login", frontend.origin);
+    if (!origin) {
+        return fallback.toString();
+    }
+
+    let redirect;
+    try {
+        const rawOrigin = String(origin);
+        if (rawOrigin.startsWith("//")) {
+            throw new Error("Protocol-relative URL is not allowed");
+        }
+        redirect = rawOrigin.startsWith("/") ? new URL(rawOrigin, frontend.origin) : new URL(rawOrigin);
+    } catch {
+        throw new ValidationError("Invalid OAuth return origin.", {
+            event: "auth.oidc.origin.invalid",
+            reason: "invalid_origin",
+        });
+    }
+
+    if (redirect.origin !== frontend.origin) {
+        throw new ValidationError("OAuth return origin is not allowed.", {
+            event: "auth.oidc.origin.invalid",
+            reason: "untrusted_origin",
+        });
+    }
+
+    return redirect.toString();
+}
+
+function getRedirectTarget(req) {
+    const clientOrigin = req.session?.oauthOrigin || getSafeFrontendRedirect();
     if (!clientOrigin) {
         return null;
     }
 
-    delete req.session.oauthOrigin;
-
     const redirect = new URL(clientOrigin);
-    redirect.searchParams.set("accessToken", tokens.accessToken);
-    redirect.searchParams.set("refreshToken", tokens.refreshToken);
-    if (tokens.legacyToken) {
-        redirect.searchParams.set("legacyToken", tokens.legacyToken);
-    }
-
-    redirect.searchParams.set("userId", String(userData.id));
-    redirect.searchParams.set("email", userData.email);
-    redirect.searchParams.set("displayName", userData.displayName);
+    redirect.searchParams.set("oidc", "success");
     return redirect.toString();
+}
+
+function setOidcTokenCookies(req, res, tokens) {
+    const secure = req.secure || process.env.NODE_ENV === "production";
+    const common = {
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        path: "/",
+    };
+
+    res.cookie("formbar_access_token", tokens.accessToken, { ...common, maxAge: 15 * 60 * 1000 });
+    res.cookie("formbar_refresh_token", tokens.refreshToken, { ...common, maxAge: 30 * 24 * 60 * 60 * 1000 });
 }
 
 /**
@@ -204,7 +242,7 @@ module.exports = (router) => {
         };
 
         if (req.query.origin) {
-            req.session.oauthOrigin = String(req.query.origin);
+            req.session.oauthOrigin = getSafeFrontendRedirect(req.query.origin);
         }
 
         const authUrl = client.buildAuthorizationUrl(providerClient, {
@@ -354,8 +392,10 @@ module.exports = (router) => {
             classStateStore.setUser(userData.email, createStudentFromUserData(userData, { isGuest: false }));
         }
 
-        const redirectTarget = getRedirectTarget(req, result.tokens, userData);
+        const redirectTarget = getRedirectTarget(req);
         if (redirectTarget) {
+            delete req.session.oauthOrigin;
+            setOidcTokenCookies(req, res, result.tokens);
             req.infoEvent("auth.oidc.callback.redirect", "Redirecting to SPA after OIDC OAuth", { provider });
             return res.redirect(redirectTarget);
         }

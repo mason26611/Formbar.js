@@ -7,6 +7,7 @@ const { sha256 } = require("@modules/crypto");
 const { assertValidPassword } = require("@modules/password-validation");
 const { getUserScopes } = require("@modules/scope-resolver");
 const { classStateStore } = require("@services/classroom-service");
+const { validateOAuthClientRedirect, validateOAuthClientSecret } = require("@services/app-service");
 const { findRoleByPermissionLevel, getUserRoles } = require("@services/role-service");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
@@ -496,13 +497,22 @@ async function oidcOAuthLogin(provider, email, displayName, options = {}) {
  * @param {string} params.authorization - The user's authorization token
  * @returns {string} A newly generated authorization code
  */
-function generateAuthorizationCode({ client_id, redirect_uri, scope, authorization }) {
+function getBearerToken(value) {
+    return typeof value === "string" ? value.replace(/^Bearer\s+/i, "") : value;
+}
+
+async function generateAuthorizationCode({ client_id, redirect_uri, scope, authorization }) {
     requireInternalParam(client_id, "client_id");
     requireInternalParam(redirect_uri, "redirect_uri");
     requireInternalParam(scope, "scope");
     requireInternalParam(authorization, "authorization");
 
-    const userData = verifyToken(authorization);
+    const client = await validateOAuthClientRedirect({ clientId: client_id, redirectUri: redirect_uri });
+    if (!client) {
+        throw new AppError("OAuth client or redirect_uri is not registered.", { statusCode: 400 });
+    }
+
+    const userData = verifyToken(getBearerToken(authorization));
     if (userData.error) {
         throw new AppError("Invalid authorization token provided.", { statusCode: 400 });
     }
@@ -528,10 +538,13 @@ function generateAuthorizationCode({ client_id, redirect_uri, scope, authorizati
  * @param {string} params.client_id - The client application's ID
  * @returns {Promise<Object>} Token response with access_token, token_type, expires_in, and refresh_token
  */
-async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id }) {
+async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id, client_secret }) {
     requireInternalParam(code, "code");
     requireInternalParam(redirect_uri, "redirect_uri");
     requireInternalParam(client_id, "client_id");
+    if (!client_secret) {
+        throw new AppError("client_secret is required.", { statusCode: 400 });
+    }
 
     const authorizationCodeData = verifyToken(code);
     if (authorizationCodeData.error) {
@@ -558,6 +571,11 @@ async function exchangeAuthorizationCodeForToken({ code, redirect_uri, client_id
     }
     if (authorizationCodeData.aud !== client_id) {
         throw new AppError("client_id does not match the original authorization request.", { statusCode: 400 });
+    }
+
+    const client = await validateOAuthClientSecret({ clientId: client_id, redirectUri: redirect_uri, clientSecret: client_secret });
+    if (!client) {
+        throw new AppError("Invalid OAuth client credentials or redirect_uri.", { statusCode: 401 });
     }
 
     // Load user details so the OAuth access token includes the same claims as regular access tokens
