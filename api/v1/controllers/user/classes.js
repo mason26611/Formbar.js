@@ -176,8 +176,8 @@ module.exports = (router) => {
                 }
             }
 
-            // Convert map to array
-            const allClasses = Array.from(classesMap.values());
+            // Convert map to array and use a stable order for pagination.
+            const allClasses = Array.from(classesMap.values()).sort((a, b) => Number(a.id) - Number(b.id));
             const { limit, offset } = parsePaginationQuery(req.query, DEFAULT_CLASS_LIMIT, MAX_CLASS_LIMIT);
             const classes = allClasses.slice(offset, offset + limit);
 

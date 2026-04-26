@@ -1,7 +1,6 @@
 const { createTestDb } = require("@test-helpers/db");
 const { addClassMemberWithPermission } = require("@test-helpers/role-seeding");
 const { classStateStore } = require("@services/classroom-service");
-const bcrypt = require("bcrypt");
 
 let mockDatabase;
 

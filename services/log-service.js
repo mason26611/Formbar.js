@@ -45,6 +45,9 @@ async function getLog(logFileName) {
         return content;
     } catch (err) {
         if (err instanceof NotFoundError) throw err;
+        if (err?.code === "ENOENT" || err?.code === "ENOTDIR") {
+            throw new NotFoundError("Log file not found", { event: "logs.get.failed", reason: "log_not_found" });
+        }
         throw new AppError(`Failed to read log file ${logFileName}: ${err.message}`, {
             statusCode: 500,
             event: "logs.get.failed",

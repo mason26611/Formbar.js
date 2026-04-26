@@ -39,6 +39,10 @@ function isAuthPath(path) {
     return /(?:^|\/)auth(?:\/|$)/.test(path);
 }
 
+function getBucketKeyToEvict(userRequests, path, globalPath) {
+    return Object.keys(userRequests).find((key) => key !== path && key !== globalPath && key !== "hasBeenMessaged");
+}
+
 async function resolveRateLimitIdentity(req) {
     const fallbackIdentity = `ip:${req.ip || "unknown"}`;
 
@@ -108,7 +112,10 @@ async function rateLimiter(req, res, next) {
 
     const bucketKeys = Object.keys(userRequests).filter((key) => key !== "hasBeenMessaged");
     if (bucketKeys.length > MAX_PATH_BUCKETS_PER_IDENTITY) {
-        delete userRequests[bucketKeys.find((key) => key !== globalPath) || path];
+        const keyToEvict = getBucketKeyToEvict(userRequests, path, globalPath);
+        if (keyToEvict) {
+            delete userRequests[keyToEvict];
+        }
     }
 
     // Remove timestamps that are outside the time frame
@@ -144,4 +151,5 @@ async function rateLimiter(req, res, next) {
 
 module.exports = {
     rateLimiter,
+    getBucketKeyToEvict,
 };

@@ -502,6 +502,28 @@ describe("GET /api/v1/user/:id/classes", () => {
         expect(res.body.data.pagination.total).toBeGreaterThanOrEqual(1);
     });
 
+    it("paginates classes in stable id order across owned and joined classes", async () => {
+        const { tokens, user } = await seedStudent();
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Joined First", user.id + 1000, "joined-key"]);
+        const joinedClass = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = ?", ["Joined First"]);
+        await seedClassMembership(mockDatabase, user.id, joinedClass.id, 3);
+
+        await mockDatabase.dbRun("INSERT INTO classroom (name, owner, key) VALUES (?, ?, ?)", ["Owned Second", user.id, "owned-key"]);
+        const ownedClass = await mockDatabase.dbGet("SELECT id FROM classroom WHERE name = ?", ["Owned Second"]);
+
+        const firstPage = await request(app)
+            .get(`/api/v1/user/${user.id}/classes?limit=1&offset=0`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`);
+        const secondPage = await request(app)
+            .get(`/api/v1/user/${user.id}/classes?limit=1&offset=1`)
+            .set("Authorization", `Bearer ${tokens.accessToken}`);
+
+        expect(firstPage.status).toBe(200);
+        expect(secondPage.status).toBe(200);
+        expect(firstPage.body.data.classes.map((classroom) => classroom.id)).toEqual([joinedClass.id]);
+        expect(secondPage.body.data.classes.map((classroom) => classroom.id)).toEqual([ownedClass.id]);
+    });
+
     it("returns 200 when a manager views another user's classes", async () => {
         const { tokens: managerTokens } = await seedManager();
         const { user: target } = await seedStudent();
