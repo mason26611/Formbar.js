@@ -71,6 +71,9 @@ module.exports = {
         socket.on("getActiveClass", () => {
             try {
                 const api = socket.request.session.api;
+                if (!api) {
+                    return;
+                }
 
                 for (const email in classStateStore.getAllUsers()) {
                     const user = classStateStore.getAllUsers()[email];

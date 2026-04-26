@@ -132,6 +132,18 @@ describe("GET /api/v1/user/:id", () => {
         });
     });
 
+    it("still returns 200 when the stored API key is null", async () => {
+        const { user } = await seedStudent();
+        const row = await mockDatabase.dbGet("SELECT API FROM users WHERE id = ?", [user.id]);
+
+        expect(row.API).toBeNull();
+
+        const res = await request(app).get(`/api/v1/user/${user.id}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+    });
+
     it("returns 404 for a non-existent user", async () => {
         const res = await request(app).get("/api/v1/user/99999");
 

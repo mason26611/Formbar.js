@@ -161,6 +161,10 @@ async function advancedEmitToClass(event, classId, options, ...data) {
  */
 async function setClassOfApiSockets(api, classId) {
     try {
+        if (!api) {
+            return;
+        }
+
         const sockets = await io.in(`api-${api}`).fetchSockets();
         for (let socket of sockets) {
             // Ensure the socket has a session before continuing

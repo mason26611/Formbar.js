@@ -1,4 +1,6 @@
-const { getUser } = require("@services/user-service");
+const { getUserDataFromDb } = require("@services/user-service");
+const { resolveAPIKey } = require("@services/api-key-service");
+const { dbGet } = require("@modules/database");
 const { verifyToken } = require("@services/auth-service");
 const { settings } = require("@modules/config");
 const { computeGlobalPermissionLevel, STUDENT_PERMISSIONS, TEACHER_PERMISSIONS } = require("@modules/permissions");
@@ -14,32 +16,45 @@ const AUTHENTICATED_USER_RATE_LIMIT = 120;
 const AUTHENTICATED_USER_RATE_LIMIT_FOR_AUTH_PATHS = 25;
 const TEACHER_RATE_LIMIT = 225;
 
-async function rateLimiter(req, res, next) {
-    let user = null;
-    if (req.headers.api) {
-        user = await getUser({ api: req.headers.api });
-    } else if (req.headers.authorization) {
-        const decodedToken = verifyToken(req.headers.authorization);
-        if (!decodedToken || decodedToken.error || !decodedToken.email) {
-            user = { email: req.ip };
-        } else {
-            let email = decodedToken.email;
-            user = await getUser({ email: email });
+async function resolveRateLimitIdentity(req) {
+    const fallbackIdentity = `ip:${req.ip || "unknown"}`;
+
+    const apiKeyHeader = req.headers.api;
+    const apiKey = typeof apiKeyHeader === "string" ? apiKeyHeader.trim() : null;
+    if (apiKey) {
+        const apiKeyUser = await resolveAPIKey(apiKey);
+        if (apiKeyUser?.id) {
+            const userData = await getUserDataFromDb(apiKeyUser.id);
+            if (userData?.id) {
+                return { identifier: `user:${userData.id}`, user: userData };
+            }
         }
-    } else {
-        user = { email: req.ip };
+        return { identifier: fallbackIdentity, user: null };
     }
 
-    // Fallback for invalid user data
-    if (!user || user.error || !user.email) {
-        user = { email: req.ip };
+    const authorizationHeader = req.headers.authorization;
+    if (authorizationHeader) {
+        const decodedToken = verifyToken(authorizationHeader);
+        if (decodedToken && !decodedToken.error && decodedToken.email) {
+            const userRow = await dbGet("SELECT id FROM users WHERE email = ?", [decodedToken.email]);
+            if (userRow?.id) {
+                const userData = await getUserDataFromDb(userRow.id);
+                if (userData?.id) {
+                    return { identifier: `user:${userData.id}`, user: userData };
+                }
+            }
+        }
     }
 
-    const identifier = user.email;
+    return { identifier: fallbackIdentity, user: null };
+}
+
+async function rateLimiter(req, res, next) {
+    const { identifier, user } = await resolveRateLimitIdentity(req);
     const currentTime = Date.now();
     const timeFrame = settings.rateLimitWindowMs ?? TIMED_RATE_LIMIT_WINDOW_MS;
-    const permissionLevel = computeGlobalPermissionLevel(getUserScopes(user).global);
-    
+    const permissionLevel = user ? computeGlobalPermissionLevel(getUserScopes(user).global) : 0;
+
     let maximumRequests = UNAUTHENTICATED_USER_RATE_LIMIT; // Default limit for unauthenticated users
     if (permissionLevel >= TEACHER_PERMISSIONS) {
         maximumRequests = TEACHER_RATE_LIMIT;
